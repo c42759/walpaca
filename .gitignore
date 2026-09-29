@@ -1,0 +1,7 @@
+# Folders
+.agents/
+.agents-memory/
+
+# File patterns
+.agents
+*.db
