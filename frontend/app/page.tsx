@@ -179,6 +179,34 @@ const formatAvatarPicture = (picture?: string | null): string | undefined => {
   return `data:image/png;base64,${picture}`;
 };
 
+const isImageAttachment = (att: MessageAttachment | any): boolean => {
+  if (!att) return false;
+  const typeStr = (att.type || "").toLowerCase();
+  if (typeStr.includes("image") || typeStr.includes("photo") || typeStr.includes("png") || typeStr.includes("jpg") || typeStr.includes("jpeg")) {
+    return true;
+  }
+  const contentStr = typeof att.content === "string" ? att.content.trim() : "";
+  if (
+    contentStr.startsWith("data:image/") ||
+    contentStr.startsWith("iVBOR") ||
+    contentStr.startsWith("/9j/") ||
+    contentStr.startsWith("R0lGOD") ||
+    contentStr.startsWith("UklGR")
+  ) {
+    return true;
+  }
+  return false;
+};
+
+const getImageSrc = (att: MessageAttachment | any): string => {
+  const contentStr = typeof att.content === "string" ? att.content.trim() : "";
+  if (contentStr.startsWith("data:") || contentStr.startsWith("http://") || contentStr.startsWith("https://") || contentStr.startsWith("/")) {
+    return contentStr;
+  }
+  return `data:image/png;base64,${contentStr}`;
+};
+
+
 const BrainIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.04Z" />
@@ -256,7 +284,7 @@ const parseFormatting = (str: string): React.ReactNode[] => {
   return parts;
 };
 
-const renderInlineMarkdown = (text: string, keyPrefix: string) => {
+const renderInlineMarkdown = (text: string, keyPrefix: string, activeLineIndex?: number) => {
   const lines = text.split("\n");
   const elements: React.ReactNode[] = [];
   let inUnorderedList = false;
@@ -347,6 +375,8 @@ const renderInlineMarkdown = (text: string, keyPrefix: string) => {
 
   lines.forEach((line, idx) => {
     const trimmed = line.trim();
+    const isHl = activeLineIndex === idx;
+    const hlClass = isHl ? " bg-[#7678ed]/20 border-l-4 border-[#7678ed] pl-2.5 py-0.5 rounded-r-xl transition-all duration-300 font-medium text-[#111] shadow-xs" : "";
 
     // Check table line
     if (trimmed.startsWith("|") && (trimmed.endsWith("|") || trimmed.includes("|"))) {
@@ -363,27 +393,27 @@ const renderInlineMarkdown = (text: string, keyPrefix: string) => {
     // Headers
     if (trimmed.startsWith("# ")) {
       flushListsAndTable();
-      elements.push(<h1 key={idx} className="text-2xl font-extrabold text-[#202022] my-2">{parseFormatting(trimmed.slice(2))}</h1>);
+      elements.push(<h1 key={idx} className={`text-2xl font-extrabold text-[#202022] my-2${hlClass}`}>{parseFormatting(trimmed.slice(2))}</h1>);
       return;
     }
     if (trimmed.startsWith("## ")) {
       flushListsAndTable();
-      elements.push(<h2 key={idx} className="text-xl font-bold text-[#202022] my-2">{parseFormatting(trimmed.slice(3))}</h2>);
+      elements.push(<h2 key={idx} className={`text-xl font-bold text-[#202022] my-2${hlClass}`}>{parseFormatting(trimmed.slice(3))}</h2>);
       return;
     }
     if (trimmed.startsWith("### ")) {
       flushListsAndTable();
-      elements.push(<h3 key={idx} className="text-lg font-bold text-[#202022] my-1.5">{parseFormatting(trimmed.slice(4))}</h3>);
+      elements.push(<h3 key={idx} className={`text-lg font-bold text-[#202022] my-1.5${hlClass}`}>{parseFormatting(trimmed.slice(4))}</h3>);
       return;
     }
     if (trimmed.startsWith("#### ")) {
       flushListsAndTable();
-      elements.push(<h4 key={idx} className="text-base font-bold text-[#202022] my-1">{parseFormatting(trimmed.slice(5))}</h4>);
+      elements.push(<h4 key={idx} className={`text-base font-bold text-[#202022] my-1${hlClass}`}>{parseFormatting(trimmed.slice(5))}</h4>);
       return;
     }
     if (trimmed.startsWith("##### ") || trimmed.startsWith("###### ")) {
       flushListsAndTable();
-      elements.push(<h5 key={idx} className="text-sm font-bold uppercase tracking-wider text-[#8e90a6] my-1">{parseFormatting(trimmed.replace(/^#+\s*/, ""))}</h5>);
+      elements.push(<h5 key={idx} className={`text-sm font-bold uppercase tracking-wider text-[#8e90a6] my-1${hlClass}`}>{parseFormatting(trimmed.replace(/^#+\s*/, ""))}</h5>);
       return;
     }
 
@@ -398,7 +428,7 @@ const renderInlineMarkdown = (text: string, keyPrefix: string) => {
     if (trimmed.startsWith("> ")) {
       flushListsAndTable();
       elements.push(
-        <blockquote key={idx} className="border-l-4 border-[#7678ed] pl-3 py-1 my-2 text-[#4a4d63] italic bg-[#f0f2f9]/50 rounded-r-xl">
+        <blockquote key={idx} className={`border-l-4 border-[#7678ed] pl-3 py-1 my-2 text-[#4a4d63] italic bg-[#f0f2f9]/50 rounded-r-xl${hlClass}`}>
           {parseFormatting(trimmed.slice(2))}
         </blockquote>
       );
@@ -410,7 +440,7 @@ const renderInlineMarkdown = (text: string, keyPrefix: string) => {
     if (ulMatch) {
       if (inOrderedList) flushListsAndTable();
       inUnorderedList = true;
-      currentUlItems.push(<li key={idx} className="leading-relaxed">{parseFormatting(ulMatch[1])}</li>);
+      currentUlItems.push(<li key={idx} className={`leading-relaxed${hlClass}`}>{parseFormatting(ulMatch[1])}</li>);
       return;
     }
 
@@ -419,7 +449,7 @@ const renderInlineMarkdown = (text: string, keyPrefix: string) => {
     if (olMatch) {
       if (inUnorderedList) flushListsAndTable();
       inOrderedList = true;
-      currentOlItems.push(<li key={idx} className="leading-relaxed">{parseFormatting(olMatch[1])}</li>);
+      currentOlItems.push(<li key={idx} className={`leading-relaxed${hlClass}`}>{parseFormatting(olMatch[1])}</li>);
       return;
     }
 
@@ -432,14 +462,14 @@ const renderInlineMarkdown = (text: string, keyPrefix: string) => {
 
     // Regular paragraph
     flushListsAndTable();
-    elements.push(<p key={idx} className="leading-relaxed my-1">{parseFormatting(line)}</p>);
+    elements.push(<p key={idx} className={`leading-relaxed my-1${hlClass}`}>{parseFormatting(line)}</p>);
   });
 
   flushListsAndTable();
   return <div key={keyPrefix} className="space-y-1">{elements}</div>;
 };
 
-const renderMarkdownText = (text: string) => {
+const renderMarkdownText = (text: string, activeLineIndex?: number) => {
   if (!text) return null;
 
   const codeBlockRegex = /```(\w+)?\s*\n?([\s\S]*?)```/g;
@@ -449,7 +479,7 @@ const renderMarkdownText = (text: string) => {
 
   while ((match = codeBlockRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      elements.push(renderInlineMarkdown(text.slice(lastIndex, match.index), `text-${lastIndex}`));
+      elements.push(renderInlineMarkdown(text.slice(lastIndex, match.index), `text-${lastIndex}`, activeLineIndex));
     }
     const lang = match[1] || "";
     const codeContent = match[2]?.trim() || "";
@@ -463,7 +493,7 @@ const renderMarkdownText = (text: string) => {
   }
 
   if (lastIndex < text.length) {
-    elements.push(renderInlineMarkdown(text.slice(lastIndex), `text-${lastIndex}`));
+    elements.push(renderInlineMarkdown(text.slice(lastIndex), `text-${lastIndex}`, activeLineIndex));
   }
 
   return <>{elements}</>;
@@ -474,6 +504,194 @@ export default function AlpacaWebPage() {
   const [folders, setFolders] = useState<ChatFolder[]>([]);
   const [modelPreferences, setModelPreferences] = useState<Record<string, ModelPreference>>({});
   const [activeAttachmentModal, setActiveAttachmentModal] = useState<{ title: string; type: string; content: string } | null>(null);
+  const [activeImageModal, setActiveImageModal] = useState<{ src: string; title?: string } | null>(null);
+
+  // --- TTS Voice Playback State & Controls ---
+  const [ttsState, setTtsState] = useState<{
+    msgId: string | null;
+    status: "playing" | "paused" | "stopped";
+    lineIndex: number;
+  }>({ msgId: null, status: "stopped", lineIndex: -1 });
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const ttsStateRef = useRef(ttsState);
+
+  const updateTTSState = (
+    newState:
+      | { msgId: string | null; status: "playing" | "paused" | "stopped"; lineIndex: number }
+      | ((prev: { msgId: string | null; status: "playing" | "paused" | "stopped"; lineIndex: number }) => {
+          msgId: string | null;
+          status: "playing" | "paused" | "stopped";
+          lineIndex: number;
+        })
+  ) => {
+    if (typeof newState === "function") {
+      const next = newState(ttsStateRef.current);
+      ttsStateRef.current = next;
+      setTtsState(next);
+    } else {
+      ttsStateRef.current = newState;
+      setTtsState(newState);
+    }
+  };
+
+  const handleStopTTS = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
+  };
+
+  const handlePauseTTS = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    updateTTSState((prev) => ({ ...prev, status: "paused" }));
+  };
+
+  const handleResumeTTS = () => {
+    if (audioRef.current) {
+      audioRef.current.play().catch(console.warn);
+    }
+    updateTTSState((prev) => ({ ...prev, status: "playing" }));
+  };
+
+  const fetchTTSBlob = async (text: string, voice: string, signal: AbortSignal): Promise<Blob | null> => {
+    try {
+      const res = await fetch(`${API_URL}/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          voice: voice || "af_heart",
+        }),
+        signal,
+      });
+      if (!res.ok) {
+        console.warn("TTS fetch returned status:", res.status);
+        return null;
+      }
+      return await res.blob();
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        console.warn("TTS fetch error:", err);
+      }
+      return null;
+    }
+  };
+
+  const handlePlayTTS = async (msgId: string, content: string, voice?: string) => {
+    if (ttsStateRef.current.msgId === msgId && ttsStateRef.current.status === "paused") {
+      handleResumeTTS();
+      return;
+    }
+
+    handleStopTTS();
+
+    const rawLines = content.split("\n");
+    const validLines: { origIndex: number; cleanText: string }[] = [];
+
+    rawLines.forEach((lineText, origIndex) => {
+      const trimmed = lineText.trim();
+      if (!trimmed) return;
+
+      const cleanText = trimmed
+        .replace(/```[\s\S]*?```/g, "")
+        .replace(/`([^`]+)`/g, "$1")
+        .replace(/\*\*([^*]+)\*\*/g, "$1")
+        .replace(/\*([^*]+)\*/g, "$1")
+        .replace(/^#+\s*/gm, "")
+        .replace(/^>\s*/gm, "")
+        .replace(/^[-*+]\s+/gm, "")
+        .replace(/^\d+\.\s+/gm, "")
+        .replace(/\|/g, " ")
+        .trim();
+
+      if (cleanText) {
+        validLines.push({ origIndex, cleanText });
+      }
+    });
+
+    if (validLines.length === 0) return;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    updateTTSState({ msgId, status: "playing", lineIndex: validLines[0].origIndex });
+
+    // Pipeline background audio fetches back-to-back immediately for all valid lines
+    const audioBlobPromises: Promise<Blob | null>[] = validLines.map((item) =>
+      fetchTTSBlob(item.cleanText, voice || "af_heart", controller.signal)
+    );
+
+    // Stream playback through pre-fetched audio blobs
+    for (let i = 0; i < validLines.length; i++) {
+      if (ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === "stopped") {
+        break;
+      }
+
+      const currentItem = validLines[i];
+      updateTTSState({ msgId, status: "playing", lineIndex: currentItem.origIndex });
+
+      const blob = await audioBlobPromises[i];
+      if (!blob || ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === "stopped") {
+        continue;
+      }
+
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      await new Promise<void>((resolve) => {
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+        audio.onerror = (e) => {
+          console.warn("Audio playback error:", e);
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+
+        const checkAndPlay = () => {
+          const st = ttsStateRef.current.status;
+          if (st === "paused") {
+            const interval = setInterval(() => {
+              const currentSt = ttsStateRef.current.status;
+              if (currentSt === "playing" || (currentSt as string) === "stopped") {
+                clearInterval(interval);
+                if (currentSt === "playing") {
+                  audio.play().catch(resolve);
+                } else {
+                  resolve();
+                }
+              }
+            }, 100);
+          } else if (st === "stopped" || ttsStateRef.current.msgId !== msgId) {
+            resolve();
+          } else {
+            audio.play().catch((err) => {
+              console.warn("audio.play() error:", err);
+              resolve();
+            });
+          }
+        };
+
+        checkAndPlay();
+      });
+    }
+
+    if (ttsStateRef.current.msgId === msgId) {
+      updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
+    }
+  };
 
   const getConversationParticipants = () => {
     const map = new Map<string, { id: string; name: string; avatar: string; role: string }>();
@@ -508,12 +726,50 @@ export default function AlpacaWebPage() {
     return Array.from(map.values());
   };
   const [activeTab, setActiveTab] = useState<string>("all");
-  const [activeChatId, setActiveChatId] = useState<string>("design-chat");
+  const [activeChatId, setActiveChatId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const chatParam = params.get("chat");
+      if (chatParam) return chatParam;
+    }
+    return "design-chat";
+  });
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [inputText, setInputText] = useState<string>("");
   const [expandedSection, setExpandedSection] = useState<string>("photos");
+  const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState<boolean>(false);
   const [isCreatingFolder, setIsCreatingFolder] = useState<boolean>(false);
   const [newFolderName, setNewFolderName] = useState<string>("");
+
+  const getConversationAttachments = () => {
+    const photos: string[] = [];
+    const otherFiles: MessageAttachment[] = [];
+
+    messages.forEach((msg) => {
+      if (msg.image && !photos.includes(msg.image)) {
+        photos.push(msg.image);
+      }
+      if (msg.attachments && Array.isArray(msg.attachments)) {
+        msg.attachments.forEach((att) => {
+          const typeLower = (att.type || "").toLowerCase();
+          if (typeLower === "thought" || typeLower === "brain" || typeLower === "metadata" || typeLower === "data") {
+            return; // Ignore/hide thoughts and metadata from Attachments widget
+          }
+          if (isImageAttachment(att)) {
+            const src = getImageSrc(att);
+            if (src && !photos.includes(src)) {
+              photos.push(src);
+            }
+          } else {
+            otherFiles.push(att);
+          }
+        });
+      }
+    });
+
+    return { photos, otherFiles };
+  };
+
 
   const [chatItems, setChatItems] = useState<ChatItem[]>(initialMockChatList);
   const [messages, setMessages] = useState<Message[]>([
@@ -652,6 +908,19 @@ export default function AlpacaWebPage() {
   useEffect(() => {
     fetchFolders();
     fetchModelPreferences();
+
+    const handlePopState = () => {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const chatParam = params.get("chat");
+        if (chatParam) {
+          setActiveChatId(chatParam);
+        }
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   useEffect(() => {
@@ -661,6 +930,13 @@ export default function AlpacaWebPage() {
   useEffect(() => {
     if (activeChatId) {
       fetchChatMessages(activeChatId);
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        if (url.searchParams.get("chat") !== activeChatId) {
+          url.searchParams.set("chat", activeChatId);
+          window.history.pushState({}, "", url.toString());
+        }
+      }
     }
   }, [activeChatId]);
 
@@ -1016,11 +1292,32 @@ export default function AlpacaWebPage() {
                   {messages.map((msg) => {
                     if (msg.isSelf) {
                       {/* User message (Role 'user' -> Right side, full width) */}
+                      const imageAttachments = (msg.attachments || []).filter(isImageAttachment);
+                      const imageSources: string[] = [];
+                      if (msg.image) imageSources.push(msg.image);
+                      imageAttachments.forEach((att) => {
+                        const src = getImageSrc(att);
+                        if (src && !imageSources.includes(src)) imageSources.push(src);
+                      });
+
                       return (
                         <div key={msg.id} className="flex items-start justify-end gap-3.5 w-full">
                           <div className="flex flex-col items-end flex-1 w-full min-w-0">
                             <div className="bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-5 py-4 text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full">
                               <div className="leading-relaxed font-normal">{renderMarkdownText(msg.content)}</div>
+                              {imageSources.length > 0 && (
+                                <div className="flex flex-row gap-2.5 overflow-x-auto mt-3 pb-1.5 max-w-full">
+                                  {imageSources.map((src, idx) => (
+                                    <img
+                                      key={idx}
+                                      src={src}
+                                      alt={`Attachment ${idx + 1}`}
+                                      className="h-32 min-w-[128px] max-w-[260px] rounded-xl object-cover border border-white/20 shadow-xs flex-shrink-0 cursor-pointer hover:opacity-95 transition-opacity"
+                                      onClick={() => setActiveImageModal({ src, title: `Attachment Image ${idx + 1}` })}
+                                    />
+                                  ))}
+                                </div>
+                              )}
                               <div className="flex items-center justify-end gap-2 text-sm text-white/80 mt-2">
                                 <span>{msg.time}</span>
                               </div>
@@ -1037,10 +1334,14 @@ export default function AlpacaWebPage() {
                     } else {
                       {/* Assistant / Incoming message (Role 'assistant' -> Left side, full width) */}
                       const prefKey = (msg.senderName || "").toLowerCase();
-                      const pref = modelPreferences[prefKey] || modelPreferences[msg.senderName || ""];
+                      const pref = modelPreferences[prefKey] || modelPreferences[msg.senderName || ""] || (msg.model ? modelPreferences[msg.model.toLowerCase()] : undefined);
                       const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80";
                       const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
                       const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
+                      const modelVoice = pref?.voice || undefined;
+
+                      const isThisMsgPlaying = ttsState.msgId === msg.id && ttsState.status === "playing";
+                      const isThisMsgActive = ttsState.msgId === msg.id && ttsState.status !== "stopped";
 
                       const thoughtAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === "thought" || a.type?.toLowerCase() === "brain");
                       const metadataAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === "metadata" || a.type?.toLowerCase() === "data");
@@ -1055,7 +1356,59 @@ export default function AlpacaWebPage() {
                           <div className="flex flex-col items-start flex-1 w-full min-w-0">
                             <div className="bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-5 py-4 text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full">
                               <div className="flex items-center justify-between gap-3 mb-1.5">
-                                <p className="text-base font-semibold text-[#7678ed]">{displayName}</p>
+                                <div className="flex items-center gap-2">
+                                  {/* TTS Controls in front of displayName */}
+                                  {isThisMsgActive ? (
+                                    <div className="flex items-center gap-1">
+                                      {isThisMsgPlaying ? (
+                                        <button
+                                          type="button"
+                                          onClick={handlePauseTTS}
+                                          className="p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center"
+                                          title="Pause Speech"
+                                        >
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                            <rect x="6" y="4" width="4" height="16" rx="1" />
+                                            <rect x="14" y="4" width="4" height="16" rx="1" />
+                                          </svg>
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={handleResumeTTS}
+                                          className="p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center"
+                                          title="Resume Speech"
+                                        >
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                            <polygon points="5 3 19 12 5 21 5 3" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={handleStopTTS}
+                                        className="p-1.5 rounded-xl bg-[#ff7a55] text-white hover:bg-[#e06845] transition-all shadow-xs cursor-pointer flex items-center justify-center"
+                                        title="Stop Speech"
+                                      >
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                          <rect x="4" y="4" width="16" height="16" rx="2" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePlayTTS(msg.id, msg.content, modelVoice)}
+                                      className="p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#7678ed] hover:bg-[#7678ed] hover:text-white transition-all shadow-xs cursor-pointer flex items-center justify-center"
+                                      title="Play Speech"
+                                    >
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="5 3 19 12 5 21 5 3" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                  <p className="text-base font-semibold text-[#7678ed]">{displayName}</p>
+                                </div>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   {thoughtAtt && (
                                     <button
@@ -1081,7 +1434,9 @@ export default function AlpacaWebPage() {
                                   )}
                                 </div>
                               </div>
-                              <div className="leading-relaxed">{renderMarkdownText(msg.content)}</div>
+                              <div className="leading-relaxed">
+                                {renderMarkdownText(msg.content, msg.id === ttsState.msgId ? ttsState.lineIndex : undefined)}
+                              </div>
                               <div className="flex items-center justify-between gap-4 mt-2.5 pt-1">
                                 {msg.reactions && msg.reactions.length > 0 && (
                                   <div className="flex items-center gap-1.5">
@@ -1168,143 +1523,7 @@ export default function AlpacaWebPage() {
           {activeChatId && chatItems.some((c) => c.id === activeChatId) ? (
             <aside className="w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
               
-              {/* Top Card: Group Info */}
-              <div className="bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]">
-                {/* Card Header */}
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-xl text-[#202022]">Group Info</h3>
-                  <button className="text-[#8e90a6] hover:text-[#202022] p-1 transition-colors">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Files Accordion List */}
-                <div className="space-y-3">
-                  <p className="text-base font-semibold text-[#8e90a6] uppercase tracking-wider">Files</p>
-
-                  {/* 265 Photos (Expanded in mockup) */}
-                  <div>
-                    <button
-                      onClick={() => setExpandedSection(expandedSection === "photos" ? "" : "photos")}
-                      className="w-full flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] transition-colors"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                          <circle cx="8.5" cy="8.5" r="1.5" />
-                          <polyline points="21 15 16 10 5 21" />
-                        </svg>
-                        265 photos
-                      </span>
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        className={`transition-transform duration-200 ${expandedSection === "photos" ? "rotate-180" : ""}`}
-                      >
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </button>
-
-                    {/* Photo Thumbnails */}
-                    {expandedSection === "photos" && (
-                      <div className="grid grid-cols-2 gap-2 mt-2 pt-1">
-                        <img
-                          src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=240&auto=format&fit=crop&q=80"
-                          alt="Skyscraper thumbnail"
-                          className="w-full h-20 object-cover rounded-xl shadow-xs"
-                        />
-                        <img
-                          src="https://images.unsplash.com/photo-1517842645767-c639042777db?w=240&auto=format&fit=crop&q=80"
-                          alt="Desk notes thumbnail"
-                          className="w-full h-20 object-cover rounded-xl shadow-xs"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 13 Videos */}
-                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
-                    <span className="flex items-center gap-2.5">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polygon points="23 7 16 12 23 17 23 7" />
-                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                      </svg>
-                      13 videos
-                    </span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </div>
-
-                  {/* 378 Files */}
-                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
-                    <span className="flex items-center gap-2.5">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                      </svg>
-                      378 files
-                    </span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </div>
-
-                  {/* 21 Audio Files */}
-                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
-                    <span className="flex items-center gap-2.5">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M9 18V5l12-2v13" />
-                        <circle cx="6" cy="18" r="3" />
-                        <circle cx="18" cy="16" r="3" />
-                      </svg>
-                      21 audio files
-                    </span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </div>
-
-                  {/* 45 Shared Links */}
-                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
-                    <span className="flex items-center gap-2.5">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                      </svg>
-                      45 shared links
-                    </span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </div>
-
-                  {/* 2 589 Voice Messages */}
-                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
-                    <span className="flex items-center gap-2.5">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                        <line x1="12" y1="19" x2="12" y2="23" />
-                        <line x1="8" y1="23" x2="16" y2="23" />
-                      </svg>
-                      2 589 voice messages
-                    </span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottom Card: Dynamic Conversation Participants */}
+              {/* 1. Members Card (Top) */}
               {(() => {
                 const participants = getConversationParticipants();
                 return (
@@ -1338,6 +1557,104 @@ export default function AlpacaWebPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                );
+              })()}
+
+              {/* 2. Attachments Card (Bottom - Collapsed by default) */}
+              {(() => {
+                const atts = getConversationAttachments();
+                const totalCount = atts.photos.length + atts.otherFiles.length;
+
+                return (
+                  <div className="bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]">
+                    {/* Card Header with Collapse Toggle */}
+                    <button
+                      onClick={() => setIsAttachmentsExpanded(!isAttachmentsExpanded)}
+                      className="w-full flex items-center justify-between cursor-pointer select-none"
+                    >
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-xl text-[#202022]">Attachments</h3>
+                        <span className="text-sm font-semibold text-white bg-[#7678ed] px-2.5 py-0.5 rounded-full">
+                          {totalCount}
+                        </span>
+                      </div>
+                      <div className="p-1 text-[#8e90a6] hover:text-[#202022] transition-colors">
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={`transition-transform duration-200 ${isAttachmentsExpanded ? "rotate-180" : ""}`}
+                        >
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </div>
+                    </button>
+
+                    {/* Collapsible Content */}
+                    {isAttachmentsExpanded && (
+                      <div className="mt-4 pt-3 border-t border-[#edf0f7] space-y-4">
+                        {totalCount === 0 ? (
+                          <p className="text-sm text-[#8e90a6] italic">No attachments in this conversation.</p>
+                        ) : (
+                          <>
+                            {/* Photos / Images */}
+                            {atts.photos.length > 0 && (
+                              <div>
+                                <p className="text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                    <circle cx="8.5" cy="8.5" r="1.5" />
+                                    <polyline points="21 15 16 10 5 21" />
+                                  </svg>
+                                  Photos ({atts.photos.length})
+                                </p>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {atts.photos.map((src, idx) => (
+                                    <img
+                                      key={idx}
+                                      src={src}
+                                      alt={`Photo ${idx + 1}`}
+                                      className="w-full h-20 object-cover rounded-xl shadow-xs cursor-pointer hover:opacity-90 transition-opacity border border-[#edf0f7]"
+                                      onClick={() => setActiveImageModal({ src, title: `Photo ${idx + 1}` })}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Other Files */}
+                            {atts.otherFiles.length > 0 && (
+                              <div>
+                                <p className="text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                  </svg>
+                                  Files ({atts.otherFiles.length})
+                                </p>
+                                <div className="space-y-1.5">
+                                  {atts.otherFiles.map((item, idx) => (
+                                    <button
+                                      key={idx}
+                                      onClick={() => setActiveAttachmentModal({ title: item.name || "Attachment", type: item.type || "file", content: item.content })}
+                                      className="w-full text-left px-3 py-2 rounded-xl bg-[#f8f9fe] hover:bg-[#7678ed] hover:text-white text-[#202022] transition-colors text-sm font-medium flex items-center justify-between border border-[#e8ebf3] group cursor-pointer"
+                                    >
+                                      <span className="truncate">{item.name || `File ${idx + 1}`}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -1433,6 +1750,42 @@ export default function AlpacaWebPage() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Full Size Image Gallery Modal */}
+      {activeImageModal && (
+        <div
+          className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4 sm:p-8 animate-in fade-in duration-200"
+          onClick={() => setActiveImageModal(null)}
+        >
+          <div
+            className="relative max-w-[92vw] max-h-[92vh] flex flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setActiveImageModal(null)}
+              className="absolute -top-12 right-0 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-all cursor-pointer shadow-md"
+              title="Close"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+
+            {/* Image */}
+            <img
+              src={activeImageModal.src}
+              alt={activeImageModal.title || "Full size view"}
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-white/20 select-text"
+            />
+            {activeImageModal.title && (
+              <p className="text-white/80 text-sm font-medium mt-3 px-4 py-1 bg-black/50 rounded-full backdrop-blur-xs">
+                {activeImageModal.title}
+              </p>
+            )}
           </div>
         </div>
       )}
