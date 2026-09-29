@@ -1,0 +1,1441 @@
+"use client";
+
+import React, { useState, useEffect, useRef } from "react";
+
+// --- Types ---
+interface ChatFolder {
+  id: string;
+  name: string;
+  color?: string;
+  parent?: string | null;
+}
+
+interface MessageAttachment {
+  id?: string;
+  type: string;
+  name?: string;
+  content: string;
+}
+
+interface Message {
+  id: string;
+  senderName: string;
+  senderAvatar?: string;
+  model?: string;
+  isSelf: boolean;
+  content: string;
+  time: string;
+  views?: number;
+  reactions?: { emoji: string; count: number }[];
+  image?: string;
+  attachments?: MessageAttachment[];
+}
+
+interface ChatItem {
+  id: string;
+  name: string;
+  avatarText?: string;
+  avatarImg?: string;
+  lastMessage: string;
+  time: string;
+  unreadCount?: number;
+  isPinned?: boolean;
+  isDelivered?: boolean;
+  folder?: string;
+}
+
+interface BackendMessage {
+  id: string;
+  chat_id: string;
+  role: string;
+  model?: string;
+  date_time: string;
+  content: string;
+  attachments?: any[];
+}
+
+interface ModelPreference {
+  id: string;
+  picture?: string | null;
+  voice?: string | null;
+  character?: any;
+}
+
+interface BackendChat {
+  id: string;
+  name: string;
+  folder?: string | null;
+  is_template?: boolean;
+  latest_message_time?: string | null;
+  messages?: BackendMessage[];
+}
+
+const initialMockChatList: ChatItem[] = [
+  {
+    id: "design-chat",
+    name: "Design chat",
+    avatarText: "DC",
+    lastMessage: "Jessie Rollins sent...",
+    time: "4m",
+    unreadCount: 1,
+    isPinned: true,
+  },
+  {
+    id: "osman",
+    name: "Osman Campos",
+    avatarImg: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+    lastMessage: "You: Hey! We are read...",
+    time: "20m",
+    isPinned: true,
+  },
+  {
+    id: "jayden",
+    name: "Jayden Church",
+    avatarImg: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80",
+    lastMessage: "I prepared some varia...",
+    time: "1h",
+    isPinned: true,
+  },
+  {
+    id: "jacob",
+    name: "Jacob Mcleod",
+    avatarImg: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=120&auto=format&fit=crop&q=80",
+    lastMessage: "And send me the proto...",
+    time: "10m",
+    unreadCount: 3,
+  },
+  {
+    id: "jasmin",
+    name: "Jasmin Lowery",
+    avatarImg: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80",
+    lastMessage: "You: Ok! Let's discuss it on th...",
+    time: "20m",
+    isDelivered: true,
+  },
+  {
+    id: "zaid",
+    name: "Zaid Myers",
+    avatarImg: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=120&auto=format&fit=crop&q=80",
+    lastMessage: "You: Hey! We are ready to in...",
+    time: "45m",
+    isDelivered: true,
+  },
+  {
+    id: "anthony",
+    name: "Anthony Cordanes",
+    avatarImg: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&auto=format&fit=crop&q=80",
+    lastMessage: "What do you think?",
+    time: "1d",
+  },
+];
+
+const mapBackendChatToChatItem = (c: BackendChat): ChatItem => {
+  const words = c.name.trim().split(" ");
+  const initials = words.length > 1 && words[1]
+    ? `${words[0][0]}${words[1][0]}`.toUpperCase()
+    : c.name.slice(0, 2).toUpperCase();
+
+  let timeStr = "now";
+  if (c.latest_message_time) {
+    const parts = c.latest_message_time.split(" ");
+    timeStr = parts[1] ? parts[1].slice(0, 5) : parts[0] || "now";
+  }
+
+  return {
+    id: c.id,
+    name: c.name,
+    avatarText: initials,
+    lastMessage: c.latest_message_time ? `Last msg ${timeStr}` : "No messages yet",
+    time: timeStr,
+    folder: c.folder || undefined,
+  };
+};
+
+const getCharacterName = (char?: any): string | undefined => {
+  if (!char) return undefined;
+  if (char.data && char.data.name && String(char.data.name).trim()) {
+    return String(char.data.name).trim();
+  }
+  if (char.name && String(char.name).trim()) {
+    return String(char.name).trim();
+  }
+  return undefined;
+};
+
+const isCharEnabled = (char?: any) => {
+  if (!char) return false;
+  if (typeof char.enabled === "boolean") return char.enabled;
+  if (typeof char.enable === "boolean") return char.enable;
+  if (typeof char.data?.enabled === "boolean") return char.data.enabled;
+  if (typeof char.data?.enable === "boolean") return char.data.enable;
+  return Boolean(getCharacterName(char));
+};
+
+const formatAvatarPicture = (picture?: string | null): string | undefined => {
+  if (!picture) return undefined;
+  if (picture.startsWith("data:") || picture.startsWith("http://") || picture.startsWith("https://") || picture.startsWith("/")) {
+    return picture;
+  }
+  return `data:image/png;base64,${picture}`;
+};
+
+const BrainIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.04Z" />
+    <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.04Z" />
+  </svg>
+);
+
+const MetadataIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="16 18 22 12 16 6" />
+    <polyline points="8 6 2 12 8 18" />
+    <line x1="12" y1="2" x2="12" y2="22" opacity="0.4" />
+  </svg>
+);
+
+const mapBackendMsgToMessage = (m: BackendMessage, prefMap?: Record<string, ModelPreference>): Message => {
+  const isSelf = m.role === "user";
+  let timeStr = m.date_time || "";
+  if (timeStr.includes(" ")) {
+    timeStr = timeStr.split(" ")[1].slice(0, 5);
+  }
+
+  const modelKey = m.model ? m.model.toLowerCase() : "";
+  const pref = prefMap && modelKey ? (prefMap[modelKey] || prefMap[m.model!]) : undefined;
+  const avatarFromPref = formatAvatarPicture(pref?.picture);
+  const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
+  const displayName = charName || getCharacterName(pref?.character) || m.model || "Assistant";
+
+  return {
+    id: m.id,
+    senderName: isSelf ? "You" : displayName,
+    senderAvatar: isSelf ? undefined : avatarFromPref,
+    isSelf,
+    content: m.content,
+    time: timeStr || "now",
+    attachments: m.attachments || [],
+  };
+};
+
+const parseFormatting = (str: string): React.ReactNode[] => {
+  const parts: React.ReactNode[] = [];
+  const regex = /(\*\*(.*?)\*\*|__(.*?)__|~~(.*?)~~|\*(.*?)\*|_(.*?)_|`(.*?)`|\[(.*?)\]\((.*?)\))/g;
+  let lastIdx = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = regex.exec(str)) !== null) {
+    if (m.index > lastIdx) {
+      parts.push(str.slice(lastIdx, m.index));
+    }
+    if (m[2] !== undefined) {
+      parts.push(<strong key={m.index} className="font-bold text-inherit">{m[2]}</strong>);
+    } else if (m[3] !== undefined) {
+      parts.push(<strong key={m.index} className="font-bold text-inherit">{m[3]}</strong>);
+    } else if (m[4] !== undefined) {
+      parts.push(<del key={m.index} className="line-through opacity-80">{m[4]}</del>);
+    } else if (m[5] !== undefined) {
+      parts.push(<em key={m.index} className="italic text-inherit">{m[5]}</em>);
+    } else if (m[6] !== undefined) {
+      parts.push(<em key={m.index} className="italic text-inherit">{m[6]}</em>);
+    } else if (m[7] !== undefined) {
+      parts.push(<code key={m.index} className="bg-black/10 dark:bg-white/10 rounded px-1.5 py-0.5 font-mono text-sm border border-black/5 dark:border-white/5">{m[7]}</code>);
+    } else if (m[8] !== undefined && m[9] !== undefined) {
+      parts.push(
+        <a key={m.index} href={m[9]} target="_blank" rel="noreferrer" className="underline font-medium text-[#7678ed] hover:opacity-80 transition-opacity">
+          {m[8]}
+        </a>
+      );
+    }
+    lastIdx = regex.lastIndex;
+  }
+  if (lastIdx < str.length) {
+    parts.push(str.slice(lastIdx));
+  }
+
+  return parts;
+};
+
+const renderInlineMarkdown = (text: string, keyPrefix: string) => {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let inUnorderedList = false;
+  let currentUlItems: React.ReactNode[] = [];
+  let inOrderedList = false;
+  let currentOlItems: React.ReactNode[] = [];
+  let inTable = false;
+  let currentTableLines: string[] = [];
+
+  const parseTableCells = (line: string): string[] => {
+    let raw = line.trim();
+    if (raw.startsWith("|")) raw = raw.slice(1);
+    if (raw.endsWith("|")) raw = raw.slice(0, -1);
+    return raw.split("|").map((cell) => cell.trim());
+  };
+
+  const isTableDivider = (line: string): boolean => {
+    const cells = parseTableCells(line);
+    return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c.replace(/\s+/g, "")));
+  };
+
+  const flushListsAndTable = () => {
+    if (inUnorderedList && currentUlItems.length > 0) {
+      elements.push(
+        <ul key={`ul-${elements.length}`} className="list-disc list-inside space-y-1 my-2 pl-2">
+          {currentUlItems}
+        </ul>
+      );
+      currentUlItems = [];
+      inUnorderedList = false;
+    }
+    if (inOrderedList && currentOlItems.length > 0) {
+      elements.push(
+        <ol key={`ol-${elements.length}`} className="list-decimal list-inside space-y-1 my-2 pl-2">
+          {currentOlItems}
+        </ol>
+      );
+      currentOlItems = [];
+      inOrderedList = false;
+    }
+    if (inTable && currentTableLines.length > 0) {
+      let headerCells: string[] = [];
+      let rowLines: string[] = [];
+
+      if (currentTableLines.length >= 2 && isTableDivider(currentTableLines[1])) {
+        headerCells = parseTableCells(currentTableLines[0]);
+        rowLines = currentTableLines.slice(2);
+      } else if (currentTableLines.length >= 1) {
+        headerCells = parseTableCells(currentTableLines[0]);
+        rowLines = currentTableLines.slice(1);
+      }
+
+      elements.push(
+        <div key={`table-${elements.length}`} className="overflow-x-auto my-3 border border-[#e8ebf3] rounded-2xl shadow-xs select-text">
+          <table className="w-full text-left text-base border-collapse">
+            {headerCells.length > 0 && (
+              <thead className="bg-[#f0f2f9] border-b border-[#e8ebf3] text-[#202022]">
+                <tr>
+                  {headerCells.map((h, i) => (
+                    <th key={i} className="px-4 py-3 font-bold border-r border-[#e8ebf3] last:border-r-0">
+                      {parseFormatting(h)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            )}
+            <tbody className="divide-y divide-[#e8ebf3] text-[#202022]">
+              {rowLines.map((rLine, rIdx) => {
+                const cells = parseTableCells(rLine);
+                return (
+                  <tr key={rIdx} className="hover:bg-[#f9fafc] transition-colors">
+                    {cells.map((cell, cIdx) => (
+                      <td key={cIdx} className="px-4 py-2.5 font-normal border-r border-[#e8ebf3] last:border-r-0">
+                        {parseFormatting(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      currentTableLines = [];
+      inTable = false;
+    }
+  };
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+
+    // Check table line
+    if (trimmed.startsWith("|") && (trimmed.endsWith("|") || trimmed.includes("|"))) {
+      if (inUnorderedList || inOrderedList) flushListsAndTable();
+      inTable = true;
+      currentTableLines.push(trimmed);
+      return;
+    }
+
+    if (inTable) {
+      flushListsAndTable();
+    }
+
+    // Headers
+    if (trimmed.startsWith("# ")) {
+      flushListsAndTable();
+      elements.push(<h1 key={idx} className="text-2xl font-extrabold text-[#202022] my-2">{parseFormatting(trimmed.slice(2))}</h1>);
+      return;
+    }
+    if (trimmed.startsWith("## ")) {
+      flushListsAndTable();
+      elements.push(<h2 key={idx} className="text-xl font-bold text-[#202022] my-2">{parseFormatting(trimmed.slice(3))}</h2>);
+      return;
+    }
+    if (trimmed.startsWith("### ")) {
+      flushListsAndTable();
+      elements.push(<h3 key={idx} className="text-lg font-bold text-[#202022] my-1.5">{parseFormatting(trimmed.slice(4))}</h3>);
+      return;
+    }
+    if (trimmed.startsWith("#### ")) {
+      flushListsAndTable();
+      elements.push(<h4 key={idx} className="text-base font-bold text-[#202022] my-1">{parseFormatting(trimmed.slice(5))}</h4>);
+      return;
+    }
+    if (trimmed.startsWith("##### ") || trimmed.startsWith("###### ")) {
+      flushListsAndTable();
+      elements.push(<h5 key={idx} className="text-sm font-bold uppercase tracking-wider text-[#8e90a6] my-1">{parseFormatting(trimmed.replace(/^#+\s*/, ""))}</h5>);
+      return;
+    }
+
+    // Horizontal rule
+    if (trimmed === "---" || trimmed === "***" || trimmed === "___") {
+      flushListsAndTable();
+      elements.push(<hr key={idx} className="my-3 border-t border-[#e8ebf3]" />);
+      return;
+    }
+
+    // Blockquote
+    if (trimmed.startsWith("> ")) {
+      flushListsAndTable();
+      elements.push(
+        <blockquote key={idx} className="border-l-4 border-[#7678ed] pl-3 py-1 my-2 text-[#4a4d63] italic bg-[#f0f2f9]/50 rounded-r-xl">
+          {parseFormatting(trimmed.slice(2))}
+        </blockquote>
+      );
+      return;
+    }
+
+    // Unordered List (- or * or +)
+    const ulMatch = line.match(/^\s*[-*+]\s+(.*)$/);
+    if (ulMatch) {
+      if (inOrderedList) flushListsAndTable();
+      inUnorderedList = true;
+      currentUlItems.push(<li key={idx} className="leading-relaxed">{parseFormatting(ulMatch[1])}</li>);
+      return;
+    }
+
+    // Ordered List (1. 2.)
+    const olMatch = line.match(/^\s*\d+\.\s+(.*)$/);
+    if (olMatch) {
+      if (inUnorderedList) flushListsAndTable();
+      inOrderedList = true;
+      currentOlItems.push(<li key={idx} className="leading-relaxed">{parseFormatting(olMatch[1])}</li>);
+      return;
+    }
+
+    // Empty line
+    if (!trimmed) {
+      flushListsAndTable();
+      elements.push(<div key={idx} className="h-1.5" />);
+      return;
+    }
+
+    // Regular paragraph
+    flushListsAndTable();
+    elements.push(<p key={idx} className="leading-relaxed my-1">{parseFormatting(line)}</p>);
+  });
+
+  flushListsAndTable();
+  return <div key={keyPrefix} className="space-y-1">{elements}</div>;
+};
+
+const renderMarkdownText = (text: string) => {
+  if (!text) return null;
+
+  const codeBlockRegex = /```(\w+)?\s*\n?([\s\S]*?)```/g;
+  let lastIndex = 0;
+  const elements: React.ReactNode[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      elements.push(renderInlineMarkdown(text.slice(lastIndex, match.index), `text-${lastIndex}`));
+    }
+    const lang = match[1] || "";
+    const codeContent = match[2]?.trim() || "";
+    elements.push(
+      <div key={`code-${match.index}`} className="my-2.5 rounded-2xl bg-[#1e1e24] text-[#f8f8f2] p-4 text-sm font-mono overflow-x-auto shadow-inner border border-white/10 select-text">
+        {lang && <div className="text-xs text-white/50 mb-1.5 pb-1 border-b border-white/10 font-sans uppercase tracking-wider font-semibold">{lang}</div>}
+        <pre className="whitespace-pre-wrap font-mono leading-relaxed">{codeContent}</pre>
+      </div>
+    );
+    lastIndex = codeBlockRegex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    elements.push(renderInlineMarkdown(text.slice(lastIndex), `text-${lastIndex}`));
+  }
+
+  return <>{elements}</>;
+};
+
+export default function AlpacaWebPage() {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [folders, setFolders] = useState<ChatFolder[]>([]);
+  const [modelPreferences, setModelPreferences] = useState<Record<string, ModelPreference>>({});
+  const [activeAttachmentModal, setActiveAttachmentModal] = useState<{ title: string; type: string; content: string } | null>(null);
+
+  const getConversationParticipants = () => {
+    const map = new Map<string, { id: string; name: string; avatar: string; role: string }>();
+
+    map.set("user", {
+      id: "user",
+      name: "You",
+      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
+      role: "User",
+    });
+
+    messages.forEach((msg) => {
+      if (!msg.isSelf) {
+        const key = (msg.senderName || "").toLowerCase();
+        if (!map.has(key)) {
+          const pref = modelPreferences[key] || modelPreferences[msg.senderName || ""];
+          const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80";
+          const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
+          const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
+          const roleLabel = isCharEnabled(pref?.character) ? "Character" : "AI Model";
+
+          map.set(key, {
+            id: key,
+            name: displayName,
+            avatar: avatarSrc,
+            role: roleLabel,
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  };
+  const [activeTab, setActiveTab] = useState<string>("all");
+  const [activeChatId, setActiveChatId] = useState<string>("design-chat");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [inputText, setInputText] = useState<string>("");
+  const [expandedSection, setExpandedSection] = useState<string>("photos");
+  const [isCreatingFolder, setIsCreatingFolder] = useState<boolean>(false);
+  const [newFolderName, setNewFolderName] = useState<string>("");
+
+  const [chatItems, setChatItems] = useState<ChatItem[]>(initialMockChatList);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: "msg-1",
+      senderName: "Jasmin Lowery",
+      senderAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80",
+      isSelf: false,
+      content: "I added new flows to our design system. Now you can use them for your projects!",
+      time: "09:20",
+      views: 23,
+      reactions: [{ emoji: "👍", count: 4 }],
+      attachments: [
+        {
+          type: "thought",
+          name: "Reasoning Process",
+          content: "### Thought Process\n\n1. Analyzed design system components.\n2. Verified **accessibility** and color contrast ratio.\n3. Generated preview layouts for dark and light modes.\n\n```json\n{\n  \"status\": \"completed\",\n  \"confidence\": 0.98\n}\n```",
+        },
+        {
+          type: "metadata",
+          name: "Execution Metadata",
+          content: "### Model Execution Details\n\n| Metric | Value |\n| ---- | ---- |\n| Total Duration | 02:32 |\n| Load Duration | 0 seconds |\n| Prompt Eval Count | 25903 tokens |\n| Prompt Eval Duration | 2 seconds |\n| Prompt Eval Rate | 11402.88 tokens/s |\n| Eval Count | 658 tokens |\n| Eval Duration | 02:29 |\n| Eval Rate | 4.41 tokens/s |\n",
+        },
+      ],
+    },
+    {
+      id: "msg-2",
+      senderName: "Alex Hunt",
+      isSelf: false,
+      content: "Hey guys! Important news!",
+      time: "09:24",
+      views: 16,
+    },
+    {
+      id: "msg-3",
+      senderName: "Alex Hunt",
+      senderAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+      isSelf: false,
+      content: "Our intern @jchurch has successfully completed his probationary period and is now part of our team!",
+      time: "09:24",
+      views: 16,
+      reactions: [
+        { emoji: "🔥", count: 5 },
+        { emoji: "✨", count: 4 },
+      ],
+    },
+    {
+      id: "msg-4",
+      senderName: "You",
+      senderAvatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
+      isSelf: true,
+      content: "Jaden, my congratulations! I will be glad to work with you on a new project 🥳",
+      time: "09:27",
+      views: 10,
+    },
+  ]);
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+
+  const fetchFolders = async () => {
+    try {
+      const res = await fetch(`${API_URL}/folders`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setFolders(data);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch folders from backend, fallback to initial default folders:", err);
+    }
+    setFolders([
+      { id: "work", name: "Work" },
+      { id: "friends", name: "Friends" },
+      { id: "news", name: "News" },
+      { id: "archive", name: "Archive" },
+    ]);
+  };
+
+  const fetchChats = async (folderId?: string) => {
+    try {
+      let url = `${API_URL}/chats`;
+      if (folderId && folderId !== "all") {
+        url += `?folder=${encodeURIComponent(folderId)}`;
+      }
+      const res = await fetch(url);
+      if (res.ok) {
+        const data: BackendChat[] = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const mapped = data.map(mapBackendChatToChatItem);
+          setChatItems(mapped);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch chats from backend API, using current list:", err);
+    }
+  };
+
+  const fetchModelPreferences = async () => {
+    try {
+      const res = await fetch(`${API_URL}/model-preferences`);
+      if (res.ok) {
+        const data: ModelPreference[] = await res.json();
+        if (Array.isArray(data)) {
+          const prefMap: Record<string, ModelPreference> = {};
+          data.forEach((p) => {
+            if (p.id) {
+              prefMap[p.id.toLowerCase()] = p;
+              prefMap[p.id] = p;
+            }
+          });
+          setModelPreferences(prefMap);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch model preferences from backend API:", err);
+    }
+  };
+
+  const fetchChatMessages = async (chatId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/chats/${chatId}`);
+      if (res.ok) {
+        const data: BackendChat = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages.map((m) => mapBackendMsgToMessage(m, modelPreferences)));
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch chat messages from backend API:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchFolders();
+    fetchModelPreferences();
+  }, []);
+
+  useEffect(() => {
+    fetchChats(activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeChatId) {
+      fetchChatMessages(activeChatId);
+    }
+  }, [activeChatId]);
+
+  useEffect(() => {
+    if (activeChatId) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+    }
+  }, [messages, activeChatId]);
+
+  const handleCreateFolderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+
+    const name = newFolderName.trim();
+    try {
+      const res = await fetch(`${API_URL}/folders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) {
+        const created: ChatFolder = await res.json();
+        setFolders((prev) => [...prev, created]);
+        setActiveTab(created.id);
+      } else {
+        const localFolder: ChatFolder = { id: `folder-${Date.now()}`, name };
+        setFolders((prev) => [...prev, localFolder]);
+        setActiveTab(localFolder.id);
+      }
+    } catch (err) {
+      const localFolder: ChatFolder = { id: `folder-${Date.now()}`, name };
+      setFolders((prev) => [...prev, localFolder]);
+      setActiveTab(localFolder.id);
+    }
+
+    setNewFolderName("");
+    setIsCreatingFolder(false);
+  };
+
+  const handleCreateNewChat = async () => {
+    const chatName = prompt("Enter new chat title:", "New Chat") || "New Chat";
+    try {
+      const res = await fetch(`${API_URL}/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: chatName,
+          folder: activeTab !== "all" ? activeTab : null,
+        }),
+      });
+      if (res.ok) {
+        const created: BackendChat = await res.json();
+        const mapped = mapBackendChatToChatItem(created);
+        setChatItems((prev) => [mapped, ...prev]);
+        setActiveChatId(created.id);
+      } else {
+        const localChat: ChatItem = {
+          id: `chat-${Date.now()}`,
+          name: chatName,
+          avatarText: chatName.slice(0, 2).toUpperCase(),
+          lastMessage: "New chat started",
+          time: "now",
+        };
+        setChatItems((prev) => [localChat, ...prev]);
+        setActiveChatId(localChat.id);
+      }
+    } catch (err) {
+      const localChat: ChatItem = {
+        id: `chat-${Date.now()}`,
+        name: chatName,
+        avatarText: chatName.slice(0, 2).toUpperCase(),
+        lastMessage: "New chat started",
+        time: "now",
+      };
+      setChatItems((prev) => [localChat, ...prev]);
+      setActiveChatId(localChat.id);
+    }
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputText.trim()) return;
+
+    const content = inputText.trim();
+    setInputText("");
+
+    const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    const newMsg: Message = {
+      id: `msg-${Date.now()}`,
+      senderName: "You",
+      senderAvatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
+      isSelf: true,
+      content,
+      time: nowStr,
+    };
+
+    setMessages((prev) => [...prev, newMsg]);
+
+    try {
+      if (activeChatId) {
+        await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role: "user",
+            content,
+          }),
+        });
+      }
+    } catch (err) {
+      console.warn("Could not post message to backend API:", err);
+    }
+  };
+
+  return (
+    <main className="topo-bg min-h-screen w-screen flex items-center justify-center p-[30px] md:p-[40px] lg:p-[50px] font-sans antialiased text-[#202022] box-border">
+      {/* Outer Floating Application Window */}
+      <div className="w-full min-w-[90vw] h-[calc(100vh-60px)] md:h-[calc(100vh-80px)] lg:h-[calc(100vh-100px)] min-h-[90vh] bg-[#202022] rounded-[36px] shadow-[0_24px_70px_rgba(32,32,34,0.35)] flex overflow-hidden border border-white/20">
+        
+        {/* ========================================================= */}
+        {/* 1. SLIM LEFT NAVIGATION RAIL (#202022) */}
+        {/* ========================================================= */}
+        <aside className="w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#2d2d30]">
+          {/* Top Alpaca Prism Logo */}
+          <div className="flex flex-col items-center gap-8 w-full">
+            <div className="w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity">
+              <img src="/icon-white.svg" alt="Alpaca Logo" className="w-9 h-9 object-contain" />
+            </div>
+
+            {/* Navigation Tabs (Backend Folders API Integrated) */}
+            <nav className="flex flex-col items-center gap-3 w-full overflow-y-auto max-h-[calc(100vh-220px)] px-1">
+              {/* All chats tab */}
+              <button
+                onClick={() => setActiveTab("all")}
+                className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative ${
+                  activeTab === "all" ? "bg-[#2e2f33] text-white shadow-inner" : "text-[#8b8d97] hover:text-white"
+                }`}
+                title="All chats"
+              >
+                <div className="relative">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  <span className="absolute -top-1.5 -right-2.5 bg-[#ff7a55] text-white text-sm font-bold px-1.5 py-0.2 rounded-full leading-tight shadow-sm">
+                    {chatItems.length}
+                  </span>
+                </div>
+                <span className="text-sm font-medium tracking-tight">All chats</span>
+              </button>
+
+              {/* Dynamic Folders from /api/folders */}
+              {folders.map((folder) => {
+                const isActive = activeTab === folder.id;
+                return (
+                  <button
+                    key={folder.id}
+                    onClick={() => setActiveTab(folder.id)}
+                    className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative ${
+                      isActive ? "bg-[#2e2f33] text-white shadow-inner" : "text-[#8b8d97] hover:text-white"
+                    }`}
+                    title={folder.name}
+                  >
+                    <div className="relative">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-medium tracking-tight truncate w-full text-center px-1">
+                      {folder.name}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {/* Add Folder Button */}
+              <button
+                onClick={() => setIsCreatingFolder(true)}
+                className="w-full py-2.5 px-1 rounded-2xl flex flex-col items-center gap-1 text-[#7678ed] hover:bg-[#2d2d30] hover:text-white transition-all border border-dashed border-[#7678ed]/40 mt-1 cursor-pointer"
+                title="Create New Folder"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="6" y1="12" x2="18" y2="12" />
+                </svg>
+                <span className="text-xs font-medium tracking-tight">+ Folder</span>
+              </button>
+            </nav>
+          </div>
+
+          {/* Bottom Settings */}
+          <button className="w-full py-3 rounded-2xl flex flex-col items-center gap-1.5 text-[#8b8d97] hover:text-white transition-all cursor-pointer">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <span className="text-sm font-medium tracking-tight">Settings</span>
+          </button>
+        </aside>
+
+        {/* Inner App Container with Rounded Right / Light Theme Area */}
+        <div className="flex-1 flex overflow-hidden bg-[#f9fafc] rounded-l-[32px]">
+          
+          {/* ========================================================= */}
+          {/* 2. CHAT LIST PANEL (#f9fafc) */}
+          {/* ========================================================= */}
+          <section className="w-[350px] border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0">
+            {/* Search Bar Header */}
+            <div className="p-4 pb-3 flex items-center gap-2">
+              <div className="relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7678ed" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="mr-2.5 shrink-0 opacity-80">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="bg-transparent text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium"
+                />
+              </div>
+              <button
+                onClick={handleCreateNewChat}
+                className="p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-sm shrink-0 cursor-pointer"
+                title="Create New Chat"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="6" y1="12" x2="18" y2="12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Chat List Scrollable Items */}
+            <div className="flex-1 overflow-y-auto px-2 space-y-1.5 pb-4">
+              {chatItems
+                .filter((chat) => chat.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                .map((chat) => {
+                  const isSelected = activeChatId === chat.id;
+                  return (
+                    <div
+                      key={chat.id}
+                      onClick={() => setActiveChatId(chat.id)}
+                      className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
+                        isSelected
+                          ? "bg-[#edeffb] shadow-[0_2px_8px_rgba(118,120,237,0.08)]"
+                          : "hover:bg-[#f2f4fa]"
+                      }`}
+                    >
+                      {/* Avatar */}
+                      {chat.avatarText ? (
+                        <div className="w-12 h-12 rounded-2xl bg-[#202022] text-white flex items-center justify-center font-bold text-lg tracking-wide shrink-0 shadow-sm">
+                          {chat.avatarText}
+                        </div>
+                      ) : (
+                        <img
+                          src={chat.avatarImg}
+                          alt={chat.name}
+                          className="w-12 h-12 rounded-2xl object-cover shrink-0 shadow-sm"
+                        />
+                      )}
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                          <h4 className="font-semibold text-lg text-[#202022] truncate">{chat.name}</h4>
+                          <span className="text-sm text-[#8e90a6] font-medium shrink-0">{chat.time}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-1">
+                          <p className={`text-base truncate ${isSelected ? "text-[#7678ed] font-medium" : "text-[#7a7d90]"}`}>
+                            {chat.lastMessage}
+                          </p>
+
+                          {/* Pin / Badge / Delivered */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {chat.unreadCount && (
+                              <span className="bg-[#ff7a55] text-white text-sm font-bold w-5 h-5 rounded-full flex items-center justify-center leading-none">
+                                {chat.unreadCount}
+                              </span>
+                            )}
+                            {chat.isPinned && (
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="#7678ed" stroke="#7678ed" strokeWidth="1.5">
+                                <path d="M12 2L15 8L21 9L17 14L18 20L12 17L6 20L7 14L3 9L9 8L12 2Z" />
+                              </svg>
+                            )}
+                            {chat.isDelivered && (
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7678ed" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="18 6 9 17 4 12" />
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </section>
+
+          {/* ========================================================= */}
+          {/* 3. MAIN CHAT AREA (WHITE) */}
+          {/* ========================================================= */}
+          {(() => {
+            const activeChat = chatItems.find((c) => c.id === activeChatId);
+            if (!activeChatId || !activeChat) {
+              return (
+                <section className="flex-1 flex flex-col items-center justify-center bg-white p-8 text-center select-none">
+                  <div className="w-24 h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-6 text-[#7678ed] shadow-inner">
+                    <img src="/icon-black.svg" alt="Alpaca Logo" className="w-14 h-14 opacity-70" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-[#202022] mb-2">No chat select</h3>
+                  <p className="text-base text-[#8e90a6] max-w-sm">
+                    Select a conversation from the chat list on the left to view messages and continue chatting.
+                  </p>
+                </section>
+              );
+            }
+
+            return (
+              <section className="flex-1 flex flex-col bg-white overflow-hidden">
+                {/* Header */}
+                <div className="h-[76px] px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0">
+                  <div>
+                    <h2 className="text-2xl font-bold text-[#202022] tracking-tight">{activeChat.name}</h2>
+                    <p className="text-base text-[#8e90a6] font-medium mt-0.5">Active chat session</p>
+                  </div>
+
+                  {/* Action Icons */}
+                  <div className="flex items-center gap-4 text-[#8e90a6]">
+                    <button className="p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                    </button>
+                    <button className="p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                      </svg>
+                    </button>
+                    <button className="p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="1" />
+                        <circle cx="12" cy="5" r="1" />
+                        <circle cx="12" cy="19" r="1" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Conversation Messages */}
+                <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
+                  {messages.map((msg) => {
+                    if (msg.isSelf) {
+                      {/* User message (Role 'user' -> Right side, full width) */}
+                      return (
+                        <div key={msg.id} className="flex items-start justify-end gap-3.5 w-full">
+                          <div className="flex flex-col items-end flex-1 w-full min-w-0">
+                            <div className="bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-5 py-4 text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full">
+                              <div className="leading-relaxed font-normal">{renderMarkdownText(msg.content)}</div>
+                              <div className="flex items-center justify-end gap-2 text-sm text-white/80 mt-2">
+                                <span>{msg.time}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 mt-1 shadow-sm" title="You">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                              <circle cx="12" cy="7" r="4" />
+                            </svg>
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      {/* Assistant / Incoming message (Role 'assistant' -> Left side, full width) */}
+                      const prefKey = (msg.senderName || "").toLowerCase();
+                      const pref = modelPreferences[prefKey] || modelPreferences[msg.senderName || ""];
+                      const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80";
+                      const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
+                      const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
+
+                      const thoughtAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === "thought" || a.type?.toLowerCase() === "brain");
+                      const metadataAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === "metadata" || a.type?.toLowerCase() === "data");
+
+                      return (
+                        <div key={msg.id} className="flex items-start gap-3.5 w-full">
+                          <img
+                            src={avatarSrc}
+                            alt={displayName}
+                            className="w-10 h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm"
+                          />
+                          <div className="flex flex-col items-start flex-1 w-full min-w-0">
+                            <div className="bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-5 py-4 text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full">
+                              <div className="flex items-center justify-between gap-3 mb-1.5">
+                                <p className="text-base font-semibold text-[#7678ed]">{displayName}</p>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {thoughtAtt && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveAttachmentModal({ title: thoughtAtt.name || "Thought", type: "thought", content: thoughtAtt.content })}
+                                      className="px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                                      title="View Thought / Reasoning"
+                                    >
+                                      <BrainIcon className="w-3.5 h-3.5" />
+                                      <span>Thought</span>
+                                    </button>
+                                  )}
+                                  {metadataAtt && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveAttachmentModal({ title: metadataAtt.name || "Metadata", type: "metadata", content: metadataAtt.content })}
+                                      className="px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                                      title="View Metadata"
+                                    >
+                                      <MetadataIcon className="w-3.5 h-3.5" />
+                                      <span>Metadata</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="leading-relaxed">{renderMarkdownText(msg.content)}</div>
+                              <div className="flex items-center justify-between gap-4 mt-2.5 pt-1">
+                                {msg.reactions && msg.reactions.length > 0 && (
+                                  <div className="flex items-center gap-1.5">
+                                    {msg.reactions.map((r, i) => (
+                                      <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white border border-[#e2e5f1] rounded-full text-base font-medium text-[#4a4d63] shadow-xs">
+                                        <span>{r.emoji}</span> {r.count}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2 text-sm text-[#8e90a6]">
+                                  {msg.views !== undefined && (
+                                    <span className="flex items-center gap-1">
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                      </svg>
+                                      {msg.views}
+                                    </span>
+                                  )}
+                                  <span>{msg.time}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input Composer */}
+                <form onSubmit={handleSendMessage} className="p-4 px-8 border-t border-[#eef0f6] bg-white flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors"
+                    title="Attach file"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                  </button>
+
+                  <input
+                    type="text"
+                    placeholder="Write a message..."
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    className="flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium"
+                  />
+
+                  <button
+                    type="button"
+                    className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors"
+                    title="Emoji"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                      <line x1="9" y1="9" x2="9.01" y2="9" />
+                      <line x1="15" y1="9" x2="15.01" y2="9" />
+                    </svg>
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="w-11 h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0"
+                    title="Send"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="22" y1="2" x2="11" y2="13" />
+                      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
+                  </button>
+                </form>
+              </section>
+            );
+          })()}
+
+          {/* ========================================================= */}
+          {/* 4. RIGHT INFO DRAWER (#f9fafc) */}
+          {/* ========================================================= */}
+          {activeChatId && chatItems.some((c) => c.id === activeChatId) ? (
+            <aside className="w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+              
+              {/* Top Card: Group Info */}
+              <div className="bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]">
+                {/* Card Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-xl text-[#202022]">Group Info</h3>
+                  <button className="text-[#8e90a6] hover:text-[#202022] p-1 transition-colors">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Files Accordion List */}
+                <div className="space-y-3">
+                  <p className="text-base font-semibold text-[#8e90a6] uppercase tracking-wider">Files</p>
+
+                  {/* 265 Photos (Expanded in mockup) */}
+                  <div>
+                    <button
+                      onClick={() => setExpandedSection(expandedSection === "photos" ? "" : "photos")}
+                      className="w-full flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] transition-colors"
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                          <circle cx="8.5" cy="8.5" r="1.5" />
+                          <polyline points="21 15 16 10 5 21" />
+                        </svg>
+                        265 photos
+                      </span>
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        className={`transition-transform duration-200 ${expandedSection === "photos" ? "rotate-180" : ""}`}
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+
+                    {/* Photo Thumbnails */}
+                    {expandedSection === "photos" && (
+                      <div className="grid grid-cols-2 gap-2 mt-2 pt-1">
+                        <img
+                          src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=240&auto=format&fit=crop&q=80"
+                          alt="Skyscraper thumbnail"
+                          className="w-full h-20 object-cover rounded-xl shadow-xs"
+                        />
+                        <img
+                          src="https://images.unsplash.com/photo-1517842645767-c639042777db?w=240&auto=format&fit=crop&q=80"
+                          alt="Desk notes thumbnail"
+                          className="w-full h-20 object-cover rounded-xl shadow-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 13 Videos */}
+                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
+                    <span className="flex items-center gap-2.5">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="23 7 16 12 23 17 23 7" />
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                      </svg>
+                      13 videos
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+
+                  {/* 378 Files */}
+                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
+                    <span className="flex items-center gap-2.5">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      378 files
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+
+                  {/* 21 Audio Files */}
+                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
+                    <span className="flex items-center gap-2.5">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 18V5l12-2v13" />
+                        <circle cx="6" cy="18" r="3" />
+                        <circle cx="18" cy="16" r="3" />
+                      </svg>
+                      21 audio files
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+
+                  {/* 45 Shared Links */}
+                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
+                    <span className="flex items-center gap-2.5">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                      </svg>
+                      45 shared links
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+
+                  {/* 2 589 Voice Messages */}
+                  <div className="flex items-center justify-between text-base font-semibold text-[#202022] py-1.5 hover:text-[#7678ed] cursor-pointer transition-colors">
+                    <span className="flex items-center gap-2.5">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="23" />
+                        <line x1="8" y1="23" x2="16" y2="23" />
+                      </svg>
+                      2 589 voice messages
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Card: Dynamic Conversation Participants */}
+              {(() => {
+                const participants = getConversationParticipants();
+                return (
+                  <div className="bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-bold text-xl text-[#202022]">{participants.length} members</h3>
+                    </div>
+
+                    {/* Members List */}
+                    <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
+                      {participants.map((p) => (
+                        <div key={p.id} className="flex items-center gap-3">
+                          {p.id === "user" ? (
+                            <div className="w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                <circle cx="12" cy="7" r="4" />
+                              </svg>
+                            </div>
+                          ) : (
+                            <img
+                              src={p.avatar}
+                              alt={p.name}
+                              className="w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <h5 className="font-semibold text-base text-[#202022] truncate">{p.name}</h5>
+                            <span className="text-sm font-medium text-[#7678ed]">{p.role}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+            </aside>
+          ) : null}
+
+        </div>
+      </div>
+      {/* Create Folder Modal */}
+      {isCreatingFolder && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">New Folder</h3>
+              <button
+                onClick={() => setIsCreatingFolder(false)}
+                className="text-white/60 hover:text-white p-1 transition-colors"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleCreateFolderSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-white/70 mb-1">Folder Name</label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="e.g. Work, Research, Personal"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  className="w-full bg-[#2d2d30] border border-white/10 rounded-2xl px-4 py-3 text-base text-white placeholder-white/40 outline-none focus:border-[#7678ed] transition-colors"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingFolder(false)}
+                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newFolderName.trim()}
+                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-md shadow-[#7678ed]/30"
+                >
+                  Create Folder
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Attachment Content Modal */}
+      {activeAttachmentModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none">
+          <div className="bg-white text-[#202022] rounded-3xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl border border-[#e8ebf3] animate-in fade-in zoom-in duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-[#eef0f6] shrink-0 mb-4 select-text">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-[#f0f2f9] text-[#7678ed] flex items-center justify-center font-bold shrink-0 shadow-xs">
+                  {activeAttachmentModal.type === "thought" ? <BrainIcon className="w-5 h-5" /> : <MetadataIcon className="w-5 h-5" />}
+                </div>
+                <h3 className="text-xl font-bold text-[#202022] tracking-tight">{activeAttachmentModal.title}</h3>
+              </div>
+              <button
+                onClick={() => setActiveAttachmentModal(null)}
+                className="p-1.5 text-[#8e90a6] hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer"
+                title="Close"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Content (Parsed HTML Markdown) */}
+            <div className="flex-1 overflow-y-auto pr-2 space-y-3 text-base text-[#202022] leading-relaxed select-text">
+              {renderMarkdownText(activeAttachmentModal.content)}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="pt-4 mt-4 border-t border-[#eef0f6] flex items-center justify-end shrink-0 select-text">
+              <button
+                onClick={() => setActiveAttachmentModal(null)}
+                className="px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white font-semibold rounded-2xl transition-all text-base shadow-sm cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
