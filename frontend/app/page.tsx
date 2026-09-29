@@ -70,64 +70,7 @@ interface BackendChat {
   messages?: BackendMessage[];
 }
 
-const initialMockChatList: ChatItem[] = [
-  {
-    id: "design-chat",
-    name: "Design chat",
-    avatarText: "DC",
-    lastMessage: "Jessie Rollins sent...",
-    time: "4m",
-    unreadCount: 1,
-    isPinned: true,
-  },
-  {
-    id: "osman",
-    name: "Osman Campos",
-    avatarImg: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
-    lastMessage: "You: Hey! We are read...",
-    time: "20m",
-    isPinned: true,
-  },
-  {
-    id: "jayden",
-    name: "Jayden Church",
-    avatarImg: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80",
-    lastMessage: "I prepared some varia...",
-    time: "1h",
-    isPinned: true,
-  },
-  {
-    id: "jacob",
-    name: "Jacob Mcleod",
-    avatarImg: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=120&auto=format&fit=crop&q=80",
-    lastMessage: "And send me the proto...",
-    time: "10m",
-    unreadCount: 3,
-  },
-  {
-    id: "jasmin",
-    name: "Jasmin Lowery",
-    avatarImg: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80",
-    lastMessage: "You: Ok! Let's discuss it on th...",
-    time: "20m",
-    isDelivered: true,
-  },
-  {
-    id: "zaid",
-    name: "Zaid Myers",
-    avatarImg: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=120&auto=format&fit=crop&q=80",
-    lastMessage: "You: Hey! We are ready to in...",
-    time: "45m",
-    isDelivered: true,
-  },
-  {
-    id: "anthony",
-    name: "Anthony Cordanes",
-    avatarImg: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&auto=format&fit=crop&q=80",
-    lastMessage: "What do you think?",
-    time: "1d",
-  },
-];
+const initialMockChatList: ChatItem[] = [];
 
 const mapBackendChatToChatItem = (c: BackendChat): ChatItem => {
   const words = c.name.trim().split(" ");
@@ -505,6 +448,12 @@ export default function AlpacaWebPage() {
   const [modelPreferences, setModelPreferences] = useState<Record<string, ModelPreference>>({});
   const [activeAttachmentModal, setActiveAttachmentModal] = useState<{ title: string; type: string; content: string } | null>(null);
   const [activeImageModal, setActiveImageModal] = useState<{ src: string; title?: string } | null>(null);
+  const [isChatContextMenuOpen, setIsChatContextMenuOpen] = useState<boolean>(false);
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState<boolean>(false);
+  const [renameInputVal, setRenameInputVal] = useState<string>("");
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
+  const [newChatTitleInput, setNewChatTitleInput] = useState<string>("New Chat");
 
   // --- TTS Voice Playback State & Controls ---
   const [ttsState, setTtsState] = useState<{
@@ -741,6 +690,59 @@ export default function AlpacaWebPage() {
   const [isCreatingFolder, setIsCreatingFolder] = useState<boolean>(false);
   const [newFolderName, setNewFolderName] = useState<string>("");
 
+  const handleOpenRenameModal = () => {
+    setIsChatContextMenuOpen(false);
+    const activeChat = chatItems.find((c) => c.id === activeChatId);
+    if (activeChat) {
+      setRenameInputVal(activeChat.name);
+      setIsRenameModalOpen(true);
+    }
+  };
+
+  const handleOpenDeleteModal = () => {
+    setIsChatContextMenuOpen(false);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmRenameChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameInputVal.trim()) return;
+
+    const trimmed = renameInputVal.trim();
+    setIsRenameModalOpen(false);
+
+    setChatItems((prev) =>
+      prev.map((c) => (c.id === activeChatId ? { ...c, name: trimmed } : c))
+    );
+
+    try {
+      await fetch(`${API_URL}/chats/${activeChatId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+    } catch (err) {
+      console.warn("Could not rename chat on backend API:", err);
+    }
+  };
+
+  const handleConfirmDeleteChat = async () => {
+    setIsDeleteModalOpen(false);
+    const deletedId = activeChatId;
+    const remaining = chatItems.filter((c) => c.id !== deletedId);
+
+    setChatItems(remaining);
+    setActiveChatId(remaining.length > 0 ? remaining[0].id : "");
+
+    try {
+      await fetch(`${API_URL}/chats/${deletedId}`, {
+        method: "DELETE",
+      });
+    } catch (err) {
+      console.warn("Could not delete chat on backend API:", err);
+    }
+  };
+
   const getConversationAttachments = () => {
     const photos: string[] = [];
     const otherFiles: MessageAttachment[] = [];
@@ -772,60 +774,7 @@ export default function AlpacaWebPage() {
 
 
   const [chatItems, setChatItems] = useState<ChatItem[]>(initialMockChatList);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "msg-1",
-      senderName: "Jasmin Lowery",
-      senderAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80",
-      isSelf: false,
-      content: "I added new flows to our design system. Now you can use them for your projects!",
-      time: "09:20",
-      views: 23,
-      reactions: [{ emoji: "👍", count: 4 }],
-      attachments: [
-        {
-          type: "thought",
-          name: "Reasoning Process",
-          content: "### Thought Process\n\n1. Analyzed design system components.\n2. Verified **accessibility** and color contrast ratio.\n3. Generated preview layouts for dark and light modes.\n\n```json\n{\n  \"status\": \"completed\",\n  \"confidence\": 0.98\n}\n```",
-        },
-        {
-          type: "metadata",
-          name: "Execution Metadata",
-          content: "### Model Execution Details\n\n| Metric | Value |\n| ---- | ---- |\n| Total Duration | 02:32 |\n| Load Duration | 0 seconds |\n| Prompt Eval Count | 25903 tokens |\n| Prompt Eval Duration | 2 seconds |\n| Prompt Eval Rate | 11402.88 tokens/s |\n| Eval Count | 658 tokens |\n| Eval Duration | 02:29 |\n| Eval Rate | 4.41 tokens/s |\n",
-        },
-      ],
-    },
-    {
-      id: "msg-2",
-      senderName: "Alex Hunt",
-      isSelf: false,
-      content: "Hey guys! Important news!",
-      time: "09:24",
-      views: 16,
-    },
-    {
-      id: "msg-3",
-      senderName: "Alex Hunt",
-      senderAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-      isSelf: false,
-      content: "Our intern @jchurch has successfully completed his probationary period and is now part of our team!",
-      time: "09:24",
-      views: 16,
-      reactions: [
-        { emoji: "🔥", count: 5 },
-        { emoji: "✨", count: 4 },
-      ],
-    },
-    {
-      id: "msg-4",
-      senderName: "You",
-      senderAvatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
-      isSelf: true,
-      content: "Jaden, my congratulations! I will be glad to work with you on a new project 🥳",
-      time: "09:27",
-      views: 10,
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -976,8 +925,18 @@ export default function AlpacaWebPage() {
     setIsCreatingFolder(false);
   };
 
-  const handleCreateNewChat = async () => {
-    const chatName = prompt("Enter new chat title:", "New Chat") || "New Chat";
+  const handleOpenNewChatModal = () => {
+    setNewChatTitleInput("New Chat");
+    setIsNewChatModalOpen(true);
+  };
+
+  const handleConfirmCreateNewChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newChatTitleInput.trim()) return;
+
+    const chatName = newChatTitleInput.trim();
+    setIsNewChatModalOpen(false);
+
     try {
       const res = await fetch(`${API_URL}/chats`, {
         method: "POST",
@@ -1052,743 +1011,1137 @@ export default function AlpacaWebPage() {
   };
 
   return (
-    <main className="topo-bg min-h-screen w-screen flex items-center justify-center p-[30px] md:p-[40px] lg:p-[50px] font-sans antialiased text-[#202022] box-border">
-      {/* Outer Floating Application Window */}
-      <div className="w-full min-w-[90vw] h-[calc(100vh-60px)] md:h-[calc(100vh-80px)] lg:h-[calc(100vh-100px)] min-h-[90vh] bg-[#202022] rounded-[36px] shadow-[0_24px_70px_rgba(32,32,34,0.35)] flex overflow-hidden border border-white/20">
-        
-        {/* ========================================================= */}
-        {/* 1. SLIM LEFT NAVIGATION RAIL (#202022) */}
-        {/* ========================================================= */}
-        <aside className="w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#2d2d30]">
-          {/* Top Alpaca Prism Logo */}
-          <div className="flex flex-col items-center gap-8 w-full">
-            <div className="w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity">
-              <img src="/icon-white.svg" alt="Alpaca Logo" className="w-9 h-9 object-contain" />
-            </div>
+		<main className='topo-bg min-h-screen w-screen flex items-center justify-center p-[30px] md:p-[40px] lg:p-[50px] font-sans antialiased text-[#202022] box-border'>
+			{/* Outer Floating Application Window */}
+			<div className='w-full min-w-[90vw] h-[calc(100vh-60px)] md:h-[calc(100vh-80px)] lg:h-[calc(100vh-100px)] min-h-[90vh] bg-[#202022] rounded-[36px] shadow-[0_24px_70px_rgba(32,32,34,0.35)] flex overflow-hidden border-8 border-[#202022]'>
+				{/* ========================================================= */}
+				{/* 1. SLIM LEFT NAVIGATION RAIL (#202022) */}
+				{/* ========================================================= */}
+				<aside className='w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#2d2d30]'>
+					{/* Top Alpaca Prism Logo */}
+					<div className='flex flex-col items-center gap-8 w-full'>
+						<div className='w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity'>
+							<img src='/icon-white.svg' alt='Alpaca Logo' className='w-9 h-9 object-contain' />
+						</div>
 
-            {/* Navigation Tabs (Backend Folders API Integrated) */}
-            <nav className="flex flex-col items-center gap-3 w-full overflow-y-auto max-h-[calc(100vh-220px)] px-1">
-              {/* All chats tab */}
-              <button
-                onClick={() => setActiveTab("all")}
-                className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative ${
-                  activeTab === "all" ? "bg-[#2e2f33] text-white shadow-inner" : "text-[#8b8d97] hover:text-white"
-                }`}
-                title="All chats"
-              >
-                <div className="relative">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                  </svg>
-                  <span className="absolute -top-1.5 -right-2.5 bg-[#ff7a55] text-white text-sm font-bold px-1.5 py-0.2 rounded-full leading-tight shadow-sm">
-                    {chatItems.length}
-                  </span>
-                </div>
-                <span className="text-sm font-medium tracking-tight">All chats</span>
-              </button>
+						{/* Navigation Tabs (Backend Folders API Integrated) */}
+						<nav className='flex flex-col items-center gap-3 w-full overflow-y-auto max-h-[calc(100vh-220px)] px-1'>
+							{/* All chats tab */}
+							<button
+								onClick={() => setActiveTab('all')}
+								className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative ${
+									activeTab === 'all' ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
+								}`}
+								title='All chats'
+							>
+								<div className='relative'>
+									<svg
+										width='22'
+										height='22'
+										viewBox='0 0 24 24'
+										fill='none'
+										stroke='currentColor'
+										strokeWidth='2'
+										strokeLinecap='round'
+										strokeLinejoin='round'
+									>
+										<path d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' />
+									</svg>
+									<span className='absolute -top-1.5 -right-2.5 bg-[#ff7a55] text-white text-sm font-bold px-1.5 py-0.2 rounded-full leading-tight shadow-sm'>
+										{chatItems.length}
+									</span>
+								</div>
+								<span className='text-sm font-medium tracking-tight'>All chats</span>
+							</button>
 
-              {/* Dynamic Folders from /api/folders */}
-              {folders.map((folder) => {
-                const isActive = activeTab === folder.id;
-                return (
-                  <button
-                    key={folder.id}
-                    onClick={() => setActiveTab(folder.id)}
-                    className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative ${
-                      isActive ? "bg-[#2e2f33] text-white shadow-inner" : "text-[#8b8d97] hover:text-white"
-                    }`}
-                    title={folder.name}
-                  >
-                    <div className="relative">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                      </svg>
-                    </div>
-                    <span className="text-sm font-medium tracking-tight truncate w-full text-center px-1">
-                      {folder.name}
-                    </span>
-                  </button>
-                );
-              })}
+							{/* Dynamic Folders from /api/folders */}
+							{folders.map((folder) => {
+								const isActive = activeTab === folder.id;
+								return (
+									<button
+										key={folder.id}
+										onClick={() => setActiveTab(folder.id)}
+										className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative ${
+											isActive ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
+										}`}
+										title={folder.name}
+									>
+										<div className='relative'>
+											<svg
+												width='22'
+												height='22'
+												viewBox='0 0 24 24'
+												fill='none'
+												stroke='currentColor'
+												strokeWidth='2'
+												strokeLinecap='round'
+												strokeLinejoin='round'
+											>
+												<path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' />
+											</svg>
+										</div>
+										<span className='text-sm font-medium tracking-tight truncate w-full text-center px-1'>{folder.name}</span>
+									</button>
+								);
+							})}
 
-              {/* Add Folder Button */}
-              <button
-                onClick={() => setIsCreatingFolder(true)}
-                className="w-full py-2.5 px-1 rounded-2xl flex flex-col items-center gap-1 text-[#7678ed] hover:bg-[#2d2d30] hover:text-white transition-all border border-dashed border-[#7678ed]/40 mt-1 cursor-pointer"
-                title="Create New Folder"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="6" y1="12" x2="18" y2="12" />
-                </svg>
-                <span className="text-xs font-medium tracking-tight">+ Folder</span>
-              </button>
-            </nav>
-          </div>
+							{/* Add Folder Button */}
+							<button
+								onClick={() => setIsCreatingFolder(true)}
+								className='w-full py-2.5 px-1 rounded-2xl flex flex-col items-center gap-1 text-[#7678ed] hover:bg-[#2d2d30] hover:text-white transition-all border border-dashed border-[#7678ed]/40 mt-1 cursor-pointer'
+								title='Create New Folder'
+							>
+								<svg
+									width='20'
+									height='20'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
+									<line x1='12' y1='5' x2='12' y2='19' />
+									<line x1='6' y1='12' x2='18' y2='12' />
+								</svg>
+								<span className='text-xs font-medium tracking-tight'>+ Folder</span>
+							</button>
+						</nav>
+					</div>
 
-          {/* Bottom Settings */}
-          <button className="w-full py-3 rounded-2xl flex flex-col items-center gap-1.5 text-[#8b8d97] hover:text-white transition-all cursor-pointer">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            <span className="text-sm font-medium tracking-tight">Settings</span>
-          </button>
-        </aside>
+					{/* Bottom Settings */}
+					<button className='w-full py-3 rounded-2xl flex flex-col items-center gap-1.5 text-[#8b8d97] hover:text-white transition-all cursor-pointer'>
+						<svg
+							width='22'
+							height='22'
+							viewBox='0 0 24 24'
+							fill='none'
+							stroke='currentColor'
+							strokeWidth='2'
+							strokeLinecap='round'
+							strokeLinejoin='round'
+						>
+							<path d='M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z' />
+							<circle cx='12' cy='12' r='3' />
+						</svg>
+						<span className='text-sm font-medium tracking-tight'>Settings</span>
+					</button>
+				</aside>
 
-        {/* Inner App Container with Rounded Right / Light Theme Area */}
-        <div className="flex-1 flex overflow-hidden bg-[#f9fafc] rounded-l-[32px]">
-          
-          {/* ========================================================= */}
-          {/* 2. CHAT LIST PANEL (#f9fafc) */}
-          {/* ========================================================= */}
-          <section className="w-[350px] border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0">
-            {/* Search Bar Header */}
-            <div className="p-4 pb-3 flex items-center gap-2">
-              <div className="relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7678ed" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="mr-2.5 shrink-0 opacity-80">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-transparent text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium"
-                />
-              </div>
-              <button
-                onClick={handleCreateNewChat}
-                className="p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-sm shrink-0 cursor-pointer"
-                title="Create New Chat"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="6" y1="12" x2="18" y2="12" />
-                </svg>
-              </button>
-            </div>
+				{/* Inner App Container with Rounded Right / Light Theme Area */}
+				<div className='flex-1 flex overflow-hidden bg-[#f9fafc] rounded-l-[32px]'>
+					{/* ========================================================= */}
+					{/* 2. CHAT LIST PANEL (#f9fafc) */}
+					{/* ========================================================= */}
+					<section className='w-[350px] border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0'>
+						{/* Search Bar Header */}
+						<div className='p-4 pb-3 flex items-center gap-2'>
+							<div className='relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='#7678ed'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+									className='mr-2.5 shrink-0 opacity-80'
+								>
+									<circle cx='11' cy='11' r='8' />
+									<line x1='21' y1='21' x2='16.65' y2='16.65' />
+								</svg>
+								<input
+									type='text'
+									placeholder='Search'
+									value={searchQuery}
+									onChange={(e) => setSearchQuery(e.target.value)}
+									className='bg-transparent text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium'
+								/>
+							</div>
+							<button
+								onClick={handleOpenNewChatModal}
+								className='p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-sm shrink-0 cursor-pointer'
+								title='Create New Chat'
+							>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.5'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
+									<line x1='12' y1='5' x2='12' y2='19' />
+									<line x1='6' y1='12' x2='18' y2='12' />
+								</svg>
+							</button>
+						</div>
 
-            {/* Chat List Scrollable Items */}
-            <div className="flex-1 overflow-y-auto px-2 space-y-1.5 pb-4">
-              {chatItems
-                .filter((chat) => chat.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                .map((chat) => {
-                  const isSelected = activeChatId === chat.id;
-                  return (
-                    <div
-                      key={chat.id}
-                      onClick={() => setActiveChatId(chat.id)}
-                      className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
-                        isSelected
-                          ? "bg-[#edeffb] shadow-[0_2px_8px_rgba(118,120,237,0.08)]"
-                          : "hover:bg-[#f2f4fa]"
-                      }`}
-                    >
-                      {/* Avatar */}
-                      {chat.avatarText ? (
-                        <div className="w-12 h-12 rounded-2xl bg-[#202022] text-white flex items-center justify-center font-bold text-lg tracking-wide shrink-0 shadow-sm">
-                          {chat.avatarText}
-                        </div>
-                      ) : (
-                        <img
-                          src={chat.avatarImg}
-                          alt={chat.name}
-                          className="w-12 h-12 rounded-2xl object-cover shrink-0 shadow-sm"
-                        />
-                      )}
+						{/* Chat List Scrollable Items */}
+						<div className='flex-1 overflow-y-auto px-2 space-y-1.5 pb-4'>
+							{chatItems
+								.filter((chat) => chat.name.toLowerCase().includes(searchQuery.toLowerCase()))
+								.map((chat) => {
+									const isSelected = activeChatId === chat.id;
+									return (
+										<div
+											key={chat.id}
+											onClick={() => setActiveChatId(chat.id)}
+											className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
+												isSelected ? 'bg-[#edeffb] shadow-[0_2px_8px_rgba(118,120,237,0.08)]' : 'hover:bg-[#f2f4fa]'
+											}`}
+										>
+											{/* Avatar */}
+											{chat.avatarText ? (
+												<div className='w-12 h-12 rounded-2xl bg-[#202022] text-white flex items-center justify-center font-bold text-lg tracking-wide shrink-0 shadow-sm'>
+													{chat.avatarText}
+												</div>
+											) : (
+												<img src={chat.avatarImg} alt={chat.name} className='w-12 h-12 rounded-2xl object-cover shrink-0 shadow-sm' />
+											)}
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <h4 className="font-semibold text-lg text-[#202022] truncate">{chat.name}</h4>
-                          <span className="text-sm text-[#8e90a6] font-medium shrink-0">{chat.time}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-1">
-                          <p className={`text-base truncate ${isSelected ? "text-[#7678ed] font-medium" : "text-[#7a7d90]"}`}>
-                            {chat.lastMessage}
-                          </p>
+											{/* Info */}
+											<div className='flex-1 min-w-0'>
+												<div className='flex items-center justify-between gap-1 mb-0.5'>
+													<h4 className='font-semibold text-lg text-[#202022] truncate'>{chat.name}</h4>
+													<span className='text-sm text-[#8e90a6] font-medium shrink-0'>{chat.time}</span>
+												</div>
+												<div className='flex items-center justify-between gap-1'>
+													<p className={`text-base truncate ${isSelected ? 'text-[#7678ed] font-medium' : 'text-[#7a7d90]'}`}>
+														{chat.lastMessage}
+													</p>
 
-                          {/* Pin / Badge / Delivered */}
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {chat.unreadCount && (
-                              <span className="bg-[#ff7a55] text-white text-sm font-bold w-5 h-5 rounded-full flex items-center justify-center leading-none">
-                                {chat.unreadCount}
-                              </span>
-                            )}
-                            {chat.isPinned && (
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="#7678ed" stroke="#7678ed" strokeWidth="1.5">
-                                <path d="M12 2L15 8L21 9L17 14L18 20L12 17L6 20L7 14L3 9L9 8L12 2Z" />
-                              </svg>
-                            )}
-                            {chat.isDelivered && (
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7678ed" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="18 6 9 17 4 12" />
-                              </svg>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </section>
+													{/* Pin / Badge / Delivered */}
+													<div className='flex items-center gap-1.5 shrink-0'>
+														{chat.unreadCount && (
+															<span className='bg-[#ff7a55] text-white text-sm font-bold w-5 h-5 rounded-full flex items-center justify-center leading-none'>
+																{chat.unreadCount}
+															</span>
+														)}
+														{chat.isPinned && (
+															<svg width='13' height='13' viewBox='0 0 24 24' fill='#7678ed' stroke='#7678ed' strokeWidth='1.5'>
+																<path d='M12 2L15 8L21 9L17 14L18 20L12 17L6 20L7 14L3 9L9 8L12 2Z' />
+															</svg>
+														)}
+														{chat.isDelivered && (
+															<svg
+																width='15'
+																height='15'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='#7678ed'
+																strokeWidth='2.5'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+															>
+																<polyline points='18 6 9 17 4 12' />
+															</svg>
+														)}
+													</div>
+												</div>
+											</div>
+										</div>
+									);
+								})}
+						</div>
+					</section>
 
-          {/* ========================================================= */}
-          {/* 3. MAIN CHAT AREA (WHITE) */}
-          {/* ========================================================= */}
-          {(() => {
-            const activeChat = chatItems.find((c) => c.id === activeChatId);
-            if (!activeChatId || !activeChat) {
-              return (
-                <section className="flex-1 flex flex-col items-center justify-center bg-white p-8 text-center select-none">
-                  <div className="w-24 h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-6 text-[#7678ed] shadow-inner">
-                    <img src="/icon-black.svg" alt="Alpaca Logo" className="w-14 h-14 opacity-70" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-[#202022] mb-2">No chat select</h3>
-                  <p className="text-base text-[#8e90a6] max-w-sm">
-                    Select a conversation from the chat list on the left to view messages and continue chatting.
-                  </p>
-                </section>
-              );
-            }
+					{/* ========================================================= */}
+					{/* 3. MAIN CHAT AREA (WHITE) */}
+					{/* ========================================================= */}
+					{(() => {
+						const activeChat = chatItems.find((c) => c.id === activeChatId);
+						if (!activeChatId || !activeChat) {
+							return (
+								<section className='flex-1 flex flex-col items-center justify-center bg-white p-8 text-center select-none'>
+									<div className='w-24 h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-6 text-[#7678ed] shadow-inner'>
+										<img src='/icon-black.svg' alt='Alpaca Logo' className='w-14 h-14 opacity-70' />
+									</div>
+									<h3 className='text-2xl font-bold text-[#202022] mb-2'>No chat select</h3>
+									<p className='text-base text-[#8e90a6] max-w-sm'>
+										Select a conversation from the chat list on the left to view messages and continue chatting.
+									</p>
+								</section>
+							);
+						}
 
-            return (
-              <section className="flex-1 flex flex-col bg-white overflow-hidden">
-                {/* Header */}
-                <div className="h-[76px] px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0">
-                  <div>
-                    <h2 className="text-2xl font-bold text-[#202022] tracking-tight">{activeChat.name}</h2>
-                    <p className="text-base text-[#8e90a6] font-medium mt-0.5">Active chat session</p>
-                  </div>
+						return (
+							<section className='flex-1 flex flex-col bg-white overflow-hidden'>
+								{/* Header */}
+								<div className='h-[76px] px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0'>
+									<div>
+										<h2 className='text-2xl font-bold text-[#202022] tracking-tight'>{activeChat.name}</h2>
+										<p className='text-base text-[#8e90a6] font-medium mt-0.5'>Active chat session</p>
+									</div>
 
-                  {/* Action Icons */}
-                  <div className="flex items-center gap-4 text-[#8e90a6]">
-                    <button className="p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                      </svg>
-                    </button>
-                    <button className="p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                      </svg>
-                    </button>
-                    <button className="p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="1" />
-                        <circle cx="12" cy="5" r="1" />
-                        <circle cx="12" cy="19" r="1" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+									{/* Action Icons */}
+									<div className='flex items-center gap-4 text-[#8e90a6] relative'>
+										<button className='p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors'>
+											<svg
+												width='20'
+												height='20'
+												viewBox='0 0 24 24'
+												fill='none'
+												stroke='currentColor'
+												strokeWidth='2'
+												strokeLinecap='round'
+												strokeLinejoin='round'
+											>
+												<circle cx='11' cy='11' r='8' />
+												<line x1='21' y1='21' x2='16.65' y2='16.65' />
+											</svg>
+										</button>
 
-                {/* Conversation Messages */}
-                <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
-                  {messages.map((msg) => {
-                    if (msg.isSelf) {
-                      {/* User message (Role 'user' -> Right side, full width) */}
-                      const imageAttachments = (msg.attachments || []).filter(isImageAttachment);
-                      const imageSources: string[] = [];
-                      if (msg.image) imageSources.push(msg.image);
-                      imageAttachments.forEach((att) => {
-                        const src = getImageSrc(att);
-                        if (src && !imageSources.includes(src)) imageSources.push(src);
-                      });
+										{/* 3 Dots Context Menu */}
+										<div className='relative'>
+											<button
+												onClick={() => setIsChatContextMenuOpen(!isChatContextMenuOpen)}
+												className='p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer'
+												title='Chat options'
+											>
+												<svg
+													width='20'
+													height='20'
+													viewBox='0 0 24 24'
+													fill='none'
+													stroke='currentColor'
+													strokeWidth='2'
+													strokeLinecap='round'
+													strokeLinejoin='round'
+												>
+													<circle cx='12' cy='12' r='1' />
+													<circle cx='12' cy='5' r='1' />
+													<circle cx='12' cy='19' r='1' />
+												</svg>
+											</button>
 
-                      return (
-                        <div key={msg.id} className="flex items-start justify-end gap-3.5 w-full">
-                          <div className="flex flex-col items-end flex-1 w-full min-w-0">
-                            <div className="bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-5 py-4 text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full">
-                              <div className="leading-relaxed font-normal">{renderMarkdownText(msg.content)}</div>
-                              {imageSources.length > 0 && (
-                                <div className="flex flex-row gap-2.5 overflow-x-auto mt-3 pb-1.5 max-w-full">
-                                  {imageSources.map((src, idx) => (
-                                    <img
-                                      key={idx}
-                                      src={src}
-                                      alt={`Attachment ${idx + 1}`}
-                                      className="h-32 min-w-[128px] max-w-[260px] rounded-xl object-cover border border-white/20 shadow-xs flex-shrink-0 cursor-pointer hover:opacity-95 transition-opacity"
-                                      onClick={() => setActiveImageModal({ src, title: `Attachment Image ${idx + 1}` })}
-                                    />
-                                  ))}
-                                </div>
-                              )}
-                              <div className="flex items-center justify-end gap-2 text-sm text-white/80 mt-2">
-                                <span>{msg.time}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 mt-1 shadow-sm" title="You">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                              <circle cx="12" cy="7" r="4" />
-                            </svg>
-                          </div>
-                        </div>
-                      );
-                    } else {
-                      {/* Assistant / Incoming message (Role 'assistant' -> Left side, full width) */}
-                      const prefKey = (msg.senderName || "").toLowerCase();
-                      const pref = modelPreferences[prefKey] || modelPreferences[msg.senderName || ""] || (msg.model ? modelPreferences[msg.model.toLowerCase()] : undefined);
-                      const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80";
-                      const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
-                      const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
-                      const modelVoice = pref?.voice || undefined;
+											{isChatContextMenuOpen && (
+												<>
+													{/* Backdrop to close context menu on click outside */}
+													<div className='fixed inset-0 z-30' onClick={() => setIsChatContextMenuOpen(false)} />
+													{/* Dropdown Menu */}
+													<div className='absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-[#e8ebf3] py-2 z-40 select-none animate-in fade-in duration-150'>
+														<button
+															onClick={handleOpenRenameModal}
+															className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer'
+														>
+															<svg
+																width='16'
+																height='16'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='currentColor'
+																strokeWidth='2'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+															>
+																<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+															</svg>
+															Rename
+														</button>
+														<button
+															onClick={handleOpenDeleteModal}
+															className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#ff4d4f] hover:bg-[#fff1f0] transition-colors flex items-center gap-2.5 cursor-pointer'
+														>
+															<svg
+																width='16'
+																height='16'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='currentColor'
+																strokeWidth='2'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+															>
+																<polyline points='3 6 5 6 21 6' />
+																<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+															</svg>
+															Delete
+														</button>
+													</div>
+												</>
+											)}
+										</div>
+									</div>
+								</div>
 
-                      const isThisMsgPlaying = ttsState.msgId === msg.id && ttsState.status === "playing";
-                      const isThisMsgActive = ttsState.msgId === msg.id && ttsState.status !== "stopped";
+								{/* Conversation Messages */}
+								<div className='flex-1 overflow-y-auto px-8 py-6 space-y-6'>
+									{messages.map((msg) => {
+										if (msg.isSelf) {
+											{
+												/* User message (Role 'user' -> Right side, full width) */
+											}
+											const imageAttachments = (msg.attachments || []).filter(isImageAttachment);
+											const imageSources: string[] = [];
+											if (msg.image) imageSources.push(msg.image);
+											imageAttachments.forEach((att) => {
+												const src = getImageSrc(att);
+												if (src && !imageSources.includes(src)) imageSources.push(src);
+											});
 
-                      const thoughtAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === "thought" || a.type?.toLowerCase() === "brain");
-                      const metadataAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === "metadata" || a.type?.toLowerCase() === "data");
+											return (
+												<div key={msg.id} className='flex items-start justify-end gap-3.5 w-full'>
+													<div className='flex flex-col items-end flex-1 w-full min-w-0'>
+														<div className='bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-5 py-4 text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full'>
+															<div className='leading-relaxed font-normal'>{renderMarkdownText(msg.content)}</div>
+															{imageSources.length > 0 && (
+																<div className='flex flex-row gap-2.5 overflow-x-auto mt-3 pb-1.5 max-w-full'>
+																	{imageSources.map((src, idx) => (
+																		<img
+																			key={idx}
+																			src={src}
+																			alt={`Attachment ${idx + 1}`}
+																			className='h-32 min-w-[128px] max-w-[260px] rounded-xl object-cover border border-white/20 shadow-xs flex-shrink-0 cursor-pointer hover:opacity-95 transition-opacity'
+																			onClick={() => setActiveImageModal({ src, title: `Attachment Image ${idx + 1}` })}
+																		/>
+																	))}
+																</div>
+															)}
+															<div className='flex items-center justify-end gap-2 text-sm text-white/80 mt-2'>
+																<span>{msg.time}</span>
+															</div>
+														</div>
+													</div>
+													<div
+														className='w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 mt-1 shadow-sm'
+														title='You'
+													>
+														<svg
+															width='20'
+															height='20'
+															viewBox='0 0 24 24'
+															fill='none'
+															stroke='currentColor'
+															strokeWidth='2.2'
+															strokeLinecap='round'
+															strokeLinejoin='round'
+														>
+															<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
+															<circle cx='12' cy='7' r='4' />
+														</svg>
+													</div>
+												</div>
+											);
+										} else {
+											{
+												/* Assistant / Incoming message (Role 'assistant' -> Left side, full width) */
+											}
+											const prefKey = (msg.senderName || '').toLowerCase();
+											const pref =
+												modelPreferences[prefKey] ||
+												modelPreferences[msg.senderName || ''] ||
+												(msg.model ? modelPreferences[msg.model.toLowerCase()] : undefined);
+											const avatarSrc =
+												msg.senderAvatar ||
+												formatAvatarPicture(pref?.picture) ||
+												'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80';
+											const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
+											const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
+											const modelVoice = pref?.voice || undefined;
 
-                      return (
-                        <div key={msg.id} className="flex items-start gap-3.5 w-full">
-                          <img
-                            src={avatarSrc}
-                            alt={displayName}
-                            className="w-10 h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm"
-                          />
-                          <div className="flex flex-col items-start flex-1 w-full min-w-0">
-                            <div className="bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-5 py-4 text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full">
-                              <div className="flex items-center justify-between gap-3 mb-1.5">
-                                <div className="flex items-center gap-2">
-                                  {/* TTS Controls in front of displayName */}
-                                  {isThisMsgActive ? (
-                                    <div className="flex items-center gap-1">
-                                      {isThisMsgPlaying ? (
-                                        <button
-                                          type="button"
-                                          onClick={handlePauseTTS}
-                                          className="p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center"
-                                          title="Pause Speech"
-                                        >
-                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                            <rect x="6" y="4" width="4" height="16" rx="1" />
-                                            <rect x="14" y="4" width="4" height="16" rx="1" />
-                                          </svg>
-                                        </button>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={handleResumeTTS}
-                                          className="p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center"
-                                          title="Resume Speech"
-                                        >
-                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                            <polygon points="5 3 19 12 5 21 5 3" />
-                                          </svg>
-                                        </button>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={handleStopTTS}
-                                        className="p-1.5 rounded-xl bg-[#ff7a55] text-white hover:bg-[#e06845] transition-all shadow-xs cursor-pointer flex items-center justify-center"
-                                        title="Stop Speech"
-                                      >
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                          <rect x="4" y="4" width="16" height="16" rx="2" />
-                                        </svg>
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => handlePlayTTS(msg.id, msg.content, modelVoice)}
-                                      className="p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#7678ed] hover:bg-[#7678ed] hover:text-white transition-all shadow-xs cursor-pointer flex items-center justify-center"
-                                      title="Play Speech"
-                                    >
-                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                        <polygon points="5 3 19 12 5 21 5 3" />
-                                      </svg>
-                                    </button>
-                                  )}
-                                  <p className="text-base font-semibold text-[#7678ed]">{displayName}</p>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  {thoughtAtt && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setActiveAttachmentModal({ title: thoughtAtt.name || "Thought", type: "thought", content: thoughtAtt.content })}
-                                      className="px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer"
-                                      title="View Thought / Reasoning"
-                                    >
-                                      <BrainIcon className="w-3.5 h-3.5" />
-                                      <span>Thought</span>
-                                    </button>
-                                  )}
-                                  {metadataAtt && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setActiveAttachmentModal({ title: metadataAtt.name || "Metadata", type: "metadata", content: metadataAtt.content })}
-                                      className="px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer"
-                                      title="View Metadata"
-                                    >
-                                      <MetadataIcon className="w-3.5 h-3.5" />
-                                      <span>Metadata</span>
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="leading-relaxed">
-                                {renderMarkdownText(msg.content, msg.id === ttsState.msgId ? ttsState.lineIndex : undefined)}
-                              </div>
-                              <div className="flex items-center justify-between gap-4 mt-2.5 pt-1">
-                                {msg.reactions && msg.reactions.length > 0 && (
-                                  <div className="flex items-center gap-1.5">
-                                    {msg.reactions.map((r, i) => (
-                                      <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white border border-[#e2e5f1] rounded-full text-base font-medium text-[#4a4d63] shadow-xs">
-                                        <span>{r.emoji}</span> {r.count}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                                <div className="flex items-center gap-2 text-sm text-[#8e90a6]">
-                                  {msg.views !== undefined && (
-                                    <span className="flex items-center gap-1">
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                        <circle cx="12" cy="12" r="3" />
-                                      </svg>
-                                      {msg.views}
-                                    </span>
-                                  )}
-                                  <span>{msg.time}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
+											const isThisMsgPlaying = ttsState.msgId === msg.id && ttsState.status === 'playing';
+											const isThisMsgActive = ttsState.msgId === msg.id && ttsState.status !== 'stopped';
 
-                {/* Input Composer */}
-                <form onSubmit={handleSendMessage} className="p-4 px-8 border-t border-[#eef0f6] bg-white flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors"
-                    title="Attach file"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                    </svg>
-                  </button>
+											const thoughtAtt = msg.attachments?.find(
+												(a) => a.type?.toLowerCase() === 'thought' || a.type?.toLowerCase() === 'brain',
+											);
+											const metadataAtt = msg.attachments?.find(
+												(a) => a.type?.toLowerCase() === 'metadata' || a.type?.toLowerCase() === 'data',
+											);
 
-                  <input
-                    type="text"
-                    placeholder="Write a message..."
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    className="flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium"
-                  />
+											return (
+												<div key={msg.id} className='flex items-start gap-3.5 w-full'>
+													<img
+														src={avatarSrc}
+														alt={displayName}
+														className='w-10 h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm'
+													/>
+													<div className='flex flex-col items-start flex-1 w-full min-w-0'>
+														<div className='bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-5 py-4 text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full'>
+															<div className='flex items-center justify-between gap-3 mb-1.5'>
+																<div className='flex items-center gap-2'>
+																	{/* TTS Controls in front of displayName */}
+																	{isThisMsgActive ? (
+																		<div className='flex items-center gap-1'>
+																			{isThisMsgPlaying ? (
+																				<button
+																					type='button'
+																					onClick={handlePauseTTS}
+																					className='p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																					title='Pause Speech'
+																				>
+																					<svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor'>
+																						<rect x='6' y='4' width='4' height='16' rx='1' />
+																						<rect x='14' y='4' width='4' height='16' rx='1' />
+																					</svg>
+																				</button>
+																			) : (
+																				<button
+																					type='button'
+																					onClick={handleResumeTTS}
+																					className='p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																					title='Resume Speech'
+																				>
+																					<svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor'>
+																						<polygon points='5 3 19 12 5 21 5 3' />
+																					</svg>
+																				</button>
+																			)}
+																			<button
+																				type='button'
+																				onClick={handleStopTTS}
+																				className='p-1.5 rounded-xl bg-[#ff7a55] text-white hover:bg-[#e06845] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																				title='Stop Speech'
+																			>
+																				<svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor'>
+																					<rect x='4' y='4' width='16' height='16' rx='2' />
+																				</svg>
+																			</button>
+																		</div>
+																	) : (
+																		<button
+																			type='button'
+																			onClick={() => handlePlayTTS(msg.id, msg.content, modelVoice)}
+																			className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#7678ed] hover:bg-[#7678ed] hover:text-white transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																			title='Play Speech'
+																		>
+																			<svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor'>
+																				<polygon points='5 3 19 12 5 21 5 3' />
+																			</svg>
+																		</button>
+																	)}
+																	<p className='text-base font-semibold text-[#7678ed]'>{displayName}</p>
+																</div>
+																<div className='flex items-center gap-1.5 shrink-0'>
+																	{thoughtAtt && (
+																		<button
+																			type='button'
+																			onClick={() =>
+																				setActiveAttachmentModal({
+																					title: thoughtAtt.name || 'Thought',
+																					type: 'thought',
+																					content: thoughtAtt.content,
+																				})
+																			}
+																			className='px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer'
+																			title='View Thought / Reasoning'
+																		>
+																			<BrainIcon className='w-3.5 h-3.5' />
+																			<span>Thought</span>
+																		</button>
+																	)}
+																	{metadataAtt && (
+																		<button
+																			type='button'
+																			onClick={() =>
+																				setActiveAttachmentModal({
+																					title: metadataAtt.name || 'Metadata',
+																					type: 'metadata',
+																					content: metadataAtt.content,
+																				})
+																			}
+																			className='px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer'
+																			title='View Metadata'
+																		>
+																			<MetadataIcon className='w-3.5 h-3.5' />
+																			<span>Metadata</span>
+																		</button>
+																	)}
+																</div>
+															</div>
+															<div className='leading-relaxed'>
+																{renderMarkdownText(msg.content, msg.id === ttsState.msgId ? ttsState.lineIndex : undefined)}
+															</div>
+															<div className='flex items-center justify-between gap-4 mt-2.5 pt-1'>
+																{msg.reactions && msg.reactions.length > 0 && (
+																	<div className='flex items-center gap-1.5'>
+																		{msg.reactions.map((r, i) => (
+																			<span
+																				key={i}
+																				className='inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white border border-[#e2e5f1] rounded-full text-base font-medium text-[#4a4d63] shadow-xs'
+																			>
+																				<span>{r.emoji}</span> {r.count}
+																			</span>
+																		))}
+																	</div>
+																)}
+																<div className='flex items-center gap-2 text-sm text-[#8e90a6]'>
+																	{msg.views !== undefined && (
+																		<span className='flex items-center gap-1'>
+																			<svg
+																				width='14'
+																				height='14'
+																				viewBox='0 0 24 24'
+																				fill='none'
+																				stroke='currentColor'
+																				strokeWidth='2'
+																			>
+																				<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' />
+																				<circle cx='12' cy='12' r='3' />
+																			</svg>
+																			{msg.views}
+																		</span>
+																	)}
+																	<span>{msg.time}</span>
+																</div>
+															</div>
+														</div>
+													</div>
+												</div>
+											);
+										}
+									})}
+									<div ref={messagesEndRef} />
+								</div>
 
-                  <button
-                    type="button"
-                    className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors"
-                    title="Emoji"
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                      <line x1="9" y1="9" x2="9.01" y2="9" />
-                      <line x1="15" y1="9" x2="15.01" y2="9" />
-                    </svg>
-                  </button>
+								{/* Input Composer */}
+								<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex items-center gap-3'>
+									<button
+										type='button'
+										className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors'
+										title='Attach file'
+									>
+										<svg
+											width='20'
+											height='20'
+											viewBox='0 0 24 24'
+											fill='none'
+											stroke='currentColor'
+											strokeWidth='2'
+											strokeLinecap='round'
+											strokeLinejoin='round'
+										>
+											<path d='M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48' />
+										</svg>
+									</button>
 
-                  <button
-                    type="submit"
-                    className="w-11 h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0"
-                    title="Send"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="22" y1="2" x2="11" y2="13" />
-                      <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                    </svg>
-                  </button>
-                </form>
-              </section>
-            );
-          })()}
+									<input
+										type='text'
+										placeholder='Write a message...'
+										value={inputText}
+										onChange={(e) => setInputText(e.target.value)}
+										className='flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium'
+									/>
 
-          {/* ========================================================= */}
-          {/* 4. RIGHT INFO DRAWER (#f9fafc) */}
-          {/* ========================================================= */}
-          {activeChatId && chatItems.some((c) => c.id === activeChatId) ? (
-            <aside className="w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
-              
-              {/* 1. Members Card (Top) */}
-              {(() => {
-                const participants = getConversationParticipants();
-                return (
-                  <div className="bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-xl text-[#202022]">{participants.length} members</h3>
-                    </div>
+									<button
+										type='button'
+										className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors'
+										title='Emoji'
+									>
+										<svg
+											width='20'
+											height='20'
+											viewBox='0 0 24 24'
+											fill='none'
+											stroke='currentColor'
+											strokeWidth='2'
+											strokeLinecap='round'
+											strokeLinejoin='round'
+										>
+											<circle cx='12' cy='12' r='10' />
+											<path d='M8 14s1.5 2 4 2 4-2 4-2' />
+											<line x1='9' y1='9' x2='9.01' y2='9' />
+											<line x1='15' y1='9' x2='15.01' y2='9' />
+										</svg>
+									</button>
 
-                    {/* Members List */}
-                    <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
-                      {participants.map((p) => (
-                        <div key={p.id} className="flex items-center gap-3">
-                          {p.id === "user" ? (
-                            <div className="w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
-                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                                <circle cx="12" cy="7" r="4" />
-                              </svg>
-                            </div>
-                          ) : (
-                            <img
-                              src={p.avatar}
-                              alt={p.name}
-                              className="w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0"
-                            />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <h5 className="font-semibold text-base text-[#202022] truncate">{p.name}</h5>
-                            <span className="text-sm font-medium text-[#7678ed]">{p.role}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
+									<button
+										type='submit'
+										className='w-11 h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0'
+										title='Send'
+									>
+										<svg
+											width='18'
+											height='18'
+											viewBox='0 0 24 24'
+											fill='none'
+											stroke='currentColor'
+											strokeWidth='2.5'
+											strokeLinecap='round'
+											strokeLinejoin='round'
+										>
+											<line x1='22' y1='2' x2='11' y2='13' />
+											<polygon points='22 2 15 22 11 13 2 9 22 2' />
+										</svg>
+									</button>
+								</form>
+							</section>
+						);
+					})()}
 
-              {/* 2. Attachments Card (Bottom - Collapsed by default) */}
-              {(() => {
-                const atts = getConversationAttachments();
-                const totalCount = atts.photos.length + atts.otherFiles.length;
+					{/* ========================================================= */}
+					{/* 4. RIGHT INFO DRAWER (#f9fafc) */}
+					{/* ========================================================= */}
+					{activeChatId && chatItems.some((c) => c.id === activeChatId) ? (
+						<aside className='w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0'>
+							{/* 1. Members Card (Top) */}
+							{(() => {
+								const participants = getConversationParticipants();
+								return (
+									<div className='bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]'>
+										<div className='flex items-center justify-between mb-4'>
+											<h3 className='font-bold text-xl text-[#202022]'>{participants.length} members</h3>
+										</div>
 
-                return (
-                  <div className="bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]">
-                    {/* Card Header with Collapse Toggle */}
-                    <button
-                      onClick={() => setIsAttachmentsExpanded(!isAttachmentsExpanded)}
-                      className="w-full flex items-center justify-between cursor-pointer select-none"
-                    >
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-xl text-[#202022]">Attachments</h3>
-                        <span className="text-sm font-semibold text-white bg-[#7678ed] px-2.5 py-0.5 rounded-full">
-                          {totalCount}
-                        </span>
-                      </div>
-                      <div className="p-1 text-[#8e90a6] hover:text-[#202022] transition-colors">
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className={`transition-transform duration-200 ${isAttachmentsExpanded ? "rotate-180" : ""}`}
-                        >
-                          <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                      </div>
-                    </button>
+										{/* Members List */}
+										<div className='space-y-3.5 max-h-[300px] overflow-y-auto pr-1'>
+											{participants.map((p) => (
+												<div key={p.id} className='flex items-center gap-3'>
+													{p.id === 'user' ? (
+														<div className='w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs'>
+															<svg
+																width='20'
+																height='20'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='currentColor'
+																strokeWidth='2.2'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+															>
+																<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
+																<circle cx='12' cy='7' r='4' />
+															</svg>
+														</div>
+													) : (
+														<img src={p.avatar} alt={p.name} className='w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0' />
+													)}
+													<div className='flex-1 min-w-0'>
+														<h5 className='font-semibold text-base text-[#202022] truncate'>{p.name}</h5>
+														<span className='text-sm font-medium text-[#7678ed]'>{p.role}</span>
+													</div>
+												</div>
+											))}
+										</div>
+									</div>
+								);
+							})()}
 
-                    {/* Collapsible Content */}
-                    {isAttachmentsExpanded && (
-                      <div className="mt-4 pt-3 border-t border-[#edf0f7] space-y-4">
-                        {totalCount === 0 ? (
-                          <p className="text-sm text-[#8e90a6] italic">No attachments in this conversation.</p>
-                        ) : (
-                          <>
-                            {/* Photos / Images */}
-                            {atts.photos.length > 0 && (
-                              <div>
-                                <p className="text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                    <circle cx="8.5" cy="8.5" r="1.5" />
-                                    <polyline points="21 15 16 10 5 21" />
-                                  </svg>
-                                  Photos ({atts.photos.length})
-                                </p>
-                                <div className="grid grid-cols-2 gap-2">
-                                  {atts.photos.map((src, idx) => (
-                                    <img
-                                      key={idx}
-                                      src={src}
-                                      alt={`Photo ${idx + 1}`}
-                                      className="w-full h-20 object-cover rounded-xl shadow-xs cursor-pointer hover:opacity-90 transition-opacity border border-[#edf0f7]"
-                                      onClick={() => setActiveImageModal({ src, title: `Photo ${idx + 1}` })}
-                                    />
-                                  ))}
-                                </div>
-                              </div>
-                            )}
+							{/* 2. Attachments Card (Bottom - Collapsed by default) */}
+							{(() => {
+								const atts = getConversationAttachments();
+								const totalCount = atts.photos.length + atts.otherFiles.length;
 
-                            {/* Other Files */}
-                            {atts.otherFiles.length > 0 && (
-                              <div>
-                                <p className="text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                    <polyline points="14 2 14 8 20 8" />
-                                  </svg>
-                                  Files ({atts.otherFiles.length})
-                                </p>
-                                <div className="space-y-1.5">
-                                  {atts.otherFiles.map((item, idx) => (
-                                    <button
-                                      key={idx}
-                                      onClick={() => setActiveAttachmentModal({ title: item.name || "Attachment", type: item.type || "file", content: item.content })}
-                                      className="w-full text-left px-3 py-2 rounded-xl bg-[#f8f9fe] hover:bg-[#7678ed] hover:text-white text-[#202022] transition-colors text-sm font-medium flex items-center justify-between border border-[#e8ebf3] group cursor-pointer"
-                                    >
-                                      <span className="truncate">{item.name || `File ${idx + 1}`}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+								return (
+									<div className='bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]'>
+										{/* Card Header with Collapse Toggle */}
+										<button
+											onClick={() => setIsAttachmentsExpanded(!isAttachmentsExpanded)}
+											className='w-full flex items-center justify-between cursor-pointer select-none'
+										>
+											<div className='flex items-center gap-2'>
+												<h3 className='font-bold text-xl text-[#202022]'>Attachments</h3>
+												<span className='text-sm font-semibold text-white bg-[#7678ed] px-2.5 py-0.5 rounded-full'>{totalCount}</span>
+											</div>
+											<div className='p-1 text-[#8e90a6] hover:text-[#202022] transition-colors'>
+												<svg
+													width='18'
+													height='18'
+													viewBox='0 0 24 24'
+													fill='none'
+													stroke='currentColor'
+													strokeWidth='2.2'
+													strokeLinecap='round'
+													strokeLinejoin='round'
+													className={`transition-transform duration-200 ${isAttachmentsExpanded ? 'rotate-180' : ''}`}
+												>
+													<polyline points='6 9 12 15 18 9' />
+												</svg>
+											</div>
+										</button>
 
-            </aside>
-          ) : null}
+										{/* Collapsible Content */}
+										{isAttachmentsExpanded && (
+											<div className='mt-4 pt-3 border-t border-[#edf0f7] space-y-4'>
+												{totalCount === 0 ? (
+													<p className='text-sm text-[#8e90a6] italic'>No attachments in this conversation.</p>
+												) : (
+													<>
+														{/* Photos / Images */}
+														{atts.photos.length > 0 && (
+															<div>
+																<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
+																	<svg
+																		width='15'
+																		height='15'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2'
+																	>
+																		<rect x='3' y='3' width='18' height='18' rx='2' ry='2' />
+																		<circle cx='8.5' cy='8.5' r='1.5' />
+																		<polyline points='21 15 16 10 5 21' />
+																	</svg>
+																	Photos ({atts.photos.length})
+																</p>
+																<div className='grid grid-cols-2 gap-2'>
+																	{atts.photos.map((src, idx) => (
+																		<img
+																			key={idx}
+																			src={src}
+																			alt={`Photo ${idx + 1}`}
+																			className='w-full h-20 object-cover rounded-xl shadow-xs cursor-pointer hover:opacity-90 transition-opacity border border-[#edf0f7]'
+																			onClick={() => setActiveImageModal({ src, title: `Photo ${idx + 1}` })}
+																		/>
+																	))}
+																</div>
+															</div>
+														)}
 
-        </div>
-      </div>
-      {/* Create Folder Modal */}
-      {isCreatingFolder && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">New Folder</h3>
-              <button
-                onClick={() => setIsCreatingFolder(false)}
-                className="text-white/60 hover:text-white p-1 transition-colors"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <form onSubmit={handleCreateFolderSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-white/70 mb-1">Folder Name</label>
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="e.g. Work, Research, Personal"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  className="w-full bg-[#2d2d30] border border-white/10 rounded-2xl px-4 py-3 text-base text-white placeholder-white/40 outline-none focus:border-[#7678ed] transition-colors"
-                />
-              </div>
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingFolder(false)}
-                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newFolderName.trim()}
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-md shadow-[#7678ed]/30"
-                >
-                  Create Folder
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-      {/* Attachment Content Modal */}
-      {activeAttachmentModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none">
-          <div className="bg-white text-[#202022] rounded-3xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl border border-[#e8ebf3] animate-in fade-in zoom-in duration-200">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-[#eef0f6] shrink-0 mb-4 select-text">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-[#f0f2f9] text-[#7678ed] flex items-center justify-center font-bold shrink-0 shadow-xs">
-                  {activeAttachmentModal.type === "thought" ? <BrainIcon className="w-5 h-5" /> : <MetadataIcon className="w-5 h-5" />}
-                </div>
-                <h3 className="text-xl font-bold text-[#202022] tracking-tight">{activeAttachmentModal.title}</h3>
-              </div>
-              <button
-                onClick={() => setActiveAttachmentModal(null)}
-                className="p-1.5 text-[#8e90a6] hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer"
-                title="Close"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
+														{/* Other Files */}
+														{atts.otherFiles.length > 0 && (
+															<div>
+																<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
+																	<svg
+																		width='15'
+																		height='15'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2'
+																	>
+																		<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' />
+																		<polyline points='14 2 14 8 20 8' />
+																	</svg>
+																	Files ({atts.otherFiles.length})
+																</p>
+																<div className='space-y-1.5'>
+																	{atts.otherFiles.map((item, idx) => (
+																		<button
+																			key={idx}
+																			onClick={() =>
+																				setActiveAttachmentModal({
+																					title: item.name || 'Attachment',
+																					type: item.type || 'file',
+																					content: item.content,
+																				})
+																			}
+																			className='w-full text-left px-3 py-2 rounded-xl bg-[#f8f9fe] hover:bg-[#7678ed] hover:text-white text-[#202022] transition-colors text-sm font-medium flex items-center justify-between border border-[#e8ebf3] group cursor-pointer'
+																		>
+																			<span className='truncate'>{item.name || `File ${idx + 1}`}</span>
+																		</button>
+																	))}
+																</div>
+															</div>
+														)}
+													</>
+												)}
+											</div>
+										)}
+									</div>
+								);
+							})()}
+						</aside>
+					) : null}
+				</div>
+			</div>
+			{/* Create Folder Modal */}
+			{isCreatingFolder && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-4'>
+							<h3 className='text-lg font-bold'>New Folder</h3>
+							<button onClick={() => setIsCreatingFolder(false)} className='text-white/60 hover:text-white p-1 transition-colors'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<form onSubmit={handleCreateFolderSubmit} className='space-y-4'>
+							<div>
+								<label className='block text-xs font-semibold text-white/70 mb-1'>Folder Name</label>
+								<input
+									type='text'
+									autoFocus
+									placeholder='e.g. Work, Research, Personal'
+									value={newFolderName}
+									onChange={(e) => setNewFolderName(e.target.value)}
+									className='w-full bg-[#2d2d30] border border-white/10 rounded-2xl px-4 py-3 text-base text-white placeholder-white/40 outline-none focus:border-[#7678ed] transition-colors'
+								/>
+							</div>
+							<div className='flex items-center justify-end gap-3 pt-2'>
+								<button
+									type='button'
+									onClick={() => setIsCreatingFolder(false)}
+									className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors'
+								>
+									Cancel
+								</button>
+								<button
+									type='submit'
+									disabled={!newFolderName.trim()}
+									className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-md shadow-[#7678ed]/30'
+								>
+									Create Folder
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+			{/* Attachment Content Modal */}
+			{activeAttachmentModal && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-white text-[#202022] rounded-3xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl border border-[#e8ebf3] animate-in fade-in zoom-in duration-200'>
+						{/* Modal Header */}
+						<div className='flex items-center justify-between pb-4 border-b border-[#eef0f6] shrink-0 mb-4 select-text'>
+							<div className='flex items-center gap-2.5'>
+								<div className='w-9 h-9 rounded-2xl bg-[#f0f2f9] text-[#7678ed] flex items-center justify-center font-bold shrink-0 shadow-xs'>
+									{activeAttachmentModal.type === 'thought' ? <BrainIcon className='w-5 h-5' /> : <MetadataIcon className='w-5 h-5' />}
+								</div>
+								<h3 className='text-xl font-bold text-[#202022] tracking-tight'>{activeAttachmentModal.title}</h3>
+							</div>
+							<button
+								onClick={() => setActiveAttachmentModal(null)}
+								className='p-1.5 text-[#8e90a6] hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer'
+								title='Close'
+							>
+								<svg
+									width='20'
+									height='20'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
 
-            {/* Modal Content (Parsed HTML Markdown) */}
-            <div className="flex-1 overflow-y-auto pr-2 space-y-3 text-base text-[#202022] leading-relaxed select-text">
-              {renderMarkdownText(activeAttachmentModal.content)}
-            </div>
+						{/* Modal Content (Parsed HTML Markdown) */}
+						<div className='flex-1 overflow-y-auto pr-2 space-y-3 text-base text-[#202022] leading-relaxed select-text'>
+							{renderMarkdownText(activeAttachmentModal.content)}
+						</div>
 
-            {/* Modal Footer */}
-            <div className="pt-4 mt-4 border-t border-[#eef0f6] flex items-center justify-end shrink-0 select-text">
-              <button
-                onClick={() => setActiveAttachmentModal(null)}
-                className="px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white font-semibold rounded-2xl transition-all text-base shadow-sm cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Full Size Image Gallery Modal */}
-      {activeImageModal && (
-        <div
-          className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4 sm:p-8 animate-in fade-in duration-200"
-          onClick={() => setActiveImageModal(null)}
-        >
-          <div
-            className="relative max-w-[92vw] max-h-[92vh] flex flex-col items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close button */}
-            <button
-              onClick={() => setActiveImageModal(null)}
-              className="absolute -top-12 right-0 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-all cursor-pointer shadow-md"
-              title="Close"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+						{/* Modal Footer */}
+						<div className='pt-4 mt-4 border-t border-[#eef0f6] flex items-center justify-end shrink-0 select-text'>
+							<button
+								onClick={() => setActiveAttachmentModal(null)}
+								className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white font-semibold rounded-2xl transition-all text-base shadow-sm cursor-pointer'
+							>
+								Close
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{/* Full Size Image Gallery Modal */}
+			{activeImageModal && (
+				<div
+					className='fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4 sm:p-8 animate-in fade-in duration-200'
+					onClick={() => setActiveImageModal(null)}
+				>
+					<div className='relative max-w-[92vw] max-h-[92vh] flex flex-col items-center justify-center' onClick={(e) => e.stopPropagation()}>
+						{/* Close button */}
+						<button
+							onClick={() => setActiveImageModal(null)}
+							className='absolute -top-12 right-0 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-all cursor-pointer shadow-md'
+							title='Close'
+						>
+							<svg
+								width='22'
+								height='22'
+								viewBox='0 0 24 24'
+								fill='none'
+								stroke='currentColor'
+								strokeWidth='2.5'
+								strokeLinecap='round'
+								strokeLinejoin='round'
+							>
+								<line x1='18' y1='6' x2='6' y2='18' />
+								<line x1='6' y1='6' x2='18' y2='18' />
+							</svg>
+						</button>
 
-            {/* Image */}
-            <img
-              src={activeImageModal.src}
-              alt={activeImageModal.title || "Full size view"}
-              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-white/20 select-text"
-            />
-            {activeImageModal.title && (
-              <p className="text-white/80 text-sm font-medium mt-3 px-4 py-1 bg-black/50 rounded-full backdrop-blur-xs">
-                {activeImageModal.title}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-    </main>
+						{/* Image */}
+						<img
+							src={activeImageModal.src}
+							alt={activeImageModal.title || 'Full size view'}
+							className='max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-white/20 select-text'
+						/>
+						{activeImageModal.title && (
+							<p className='text-white/80 text-sm font-medium mt-3 px-4 py-1 bg-black/50 rounded-full backdrop-blur-xs'>
+								{activeImageModal.title}
+							</p>
+						)}
+					</div>
+				</div>
+			)}
+			{/* Custom Rename Chat Modal */}
+			{isRenameModalOpen && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-4'>
+							<h3 className='text-lg font-bold'>Rename Chat</h3>
+							<button onClick={() => setIsRenameModalOpen(false)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<form onSubmit={handleConfirmRenameChat} className='space-y-4'>
+							<div>
+								<label className='block text-xs font-semibold text-white/70 mb-1'>Chat Name</label>
+								<input
+									type='text'
+									autoFocus
+									placeholder='Enter chat name'
+									value={renameInputVal}
+									onChange={(e) => setRenameInputVal(e.target.value)}
+									className='w-full bg-[#2d2d30] border border-white/10 rounded-2xl px-4 py-3 text-base text-white placeholder-white/40 outline-none focus:border-[#7678ed] transition-colors font-medium'
+								/>
+							</div>
+							<div className='flex items-center justify-end gap-3 pt-2'>
+								<button
+									type='button'
+									onClick={() => setIsRenameModalOpen(false)}
+									className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+								>
+									Cancel
+								</button>
+								<button
+									type='submit'
+									disabled={!renameInputVal.trim()}
+									className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer'
+								>
+									Save
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+
+			{/* Custom Delete Chat Modal */}
+			{isDeleteModalOpen && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-2'>
+							<h3 className='text-lg font-bold text-[#ff4d4f]'>Delete Conversation?</h3>
+							<button onClick={() => setIsDeleteModalOpen(false)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<p className='text-sm text-white/70 leading-relaxed mb-6'>
+							Are you sure you want to delete this conversation? All messages and attachments in this chat will be permanently removed.
+						</p>
+						<div className='flex items-center justify-end gap-3'>
+							<button
+								type='button'
+								onClick={() => setIsDeleteModalOpen(false)}
+								className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+							>
+								Cancel
+							</button>
+							<button
+								type='button'
+								onClick={handleConfirmDeleteChat}
+								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#ff4d4f] hover:bg-[#e04345] text-white transition-all shadow-md shadow-[#ff4d4f]/30 cursor-pointer'
+							>
+								Delete Chat
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+			{/* Custom New Chat Modal */}
+			{isNewChatModalOpen && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-4'>
+							<h3 className='text-lg font-bold'>New Chat</h3>
+							<button
+								onClick={() => setIsNewChatModalOpen(false)}
+								className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'
+							>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<form onSubmit={handleConfirmCreateNewChat} className='space-y-4'>
+							<div>
+								<label className='block text-xs font-semibold text-white/70 mb-1'>Chat Title</label>
+								<input
+									type='text'
+									autoFocus
+									placeholder='Enter chat title'
+									value={newChatTitleInput}
+									onChange={(e) => setNewChatTitleInput(e.target.value)}
+									className='w-full bg-[#2d2d30] border border-white/10 rounded-2xl px-4 py-3 text-base text-white placeholder-white/40 outline-none focus:border-[#7678ed] transition-colors font-medium'
+								/>
+							</div>
+							<div className='flex items-center justify-end gap-3 pt-2'>
+								<button
+									type='button'
+									onClick={() => setIsNewChatModalOpen(false)}
+									className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+								>
+									Cancel
+								</button>
+								<button
+									type='submit'
+									disabled={!newChatTitleInput.trim()}
+									className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer'
+								>
+									Create Chat
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+		</main>
   );
 }
