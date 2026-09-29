@@ -1347,12 +1347,14 @@ export default function AlpacaWebPage() {
       const res = await fetch(`${API_URL}/chats/${chatId}`);
       if (res.ok) {
         const data: BackendChat = await res.json();
-        if (data.messages && data.messages.length > 0) {
-          setMessages(data.messages.map((m) => mapBackendMsgToMessage(m, modelPreferences)));
-        }
+        const rawMsgs = Array.isArray(data.messages) ? data.messages : [];
+        setMessages(rawMsgs.map((m) => mapBackendMsgToMessage(m, modelPreferences)));
+      } else {
+        setMessages([]);
       }
     } catch (err) {
       console.warn("Could not fetch chat messages from backend API:", err);
+      setMessages([]);
     }
   };
 
@@ -1381,6 +1383,7 @@ export default function AlpacaWebPage() {
 
   useEffect(() => {
     if (activeChatId) {
+      setMessages([]);
       fetchChatMessages(activeChatId);
       if (typeof window !== "undefined") {
         const url = new URL(window.location.href);
@@ -1389,6 +1392,8 @@ export default function AlpacaWebPage() {
           window.history.pushState({}, "", url.toString());
         }
       }
+    } else {
+      setMessages([]);
     }
   }, [activeChatId]);
 
@@ -2802,9 +2807,6 @@ export default function AlpacaWebPage() {
 																			Provider: {editingModel.provider || selectedInstanceForModels?.type || 'Ollama'}
 																		</span>
 																		<span className='px-3 py-1 bg-[#eaecf9]/80 rounded-xl font-semibold text-[#7678ed]'>
-																			Context: {displayCtx}
-																		</span>
-																		<span className='px-3 py-1 bg-[#eaecf9]/80 rounded-xl font-semibold text-[#7678ed]'>
 																			TTS Voice: {displayVoice}
 																		</span>
 																	</div>
@@ -2847,38 +2849,6 @@ export default function AlpacaWebPage() {
 																		<option value='am_adam'>am_adam (Male Deep)</option>
 																		<option value='am_michael'>am_michael (Male Smooth)</option>
 																	</select>
-																</div>
-															</div>
-
-															<div>
-																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Context Window Size (num_ctx)</label>
-																<div className='space-y-2'>
-																	<input
-																		type='number'
-																		step={1024}
-																		min={512}
-																		max={1048576}
-																		value={editModelNumCtx}
-																		onChange={(e) => setEditModelNumCtx(Number(e.target.value))}
-																		placeholder='8192'
-																		className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all'
-																	/>
-																	<div className='flex items-center gap-1.5 flex-wrap'>
-																		{[2048, 4096, 8192, 16384, 32768, 65536, 131072].map((size) => (
-																			<button
-																				key={size}
-																				type='button'
-																				onClick={() => setEditModelNumCtx(size)}
-																				className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-																					editModelNumCtx === size
-																						? 'bg-[#7678ed] text-white shadow-xs'
-																						: 'bg-[#eaecf9]/80 text-[#5d6075] hover:bg-[#eaecf9]'
-																				}`}
-																			>
-																				{size >= 1024 ? `${size / 1024}k` : size}
-																			</button>
-																		))}
-																	</div>
 																</div>
 															</div>
 

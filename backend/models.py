@@ -175,17 +175,39 @@ class ModelPreferences(db.Model):
     id = db.Column(db.String, primary_key=True)
     picture = db.Column(db.Text, nullable=True)
     voice = db.Column(db.String, nullable=True)
-    num_ctx = db.Column(db.Integer, nullable=True)
     character = db.Column(db.Text, nullable=True)
 
-    def get_character(self) -> dict:
+    def _get_raw_character_dict(self) -> dict:
         try:
-            return json.loads(self.character) if self.character else {}
+            val = json.loads(self.character) if self.character else {}
+            return val if isinstance(val, dict) else {}
         except Exception:
             return {}
 
+    @property
+    def num_ctx(self):
+        raw = self._get_raw_character_dict()
+        return raw.get("_num_ctx")
+
+    @num_ctx.setter
+    def num_ctx(self, value):
+        raw = self._get_raw_character_dict()
+        if value is None:
+            raw.pop("_num_ctx", None)
+        else:
+            raw["_num_ctx"] = value
+        self.character = json.dumps(raw)
+
+    def get_character(self) -> dict:
+        raw = self._get_raw_character_dict()
+        return {k: v for k, v in raw.items() if k != "_num_ctx"}
+
     def set_character(self, char_dict: dict):
-        self.character = json.dumps(char_dict)
+        current_ctx = self.num_ctx
+        new_dict = dict(char_dict) if isinstance(char_dict, dict) else {}
+        if current_ctx is not None:
+            new_dict["_num_ctx"] = current_ctx
+        self.character = json.dumps(new_dict)
 
     def to_dict(self):
         return {
