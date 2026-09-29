@@ -1,0 +1,195 @@
+import datetime
+import json
+import uuid
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
+
+
+def generate_uuid() -> str:
+    """Generate Alpaca-compatible UUID string."""
+    return f"{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}{uuid.uuid4().hex}"
+
+
+def current_alpaca_timestamp() -> str:
+    """Generate Alpaca-compatible datetime string (YYYY/MM/DD HH:MM:SS)."""
+    return datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+
+
+class ChatFolder(db.Model):
+    __tablename__ = "chat_folder"
+
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    name = db.Column(db.String, nullable=False)
+    color = db.Column(db.String, nullable=True)
+    parent = db.Column(db.String, db.ForeignKey("chat_folder.id"), nullable=True)
+
+    subfolders = db.relationship(
+        "ChatFolder",
+        backref=db.backref("parent_folder", remote_side=[id]),
+        cascade="all, delete-orphan",
+    )
+    chats = db.relationship("Chat", backref="folder_ref", cascade="all, delete-orphan")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "color": self.color,
+            "parent": self.parent,
+        }
+
+
+class Chat(db.Model):
+    __tablename__ = "chat"
+
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    name = db.Column(db.String, nullable=False)
+    folder = db.Column(db.String, db.ForeignKey("chat_folder.id"), nullable=True)
+    is_template = db.Column(db.Integer, nullable=False, default=0)
+
+    messages = db.relationship(
+        "Message",
+        backref="chat",
+        cascade="all, delete-orphan",
+        order_by="Message.date_time.asc()",
+    )
+
+    def to_dict(self, include_messages=False):
+        data = {
+            "id": self.id,
+            "name": self.name,
+            "folder": self.folder,
+            "is_template": bool(self.is_template),
+            "latest_message_time": None,
+        }
+        if self.messages:
+            data["latest_message_time"] = self.messages[-1].date_time
+        if include_messages:
+            data["messages"] = [m.to_dict(include_attachments=True) for m in self.messages]
+        return data
+
+
+class Message(db.Model):
+    __tablename__ = "message"
+
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    chat_id = db.Column(db.String, db.ForeignKey("chat.id"), nullable=False)
+    role = db.Column(db.String, nullable=False)
+    model = db.Column(db.String, nullable=True)
+    date_time = db.Column(
+        db.String,
+        nullable=False,
+        default=current_alpaca_timestamp,
+    )
+    content = db.Column(db.Text, nullable=False)
+
+    attachments = db.relationship(
+        "Attachment", backref="message", cascade="all, delete-orphan"
+    )
+
+    def to_dict(self, include_attachments=True):
+        data = {
+            "id": self.id,
+            "chat_id": self.chat_id,
+            "role": self.role,
+            "model": self.model,
+            "date_time": self.date_time,
+            "content": self.content,
+        }
+        if include_attachments:
+            data["attachments"] = [a.to_dict() for a in self.attachments]
+        return data
+
+
+class Attachment(db.Model):
+    __tablename__ = "attachment"
+
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    message_id = db.Column(db.String, db.ForeignKey("message.id"), nullable=False)
+    type = db.Column(db.String, nullable=False)
+    name = db.Column(db.String, nullable=False)
+    content = db.Column(db.Text, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "message_id": self.message_id,
+            "type": self.type,
+            "name": self.name,
+            "content": self.content,
+        }
+
+
+class Instance(db.Model):
+    __tablename__ = "instance"
+
+    id = db.Column(db.String, primary_key=True)
+    pinned = db.Column(db.Integer, nullable=False, default=0)
+    type = db.Column(db.String, nullable=False)
+    properties = db.Column(db.Text, nullable=False, default="{}")
+
+    def get_properties(self) -> dict:
+        try:
+            return json.loads(self.properties) if self.properties else {}
+        except Exception:
+            return {}
+
+    def set_properties(self, prop_dict: dict):
+        self.properties = json.dumps(prop_dict)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "pinned": bool(self.pinned),
+            "type": self.type,
+            "properties": self.get_properties(),
+        }
+
+
+class OnlineInstanceModelList(db.Model):
+    __tablename__ = "online_instance_model_list"
+
+    id = db.Column(db.String, primary_key=True)
+    list = db.Column(db.Text, nullable=False, default="[]")
+
+    def get_list(self) -> list:
+        try:
+            return json.loads(self.list) if self.list else []
+        except Exception:
+            return []
+
+    def set_list(self, model_list: list):
+        self.list = json.dumps(model_list)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "list": self.get_list(),
+        }
+
+
+class ModelPreferences(db.Model):
+    __tablename__ = "model_preferences"
+
+    id = db.Column(db.String, primary_key=True)
+    picture = db.Column(db.Text, nullable=True)
+    voice = db.Column(db.String, nullable=True)
+    character = db.Column(db.Text, nullable=True)
+
+    def get_character(self) -> dict:
+        try:
+            return json.loads(self.character) if self.character else {}
+        except Exception:
+            return {}
+
+    def set_character(self, char_dict: dict):
+        self.character = json.dumps(char_dict)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "picture": self.picture,
+            "voice": self.voice,
+            "character": self.get_character(),
+        }
