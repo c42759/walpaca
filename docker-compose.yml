@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./alpaca.db:/app/alpaca.db
+    environment:
+      - ALPACA_DB_PATH=/app/alpaca.db
+      - TTS_SERVER_URL=http://kokoro:8880
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: always
+
+  kokoro:
+    container_name: kokoro
+    image: hwdsl2/kokoro-server
+    ports:
+      - "8880:8880"
+    volumes:
+      - kokoro-data:/var/lib/kokoro
+    restart: always
+
+volumes:
+  kokoro-data:
