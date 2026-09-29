@@ -19,7 +19,16 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
 
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    CORS(
+        app,
+        resources={
+            r"/api/*": {
+                "origins": "*",
+                "allow_headers": "*",
+                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            }
+        },
+    )
     db.init_app(app)
 
     app.register_blueprint(api_bp)
