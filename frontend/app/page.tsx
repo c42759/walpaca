@@ -21,6 +21,8 @@ interface Message {
   id: string;
   senderName: string;
   senderAvatar?: string;
+  senderRole?: string;
+  instanceId?: string;
   model?: string;
   isSelf: boolean;
   content: string;
@@ -149,6 +151,12 @@ const formatAvatarPicture = (picture?: string | null): string | undefined => {
     return picture;
   }
   return `data:image/png;base64,${picture}`;
+};
+
+const autoResizeTextarea = (el: HTMLTextAreaElement | null) => {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
 };
 
 const getModelAvatarPicture = (pref?: ModelPreference | null, mod?: any): string | undefined => {
@@ -517,6 +525,87 @@ export default function AlpacaWebPage() {
   const [instanceModelsList, setInstanceModelsList] = useState<any[]>([]);
   const [selectedInstanceType, setSelectedInstanceType] = useState<string>("Ollama");
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
+
+  // Chat Instance & Model Selector State
+  const [selectedChatInstanceId, setSelectedChatInstanceId] = useState<string>("");
+  const [selectedChatModelId, setSelectedChatModelId] = useState<string>("");
+  const [isThinkingEnabled, setIsThinkingEnabled] = useState<boolean>(false);
+
+  // Inline Message Editing States & Handlers
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editingMsgContent, setEditingMsgContent] = useState<string>("");
+  const [deletingMsg, setDeletingMsg] = useState<Message | null>(null);
+
+  const handleStartInlineEdit = (msg: Message) => {
+    setEditingMsgId(msg.id);
+    setEditingMsgContent(msg.content);
+  };
+
+  const handleSaveInlineEdit = async () => {
+    if (!editingMsgId) return;
+    const updatedContent = editingMsgContent.trim();
+    const msgId = editingMsgId;
+
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msgId ? { ...m, content: updatedContent } : m))
+    );
+    setEditingMsgId(null);
+    setEditingMsgContent("");
+
+    try {
+      await fetch(`${API_URL}/messages/${msgId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: updatedContent }),
+      });
+    } catch (err) {
+      console.warn("Could not update message content on backend:", err);
+    }
+  };
+
+  const handleOpenDeleteMessageModal = (msg: Message) => {
+    setDeletingMsg(msg);
+  };
+
+  const handleConfirmDeleteMessage = async () => {
+    if (!deletingMsg) return;
+    const msgId = deletingMsg.id;
+
+    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    setDeletingMsg(null);
+
+    try {
+      await fetch(`${API_URL}/messages/${msgId}`, {
+        method: "DELETE",
+      });
+    } catch (err) {
+      console.warn("Could not delete message on backend:", err);
+    }
+  };
+
+  const fetchModelsForInstance = async (instId: string) => {
+    if (!instId) return;
+    try {
+      const res = await fetch(`${API_URL}/instances/${instId}/models`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setInstanceModelsList(data);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch instance models for chat selector:", err);
+    }
+    const inst = instances.find((i) => i.id === instId);
+    if (inst) {
+      const instName = inst.properties?.name || inst.type;
+      setInstanceModelsList([
+        { id: `${inst.id}-m1`, name: `${instName} Model 1`, provider: inst.type, voice: "af_heart", context: "8,192 tokens" },
+        { id: `${inst.id}-m2`, name: `${instName} Model 2`, provider: inst.type, voice: "am_adam", context: "16,384 tokens" },
+      ]);
+    }
+  };
 
   const handleOpenDuplicateModal = () => {
     setIsChatContextMenuOpen(false);
@@ -1403,6 +1492,70 @@ export default function AlpacaWebPage() {
     }
   }, [messages, activeChatId]);
 
+  // Requirement 1: Auto-select Instance if only 1 exists or unselected
+  useEffect(() => {
+    if (instances.length > 0) {
+      if (instances.length === 1 || !selectedChatInstanceId) {
+        const defaultInstId = instances[0].id;
+        setSelectedChatInstanceId(defaultInstId);
+        fetchModelsForInstance(defaultInstId);
+      }
+    }
+  }, [instances]);
+
+  // Requirement 2: Auto-select Model/Preference if only 1 exists or unselected
+  useEffect(() => {
+    const prefs = Array.from(new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values());
+    const options = [...prefs.map((p) => p.id), ...instanceModelsList.map((m) => m.id)];
+    if (options.length === 1 || (!selectedChatModelId && options.length > 0)) {
+      setSelectedChatModelId(options[0]);
+    }
+  }, [instanceModelsList, modelPreferences, selectedChatInstanceId]);
+
+  // Requirement 3: Auto-select Instance & Model based on last assistant message in active chat
+  useEffect(() => {
+    if (!messages || messages.length === 0) return;
+
+    const lastAssistantMsg = [...messages].reverse().find(
+      (m) => !m.isSelf && (m.senderRole === "assistant" || m.senderName !== "You" || m.model)
+    );
+
+    if (lastAssistantMsg) {
+      const targetModelIdentifier = String(lastAssistantMsg.model || lastAssistantMsg.senderName || "").trim();
+      if (targetModelIdentifier) {
+        const prefsList = Array.from(
+          new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()
+        );
+        const matchingPref = prefsList.find(
+          (p) =>
+            p.id.toLowerCase() === targetModelIdentifier.toLowerCase() ||
+            (getCharacterName(p.character) && getCharacterName(p.character)?.toLowerCase() === targetModelIdentifier.toLowerCase())
+        );
+
+        if (matchingPref) {
+          setSelectedChatModelId(matchingPref.id);
+        } else {
+          const matchingMod = instanceModelsList.find(
+            (m) =>
+              String(m.id || "").toLowerCase() === targetModelIdentifier.toLowerCase() ||
+              String(m.name || "").toLowerCase() === targetModelIdentifier.toLowerCase()
+          );
+          if (matchingMod) {
+            setSelectedChatModelId(matchingMod.id);
+          }
+        }
+
+        if ((lastAssistantMsg as any).instanceId) {
+          const matchingInst = instances.find((inst) => inst.id === (lastAssistantMsg as any).instanceId);
+          if (matchingInst) {
+            setSelectedChatInstanceId(matchingInst.id);
+            fetchModelsForInstance(matchingInst.id);
+          }
+        }
+      }
+    }
+  }, [messages, activeChatId]);
+
   const handleCreateFolderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFolderName.trim()) return;
@@ -1491,7 +1644,7 @@ export default function AlpacaWebPage() {
     setInputText("");
 
     const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-    const newMsg: Message = {
+    const userMsg: Message = {
       id: `msg-${Date.now()}`,
       senderName: "You",
       senderAvatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
@@ -1500,21 +1653,200 @@ export default function AlpacaWebPage() {
       time: nowStr,
     };
 
-    setMessages((prev) => [...prev, newMsg]);
+    setMessages((prev) => [...prev, userMsg]);
 
-    try {
-      if (activeChatId) {
+    // Save user message to backend
+    if (activeChatId) {
+      try {
         await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             role: "user",
             content,
+            model: selectedChatModelId,
+            instance_id: selectedChatInstanceId,
           }),
         });
+      } catch (err) {
+        console.warn("Could not post user message to backend API:", err);
+      }
+    }
+
+    await handleCallForAnswer();
+  };
+
+  const handleCallForAnswer = async () => {
+    // Determine Assistant Metadata & System Prompt
+    const selectedPrefKey = (selectedChatModelId || "").toLowerCase();
+    const selectedPref =
+      modelPreferences[selectedChatModelId] ||
+      modelPreferences[selectedPrefKey] ||
+      Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+
+    let assistantName = "Assistant";
+    let assistantAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80";
+    let systemPrompt = "";
+
+    if (selectedPref) {
+      const char = selectedPref.character || {};
+      const charData = char.data || char || {};
+      assistantName = getCharacterName(char) || (selectedPref as any).name || selectedPref.id;
+      if (selectedPref.picture) {
+        assistantAvatar = formatAvatarPicture(selectedPref.picture) || assistantAvatar;
+      }
+      systemPrompt =
+        charData.system_prompt ||
+        charData.personality ||
+        charData.description ||
+        selectedPref.description ||
+        "";
+    } else if (selectedChatModelId) {
+      const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
+      if (instMod) {
+        assistantName = instMod.name || instMod.id;
+      } else {
+        assistantName = selectedChatModelId;
+      }
+    }
+
+    const assistantMsgId = `msg-${Date.now()}`;
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      senderName: assistantName,
+      senderAvatar: assistantAvatar,
+      senderRole: "assistant",
+      model: selectedChatModelId,
+      instanceId: selectedChatInstanceId,
+      isSelf: false,
+      content: "",
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
+    };
+
+    setMessages((prev) => [...prev, assistantMsg]);
+
+    let fullResponseText = "";
+    const genUrl = activeChatId ? `${API_URL}/chats/${activeChatId}/generate` : `${API_URL}/generate`;
+
+    try {
+      const genRes = await fetch(genUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: selectedChatModelId,
+          instance_id: selectedChatInstanceId,
+          system: systemPrompt || undefined,
+          think: isThinkingEnabled,
+        }),
+      });
+
+      if (genRes.ok && genRes.body) {
+        const reader = genRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith("data: ")) continue;
+            const dataStr = trimmed.slice(6).trim();
+            if (dataStr === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.content) {
+                fullResponseText += parsed.content;
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantMsgId ? { ...m, content: m.content + parsed.content } : m))
+                );
+              }
+            } catch {
+              if (dataStr && !dataStr.startsWith("{")) {
+                fullResponseText += dataStr;
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantMsgId ? { ...m, content: m.content + dataStr } : m))
+                );
+              }
+            }
+          }
+        }
       }
     } catch (err) {
-      console.warn("Could not post message to backend API:", err);
+      console.warn("Error during LLM response generation:", err);
+    }
+
+    // Persist assistant message to DB
+    if (activeChatId && fullResponseText.trim()) {
+      try {
+        await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role: "assistant",
+            content: fullResponseText,
+            model: selectedChatModelId,
+            instance_id: selectedChatInstanceId,
+          }),
+        });
+      } catch (err) {
+        console.warn("Could not post generated assistant response to backend API:", err);
+      }
+    }
+  };
+
+  const handleUseCharacterFirstMes = async () => {
+    if (!activeChatId || !selectedChatModelId) return;
+    const prefKey = selectedChatModelId.toLowerCase();
+    const pref =
+      modelPreferences[selectedChatModelId] ||
+      modelPreferences[prefKey] ||
+      Object.values(modelPreferences).find((p) => p.id.toLowerCase() === prefKey);
+
+    if (!pref) return;
+    const char = pref.character || {};
+    const charData = char.data || char || {};
+    const firstMes = (charData.first_mes || charData.first_message || pref.first_message || '').trim();
+
+    if (!firstMes) return;
+
+    const charName = getCharacterName(char) || (pref as any).name || pref.id;
+    const avatarSrc = formatAvatarPicture(pref.picture);
+    const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+
+    const newMsg: Message = {
+      id: `msg-${Date.now()}`,
+      senderName: charName,
+      senderAvatar: avatarSrc,
+      senderRole: "assistant",
+      model: selectedChatModelId,
+      instanceId: selectedChatInstanceId,
+      isSelf: false,
+      content: firstMes,
+      time: nowStr,
+    };
+
+    setMessages((prev) => [...prev, newMsg]);
+
+    try {
+      await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: "assistant",
+          content: firstMes,
+          model: selectedChatModelId,
+          instance_id: selectedChatInstanceId,
+        }),
+      });
+    } catch (err) {
+      console.warn("Could not post character first message to backend API:", err);
     }
   };
 
@@ -3407,8 +3739,40 @@ export default function AlpacaWebPage() {
 								</div>
 
 								{/* Conversation Messages */}
-								<div className='flex-1 overflow-y-auto px-8 py-6 space-y-6'>
-									{messages.map((msg) => {
+								<div className='flex-1 overflow-y-auto px-8 py-6 space-y-6 flex flex-col'>
+									{messages.length === 0 ? (() => {
+										const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
+										const selectedPref =
+											modelPreferences[selectedChatModelId] ||
+											modelPreferences[selectedPrefKey] ||
+											Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+										const char = selectedPref?.character || {};
+										const charData = char.data || char || {};
+										const firstMes = (charData.first_mes || charData.first_message || selectedPref?.first_message || '').trim();
+
+										return (
+											<div className='flex flex-col items-center justify-center h-full min-h-[350px] text-center p-8 select-none my-auto'>
+												<div className='w-24 h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-6 text-[#7678ed] shadow-inner'>
+													<img src='/icon-black.svg' alt='Alpaca Logo' className='w-14 h-14 opacity-70' />
+												</div>
+												<h3 className='text-2xl font-bold text-[#202022] mb-2'>No messages yet</h3>
+												<p className='text-base text-[#8e90a6] max-w-sm mb-6'>
+													Start a conversation by typing a message below or using a character template.
+												</p>
+												{selectedPref && firstMes ? (
+													<button
+														type='button'
+														onClick={handleUseCharacterFirstMes}
+														className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer flex items-center gap-2'
+													>
+														<span>✨</span>
+														<span>Use Character</span>
+													</button>
+												) : null}
+											</div>
+										);
+									})() : (
+										messages.map((msg) => {
 										if (msg.isSelf) {
 											{
 												/* User message (Role 'user' -> Right side, full width) */
@@ -3421,27 +3785,86 @@ export default function AlpacaWebPage() {
 												if (src && !imageSources.includes(src)) imageSources.push(src);
 											});
 
+											const isEditingUser = editingMsgId === msg.id;
+
 											return (
 												<div key={msg.id} className='flex items-start justify-end gap-3.5 w-full'>
 													<div className='flex flex-col items-end flex-1 w-full min-w-0'>
 														<div className='bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-5 py-4 text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full'>
-															<div className='leading-relaxed font-normal'>{renderMarkdownText(msg.content)}</div>
-															{imageSources.length > 0 && (
-																<div className='flex flex-row gap-2.5 overflow-x-auto mt-3 pb-1.5 max-w-full'>
-																	{imageSources.map((src, idx) => (
-																		<img
-																			key={idx}
-																			src={src}
-																			alt={`Attachment ${idx + 1}`}
-																			className='h-32 min-w-[128px] max-w-[260px] rounded-xl object-cover border border-white/20 shadow-xs flex-shrink-0 cursor-pointer hover:opacity-95 transition-opacity'
-																			onClick={() => setActiveImageModal({ src, title: `Attachment Image ${idx + 1}` })}
-																		/>
-																	))}
+															{isEditingUser ? (
+																<div className='flex flex-col gap-3 w-full my-1'>
+																	<textarea
+																		ref={autoResizeTextarea}
+																		rows={1}
+																		value={editingMsgContent}
+																		onChange={(e) => {
+																			setEditingMsgContent(e.target.value);
+																			autoResizeTextarea(e.currentTarget);
+																		}}
+																		onInput={(e) => autoResizeTextarea(e.currentTarget)}
+																		className='w-full bg-white/10 text-white placeholder-white/50 rounded-xl p-3.5 text-base outline-none border border-white/30 focus:border-white transition-all resize-none overflow-hidden font-normal leading-relaxed'
+																		autoFocus
+																	/>
+																	<div className='flex items-center justify-end gap-2'>
+																		<button
+																			type='button'
+																			onClick={() => setEditingMsgId(null)}
+																			className='px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer'
+																		>
+																			Cancel
+																		</button>
+																		<button
+																			type='button'
+																			onClick={handleSaveInlineEdit}
+																			disabled={!editingMsgContent.trim()}
+																			className='px-4 py-1.5 rounded-lg text-xs font-semibold bg-white text-[#7678ed] hover:bg-white/90 disabled:opacity-50 transition-all shadow-xs cursor-pointer'
+																		>
+																			Save
+																		</button>
+																	</div>
 																</div>
+															) : (
+																<>
+																	<div className='leading-relaxed font-normal'>{renderMarkdownText(msg.content)}</div>
+																	{imageSources.length > 0 && (
+																		<div className='flex flex-row gap-2.5 overflow-x-auto mt-3 pb-1.5 max-w-full'>
+																			{imageSources.map((src, idx) => (
+																				<img
+																					key={idx}
+																					src={src}
+																					alt={`Attachment ${idx + 1}`}
+																					className='h-32 min-w-[128px] max-w-[260px] rounded-xl object-cover border border-white/20 shadow-xs flex-shrink-0 cursor-pointer hover:opacity-95 transition-opacity'
+																					onClick={() => setActiveImageModal({ src, title: `Attachment Image ${idx + 1}` })}
+																				/>
+																			))}
+																		</div>
+																	)}
+																	<div className='flex items-center justify-end gap-2 text-sm text-white/80 mt-2'>
+																		<button
+																			type='button'
+																			onClick={() => handleStartInlineEdit(msg)}
+																			className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white transition-all cursor-pointer'
+																			title='Edit Message'
+																		>
+																			<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																			</svg>
+																		</button>
+																		<button
+																			type='button'
+																			onClick={() => handleOpenDeleteMessageModal(msg)}
+																			className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white hover:text-[#ff7875] transition-all cursor-pointer'
+																			title='Delete Message'
+																		>
+																			<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<polyline points='3 6 5 6 21 6' />
+																				<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																			</svg>
+																		</button>
+																		<span>{msg.time}</span>
+																	</div>
+																</>
 															)}
-															<div className='flex items-center justify-end gap-2 text-sm text-white/80 mt-2'>
-																<span>{msg.time}</span>
-															</div>
 														</div>
 													</div>
 													<div
@@ -3483,6 +3906,7 @@ export default function AlpacaWebPage() {
 
 											const isThisMsgPlaying = ttsState.msgId === msg.id && ttsState.status === 'playing';
 											const isThisMsgActive = ttsState.msgId === msg.id && ttsState.status !== 'stopped';
+											const isEditingAssistant = editingMsgId === msg.id;
 
 											const thoughtAtt = msg.attachments?.find(
 												(a) => a.type?.toLowerCase() === 'thought' || a.type?.toLowerCase() === 'brain',
@@ -3589,10 +4013,65 @@ export default function AlpacaWebPage() {
 																			<span>Metadata</span>
 																		</button>
 																	)}
+																	<button
+																		type='button'
+																		onClick={() => handleStartInlineEdit(msg)}
+																		className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#7678ed] hover:border-[#7678ed] hover:bg-[#f4f6fc] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																		title='Edit Message'
+																	>
+																		<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																			<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																		</svg>
+																	</button>
+																	<button
+																		type='button'
+																		onClick={() => handleOpenDeleteMessageModal(msg)}
+																		className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#ff4d4f] hover:border-[#ff4d4f] hover:bg-[#fff1f0] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																		title='Delete Message'
+																	>
+																		<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																			<polyline points='3 6 5 6 21 6' />
+																			<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																		</svg>
+																	</button>
 																</div>
 															</div>
 															<div className='leading-relaxed'>
-																{renderMarkdownText(msg.content, msg.id === ttsState.msgId ? ttsState.lineIndex : undefined)}
+																{isEditingAssistant ? (
+																	<div className='flex flex-col gap-3 w-full my-2'>
+																		<textarea
+																			ref={autoResizeTextarea}
+																			rows={1}
+																			value={editingMsgContent}
+																			onChange={(e) => {
+																				setEditingMsgContent(e.target.value);
+																				autoResizeTextarea(e.currentTarget);
+																			}}
+																			onInput={(e) => autoResizeTextarea(e.currentTarget)}
+																			className='w-full bg-white border border-[#e2e5f1] text-[#202022] rounded-xl p-3.5 text-base outline-none focus:border-[#7678ed] focus:ring-1 focus:ring-[#7678ed] transition-all resize-none overflow-hidden font-normal leading-relaxed'
+																			autoFocus
+																		/>
+																		<div className='flex items-center justify-end gap-2'>
+																			<button
+																				type='button'
+																				onClick={() => setEditingMsgId(null)}
+																				className='px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#e2e5f1] hover:bg-[#d5d8e6] text-[#5d6075] transition-all cursor-pointer'
+																			>
+																				Cancel
+																			</button>
+																			<button
+																				type='button'
+																				onClick={handleSaveInlineEdit}
+																				disabled={!editingMsgContent.trim()}
+																				className='px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-xs cursor-pointer'
+																			>
+																				Save
+																			</button>
+																		</div>
+																	</div>
+																) : (
+																	renderMarkdownText(msg.content, msg.id === ttsState.msgId ? ttsState.lineIndex : undefined)
+																)}
 															</div>
 															<div className='flex items-center justify-between gap-4 mt-2.5 pt-1'>
 																{msg.reactions && msg.reactions.length > 0 && (
@@ -3632,15 +4111,112 @@ export default function AlpacaWebPage() {
 												</div>
 											);
 										}
-									})}
+									})
+									)}
+									{messages.length > 0 && messages[messages.length - 1].isSelf && (
+										<div className='flex justify-center my-3 animate-in fade-in duration-200 select-none'>
+											<button
+												type='button'
+												onClick={handleCallForAnswer}
+												className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer flex items-center gap-2'
+											>
+												<span>🤖</span>
+												<span>Call for an answer</span>
+											</button>
+										</div>
+									)}
 									<div ref={messagesEndRef} />
 								</div>
 
 								{/* Input Composer */}
-								<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex items-center gap-3'>
+								<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex items-center gap-2.5'>
+									{/* 1. Instance Selector (Requirement 1: Before attach icon) */}
+									<div className='relative shrink-0'>
+										<select
+											value={selectedChatInstanceId}
+											onChange={(e) => {
+												setSelectedChatInstanceId(e.target.value);
+												fetchModelsForInstance(e.target.value);
+											}}
+											className='bg-[#f0f2f9] text-[#202022] hover:bg-[#eaecf9] border border-[#e8ebf3] rounded-2xl px-3 py-2.5 text-xs font-bold outline-none focus:border-[#7678ed] cursor-pointer max-w-[130px] truncate transition-all shadow-xs'
+											title='Select Instance'
+										>
+											{instances.length === 0 ? (
+												<option value=''>No Instance</option>
+											) : (
+												instances.map((inst) => (
+													<option key={inst.id} value={inst.id}>
+														⚡ {inst.properties?.name || inst.type}
+													</option>
+												))
+											)}
+										</select>
+									</div>
+
+									{/* 2. Model Selector (Requirement 2: Before attach icon, Preferences on top) */}
+									<div className='relative shrink-0'>
+										<select
+											value={selectedChatModelId}
+											onChange={(e) => setSelectedChatModelId(e.target.value)}
+											className='bg-[#f0f2f9] text-[#202022] hover:bg-[#eaecf9] border border-[#e8ebf3] rounded-2xl px-3 py-2.5 text-xs font-bold outline-none focus:border-[#7678ed] cursor-pointer max-w-[160px] truncate transition-all shadow-xs'
+											title='Select Responding Model'
+										>
+											{(() => {
+												const prefList = Array.from(
+													new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()
+												);
+
+												return (
+													<>
+														{/* Preferences on top */}
+														{prefList.length > 0 && (
+															<optgroup label='Model Preferences'>
+																{prefList.map((pref) => (
+																	<option key={`pref-${pref.id}`} value={pref.id}>
+																		✨ {getCharacterName(pref.character) || (pref as any).name || pref.id} (Pref)
+																	</option>
+																))}
+															</optgroup>
+														)}
+
+														{/* Instance models below */}
+														{instanceModelsList.length > 0 && (
+															<optgroup label='Instance Models'>
+																{instanceModelsList.map((mod) => (
+																	<option key={`mod-${mod.id}`} value={mod.id}>
+																		🤖 {mod.name || mod.id}
+																	</option>
+																))}
+															</optgroup>
+														)}
+
+														{prefList.length === 0 && instanceModelsList.length === 0 && (
+															<option value=''>No Models Available</option>
+														)}
+													</>
+												);
+											})()}
+										</select>
+									</div>
+
+									{/* 3. Thinking Mode Brain Toggle Button */}
 									<button
 										type='button'
-										className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors'
+										onClick={() => setIsThinkingEnabled((prev) => !prev)}
+										className={`p-2.5 rounded-2xl transition-all cursor-pointer shrink-0 border flex items-center justify-center ${
+											isThinkingEnabled
+												? 'bg-[#7678ed]/10 border-[#7678ed] text-[#7678ed] opacity-100 shadow-xs'
+												: 'bg-[#f0f2f9] border-[#e8ebf3] text-[#8e90a6] hover:bg-[#eaecf9] opacity-40 hover:opacity-70'
+										}`}
+										title={isThinkingEnabled ? 'Thinking Mode Enabled (think=True)' : 'Thinking Mode Disabled (click to enable)'}
+									>
+										<BrainIcon className='w-5 h-5' />
+									</button>
+
+									{/* Attach file button */}
+									<button
+										type='button'
+										className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors cursor-pointer shrink-0'
 										title='Attach file'
 									>
 										<svg
@@ -4213,6 +4789,42 @@ export default function AlpacaWebPage() {
 								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer'
 							>
 								Duplicate Chat
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Delete Message Confirmation Modal */}
+			{deletingMsg && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-2'>
+							<h3 className='text-lg font-bold text-[#ff4d4f]'>Delete Message?</h3>
+							<button onClick={() => setDeletingMsg(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<p className='text-sm text-white/70 leading-relaxed mb-6'>
+							Are you sure you want to delete this message? This action cannot be undone.
+						</p>
+						<div className='flex items-center justify-end gap-3'>
+							<button
+								type='button'
+								onClick={() => setDeletingMsg(null)}
+								className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+							>
+								Cancel
+							</button>
+							<button
+								type='button'
+								onClick={handleConfirmDeleteMessage}
+								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#ff4d4f] hover:bg-[#e04345] text-white transition-all shadow-md shadow-[#ff4d4f]/30 cursor-pointer'
+							>
+								Delete Message
 							</button>
 						</div>
 					</div>

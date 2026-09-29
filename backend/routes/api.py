@@ -678,3 +678,181 @@ def text_to_speech():
             "error": "Failed to reach TTS server",
             "detail": str(e.reason),
         }), 502
+
+
+# ----------------- STREAMING GENERATION / LLM INFERENCE -----------------
+@api_bp.route("/generate", methods=["POST"])
+@api_bp.route("/chats/<chat_id>/generate", methods=["POST"])
+def generate_response(chat_id=None):
+    """
+    Triggers an LLM response from the target instance model and streams tokens directly to the API caller.
+    Supports both Ollama (/api/chat or /api/generate) and OpenAI-compatible instances (/v1/chat/completions).
+    """
+    data = request.json or {}
+    instance_id = data.get("instance_id")
+    model = data.get("model") or "llama3"
+    prompt = data.get("prompt")
+    messages = data.get("messages")
+    system_prompt = data.get("system")
+    think = data.get("think")
+    if think is None:
+        think = data.get("thinking", False)
+
+    if chat_id and not messages and not prompt:
+        chat = Chat.query.get(chat_id)
+        if chat:
+            chat_msgs = (
+                Message.query.filter_by(chat_id=chat_id)
+                .order_by(Message.date_time.asc())
+                .all()
+            )
+            messages = [{"role": m.role, "content": m.content} for m in chat_msgs]
+
+    instance = Instance.query.get(instance_id) if instance_id else Instance.query.first()
+    props = instance.get_properties() if instance else {}
+    inst_type = (instance.type if instance else "ollama").lower()
+    host = props.get("url") or props.get("host") or props.get("endpoint") or ""
+    api_key = props.get("apiKey") or props.get("api_key") or props.get("key") or ""
+
+    if not host:
+        if inst_type == "ollama":
+            host = "http://localhost:11434"
+        elif inst_type == "openrouter":
+            host = "https://openrouter.ai/api/v1"
+        elif inst_type == "openai":
+            host = "https://api.openai.com/v1"
+        else:
+            host = "http://localhost:8000/v1"
+
+    host = host.rstrip("/")
+
+    headers = {"Content-Type": "application/json", "User-Agent": "AlpacaWeb/1.0"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    if not messages and prompt:
+        messages_payload = [{"role": "user", "content": prompt}]
+    elif messages:
+        messages_payload = messages
+    else:
+        messages_payload = [{"role": "user", "content": "Hello"}]
+
+    raw_num_ctx = (
+        data.get("num_ctx")
+        or props.get("num_ctx")
+        or props.get("numCtx")
+        or props.get("context_size")
+        or props.get("context")
+    )
+    num_ctx_val = None
+    if raw_num_ctx is not None:
+        try:
+            num_ctx_val = int(raw_num_ctx)
+        except (ValueError, TypeError):
+            pass
+
+    def generate_stream():
+        options = {}
+        if think:
+            options["think"] = True
+        if num_ctx_val is not None:
+            options["num_ctx"] = num_ctx_val
+
+        if inst_type == "ollama":
+            target_url = f"{host}/api/chat"
+            payload = {
+                "model": model,
+                "messages": messages_payload,
+                "stream": True,
+            }
+            if think:
+                payload["think"] = True
+            if options:
+                payload["options"] = options
+            req = urllib.request.Request(
+                target_url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    for line in resp:
+                        if not line:
+                            continue
+                        try:
+                            line_str = line.decode("utf-8").strip()
+                            if not line_str:
+                                continue
+                            chunk_data = json.loads(line_str)
+                            msg_chunk = chunk_data.get("message", {})
+                            content_delta = msg_chunk.get("content") or chunk_data.get("response", "")
+                            is_done = chunk_data.get("done", False)
+
+                            out_payload = {
+                                "model": model,
+                                "content": content_delta,
+                                "done": is_done,
+                            }
+                            yield f"data: {json.dumps(out_payload)}\n\n"
+                        except Exception:
+                            yield f"data: {line_str}\n\n"
+            except Exception as e:
+                err_payload = {"error": f"Failed streaming from Ollama instance: {str(e)}", "done": True}
+                yield f"data: {json.dumps(err_payload)}\n\n"
+
+        else:
+            target_url = host if host.endswith("/chat/completions") else (
+                f"{host}/chat/completions" if host.endswith("/v1") else f"{host}/v1/chat/completions"
+            )
+            payload = {
+                "model": model,
+                "messages": messages_payload,
+                "stream": True,
+            }
+            if options:
+                payload["options"] = options
+            req = urllib.request.Request(
+                target_url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    for line in resp:
+                        if not line:
+                            continue
+                        line_str = line.decode("utf-8").strip()
+                        if not line_str:
+                            continue
+                        if line_str.startswith("data: "):
+                            raw_data = line_str[6:].strip()
+                            if raw_data == "[DONE]":
+                                yield f"data: {json.dumps({'model': model, 'content': '', 'done': True})}\n\n"
+                                break
+                            try:
+                                chunk_data = json.loads(raw_data)
+                                choices = chunk_data.get("choices") or []
+                                delta = choices[0].get("delta", {}) if choices else {}
+                                content_delta = delta.get("content", "")
+                                out_payload = {
+                                    "model": model,
+                                    "content": content_delta,
+                                    "done": False,
+                                }
+                                yield f"data: {json.dumps(out_payload)}\n\n"
+                            except Exception:
+                                yield f"{line_str}\n\n"
+                        else:
+                            yield f"data: {line_str}\n\n"
+            except Exception as e:
+                err_payload = {"error": f"Failed streaming from LLM instance: {str(e)}", "done": True}
+                yield f"data: {json.dumps(err_payload)}\n\n"
+
+    response = Response(stream_with_context(generate_stream()), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+

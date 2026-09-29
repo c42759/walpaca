@@ -7,10 +7,15 @@
   --alpaca-light: #f9fafc;
   --alpaca-border: #e8ebf3;
   --alpaca-bubble: #f2f4f8;
+  --font-sans: var(--font-poppins), sans-serif;
+  --font-mono: var(--font-poppins), sans-serif;
+  --font-serif: var(--font-poppins), sans-serif;
 }
 
 @theme inline {
-  --font-sans: var(--font-poppins), system-ui, sans-serif;
+  --font-sans: var(--font-poppins), sans-serif;
+  --font-mono: var(--font-poppins), sans-serif;
+  --font-serif: var(--font-poppins), sans-serif;
   --color-alpaca-dark: #202022;
   --color-alpaca-primary: #7678ed;
   --color-alpaca-coral: #ff7a55;
@@ -19,8 +24,37 @@
   --color-alpaca-bubble: #f2f4f8;
 }
 
+*,
+*::before,
+*::after,
+html,
+body,
+button,
+input,
+select,
+textarea,
+pre,
+code,
+kbd,
+samp,
+div,
+span,
+p,
+a,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.font-mono,
+.font-sans,
+.font-serif {
+  font-family: var(--font-poppins), sans-serif !important;
+}
+
 body {
-  font-family: var(--font-poppins), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-poppins), sans-serif !important;
   background-color: #cfd2f8;
   color: #202022;
   margin: 0;
