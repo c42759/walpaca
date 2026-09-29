@@ -175,6 +175,7 @@ class ModelPreferences(db.Model):
     id = db.Column(db.String, primary_key=True)
     picture = db.Column(db.Text, nullable=True)
     voice = db.Column(db.String, nullable=True)
+    num_ctx = db.Column(db.Integer, nullable=True)
     character = db.Column(db.Text, nullable=True)
 
     def get_character(self) -> dict:
@@ -191,5 +192,6 @@ class ModelPreferences(db.Model):
             "id": self.id,
             "picture": self.picture,
             "voice": self.voice,
+            "num_ctx": self.num_ctx,
             "character": self.get_character(),
         }

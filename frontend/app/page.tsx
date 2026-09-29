@@ -56,9 +56,38 @@ interface BackendMessage {
 
 interface ModelPreference {
   id: string;
+  name?: string;
+  description?: string;
+  first_message?: string;
+  alternate_greetings?: string[];
   picture?: string | null;
   voice?: string | null;
+  num_ctx?: number | null;
   character?: any;
+}
+
+interface InstanceProperties {
+  name: string;
+  url: string;
+  api?: string;
+  default_model?: string | null;
+  keep_alive?: number;
+  num_ctx?: number;
+  override_parameters?: boolean;
+  seed?: number;
+  share_name?: number;
+  show_response_metadata?: boolean;
+  temperature?: number;
+  think?: boolean;
+  title_model?: string | null;
+  allow_self_signed_ssl?: boolean;
+}
+
+interface InstanceItem {
+  id: string;
+  pinned?: boolean;
+  type: string;
+  properties: InstanceProperties;
 }
 
 interface BackendChat {
@@ -120,6 +149,17 @@ const formatAvatarPicture = (picture?: string | null): string | undefined => {
     return picture;
   }
   return `data:image/png;base64,${picture}`;
+};
+
+const getModelAvatarPicture = (pref?: ModelPreference | null, mod?: any): string | undefined => {
+  const rawPic =
+    pref?.picture ||
+    pref?.character?.data?.avatar ||
+    pref?.character?.avatar ||
+    mod?.picture ||
+    mod?.avatar ||
+    mod?.senderAvatar;
+  return formatAvatarPicture(rawPic);
 };
 
 const isImageAttachment = (att: MessageAttachment | any): boolean => {
@@ -452,8 +492,470 @@ export default function AlpacaWebPage() {
   const [isRenameModalOpen, setIsRenameModalOpen] = useState<boolean>(false);
   const [renameInputVal, setRenameInputVal] = useState<string>("");
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState<boolean>(false);
+  const [editingModel, setEditingModel] = useState<any | null>(null);
+  const [editModelVoice, setEditModelVoice] = useState<string>("af_heart");
+  const [editModelNumCtx, setEditModelNumCtx] = useState<number>(8192);
+  const [editModelName, setEditModelName] = useState<string>("");
+  const [editModelDescription, setEditModelDescription] = useState<string>("");
+  const [editModelFirstMessage, setEditModelFirstMessage] = useState<string>("");
+  const [editModelAlternateGreetings, setEditModelAlternateGreetings] = useState<string[]>([]);
+  const [editModelCharacterBook, setEditModelCharacterBook] = useState<
+    Array<{ name: string; description: string; tags: string }>
+  >([]);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
   const [newChatTitleInput, setNewChatTitleInput] = useState<string>("New Chat");
+  const [currentView, setCurrentView] = useState<"chat" | "settings">("chat");
+  const [activeSettingsCategory, setActiveSettingsCategory] = useState<
+    "import-chat" | "manage-instances" | "preferences" | "about-walpaca"
+  >("import-chat");
+
+  // --- Instances Management State & Handlers ---
+  const [instances, setInstances] = useState<InstanceItem[]>([]);
+  const [instanceSubView, setInstanceSubView] = useState<"list" | "select-type" | "form" | "instance-models" | "edit-model">("list");
+  const [selectedInstanceForModels, setSelectedInstanceForModels] = useState<InstanceItem | null>(null);
+  const [instanceModelsList, setInstanceModelsList] = useState<any[]>([]);
+  const [selectedInstanceType, setSelectedInstanceType] = useState<string>("Ollama");
+  const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
+
+  const handleOpenDuplicateModal = () => {
+    setIsChatContextMenuOpen(false);
+    setIsDuplicateModalOpen(true);
+  };
+
+  const handleConfirmDuplicateChat = async () => {
+    setIsDuplicateModalOpen(false);
+    const targetChat = chatItems.find((c) => c.id === activeChatId);
+    if (!targetChat) return;
+
+    const newId = `chat-${Date.now()}`;
+    const duplicateName = `${targetChat.name} (Copy)`;
+    const newChatObj: ChatItem = {
+      ...targetChat,
+      id: newId,
+      name: duplicateName,
+      time: "Just now",
+      unreadCount: undefined,
+    };
+
+    setChatItems((prev) => [newChatObj, ...prev]);
+    setActiveChatId(newId);
+    if (typeof window !== "undefined") {
+      window.history.pushState(null, "", `/?chat=${newId}`);
+    }
+
+    try {
+      await fetch(`${API_URL}/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: newId,
+          name: duplicateName,
+          folder: targetChat.folder || null,
+        }),
+      });
+    } catch (err) {
+      console.warn("Could not duplicate chat on backend API:", err);
+    }
+  };
+
+  const handleOpenEditModelModal = (mod: any) => {
+    setEditingModel(mod);
+    const rawId = String(mod.id || '');
+    const prefKey = rawId.toLowerCase();
+    const pref = modelPreferences[rawId] || modelPreferences[prefKey];
+    setEditModelVoice(pref?.voice || mod.voice || 'af_heart');
+    setEditModelNumCtx(
+      pref?.num_ctx ??
+        (typeof mod.num_ctx === 'number'
+          ? mod.num_ctx
+          : mod.context
+          ? parseInt(String(mod.context).replace(/,/g, ''), 10) || 8192
+          : 8192)
+    );
+
+    const char = pref?.character || {};
+    const charData = char.data || char || {};
+
+    setEditModelName(getCharacterName(char) || (pref as any)?.name || mod.name || mod.id || '');
+    setEditModelDescription(charData.description || pref?.description || '');
+    setEditModelFirstMessage(charData.first_mes || charData.first_message || pref?.first_message || '');
+
+    const greetings = Array.isArray(charData.alternate_greetings)
+      ? charData.alternate_greetings
+      : Array.isArray(pref?.alternate_greetings)
+      ? pref.alternate_greetings
+      : [];
+    setEditModelAlternateGreetings(greetings);
+
+    let cbItems: Array<{ name: string; description: string; tags: string }> = [];
+    if (Array.isArray(charData.character_book?.entries)) {
+      cbItems = charData.character_book.entries.map((e: any) => ({
+        name: e.comment || e.name || '',
+        description: e.content || e.description || '',
+        tags: Array.isArray(e.keys)
+          ? e.keys.join(', ')
+          : Array.isArray(e.tags)
+          ? e.tags.join(', ')
+          : String(e.keys || e.tags || ''),
+      }));
+    } else if (Array.isArray(charData.character_book)) {
+      cbItems = charData.character_book.map((e: any) => ({
+        name: e.name || e.comment || '',
+        description: e.description || e.content || '',
+        tags: Array.isArray(e.tags)
+          ? e.tags.join(', ')
+          : Array.isArray(e.keys)
+          ? e.keys.join(', ')
+          : String(e.tags || e.keys || ''),
+      }));
+    }
+    setEditModelCharacterBook(cbItems);
+    setInstanceSubView("edit-model");
+  };
+
+  const handleAddGreeting = () => {
+    setEditModelAlternateGreetings([...editModelAlternateGreetings, '']);
+  };
+
+  const handleUpdateGreeting = (index: number, val: string) => {
+    setEditModelAlternateGreetings(editModelAlternateGreetings.map((g, i) => (i === index ? val : g)));
+  };
+
+  const handleRemoveGreeting = (index: number) => {
+    setEditModelAlternateGreetings(editModelAlternateGreetings.filter((_, i) => i !== index));
+  };
+
+  const handleAddBookItem = () => {
+    setEditModelCharacterBook([...editModelCharacterBook, { name: '', description: '', tags: '' }]);
+  };
+
+  const handleUpdateBookItem = (index: number, field: 'name' | 'description' | 'tags', val: string) => {
+    setEditModelCharacterBook(
+      editModelCharacterBook.map((item, i) => (i === index ? { ...item, [field]: val } : item))
+    );
+  };
+
+  const handleRemoveBookItem = (index: number) => {
+    setEditModelCharacterBook(editModelCharacterBook.filter((_, i) => i !== index));
+  };
+
+  const handleSaveEditModel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingModel) return;
+
+    const rawId = String(editingModel.id || '');
+    const prefKey = rawId.toLowerCase();
+
+    const filteredGreetings = editModelAlternateGreetings.map((g) => g.trim()).filter(Boolean);
+    const formattedBookEntries = editModelCharacterBook.map((item) => {
+      const tagsArr = item.tags.split(',').map((t) => t.trim()).filter(Boolean);
+      return {
+        name: item.name.trim(),
+        comment: item.name.trim(),
+        description: item.description.trim(),
+        content: item.description.trim(),
+        keys: tagsArr,
+        tags: tagsArr,
+      };
+    });
+
+    const existingPref = modelPreferences[rawId] || modelPreferences[prefKey] || {};
+    const existingChar = existingPref.character || {};
+    const existingCharData = existingChar.data || {};
+
+    const updatedCharacter = {
+      ...existingChar,
+      data: {
+        ...existingCharData,
+        name: editModelName.trim(),
+        description: editModelDescription.trim(),
+        first_mes: editModelFirstMessage.trim(),
+        alternate_greetings: filteredGreetings,
+        character_book: {
+          ...(existingCharData.character_book || {}),
+          entries: formattedBookEntries,
+        },
+      },
+      name: editModelName.trim(),
+      description: editModelDescription.trim(),
+      first_message: editModelFirstMessage.trim(),
+      alternate_greetings: filteredGreetings,
+      character_book: formattedBookEntries.map((e) => ({
+        name: e.name,
+        description: e.description,
+        tags: e.tags,
+      })),
+    };
+
+    const updatedPref: ModelPreference = {
+      ...(existingPref || { id: rawId }),
+      id: rawId,
+      voice: editModelVoice,
+      num_ctx: editModelNumCtx,
+      character: updatedCharacter,
+    };
+
+    setModelPreferences((prev) => ({
+      ...prev,
+      [rawId]: updatedPref,
+      [prefKey]: updatedPref,
+    }));
+    setInstanceSubView("instance-models");
+
+    try {
+      await fetch(`${API_URL}/model-preferences`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: rawId,
+          voice: editModelVoice,
+          num_ctx: editModelNumCtx,
+          character: updatedCharacter,
+        }),
+      });
+    } catch (err) {
+      console.warn("Could not save model preference:", err);
+    }
+  };
+
+  const handleManageInstanceModels = async (inst: InstanceItem) => {
+    setSelectedInstanceForModels(inst);
+    setInstanceSubView("instance-models");
+
+    // Fetch up-to-date model preferences first
+    await fetchModelPreferences();
+
+    try {
+      const res = await fetch(`${API_URL}/instances/${inst.id}/models`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setInstanceModelsList(data);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch instance models:", err);
+    }
+    const instName = inst.properties?.name || inst.type;
+    setInstanceModelsList([
+      { id: `${inst.id}-m1`, name: `${instName} Model 1`, provider: inst.type, voice: "af_heart", context: "8,192 tokens" },
+      { id: `${inst.id}-m2`, name: `${instName} Model 2`, provider: inst.type, voice: "am_adam", context: "16,384 tokens" },
+    ]);
+  };
+
+  // Instance Form fields matching user specs
+  const [instFormName, setInstFormName] = useState<string>("Instance");
+  const [instFormUrl, setInstFormUrl] = useState<string>("http://0.0.0.0:11434");
+  const [instFormApiKey, setInstFormApiKey] = useState<string>("");
+  const [showApiKeyText, setShowApiKeyText] = useState<boolean>(false);
+  const [instFormThink, setInstFormThink] = useState<boolean>(false);
+  const [instFormShareName, setInstFormShareName] = useState<number>(2); // 2 = Do Not Share
+  const [instFormShowMetadata, setInstFormShowMetadata] = useState<boolean>(false);
+  const [instFormAllowSsl, setInstFormAllowSsl] = useState<boolean>(false);
+  const [instFormOverrideParams, setInstFormOverrideParams] = useState<boolean>(true);
+  const [isOverrideAccordionOpen, setIsOverrideAccordionOpen] = useState<boolean>(true);
+  const [instFormTemp, setInstFormTemp] = useState<number>(0.70);
+  const [instFormSeed, setInstFormSeed] = useState<number>(0);
+  const [instFormNumCtx, setInstFormNumCtx] = useState<number>(16384);
+  const [instFormKeepAlivePreset, setInstFormKeepAlivePreset] = useState<string>("Set Timer");
+  const [instFormKeepAliveMinutes, setInstFormKeepAliveMinutes] = useState<number>(5);
+
+  const fetchInstances = async () => {
+    try {
+      const res = await fetch(`${API_URL}/instances`);
+      if (res.ok) {
+        const data: InstanceItem[] = await res.json();
+        setInstances(data);
+      }
+    } catch (err) {
+      console.warn("Could not fetch instances:", err);
+    }
+  };
+
+  const handleOpenAddInstanceModal = () => {
+    setInstanceSubView("select-type");
+  };
+
+  const handleSelectInstanceType = (typeLabel: string) => {
+    setSelectedInstanceType(typeLabel);
+    setEditingInstanceId(null); // Add mode
+
+    // Dynamic default values for new instance based on selected provider type
+    let defaultName = "Instance";
+    let defaultUrl = "http://0.0.0.0:11434";
+    if (typeLabel.includes("Ollama")) {
+      defaultName = "Ollama External";
+      defaultUrl = "http://0.0.0.0:11434";
+    } else if (typeLabel.includes("Ollama (Cloud)")) {
+      defaultName = "Ollama Cloud";
+      defaultUrl = "https://ollama.example.com";
+    } else if (typeLabel.includes("OpenAI")) {
+      defaultName = "OpenAI ChatGPT";
+      defaultUrl = "https://api.openai.com/v1";
+    } else if (typeLabel.includes("Gemini")) {
+      defaultName = "Google Gemini";
+      defaultUrl = "https://generativelanguage.googleapis.com";
+    } else if (typeLabel.includes("Anthropic")) {
+      defaultName = "Anthropic Claude";
+      defaultUrl = "https://api.anthropic.com";
+    } else if (typeLabel.includes("Deepseek")) {
+      defaultName = "Deepseek AI";
+      defaultUrl = "https://api.deepseek.com";
+    } else if (typeLabel.includes("Groq")) {
+      defaultName = "Groq Cloud";
+      defaultUrl = "https://api.groq.com/openai/v1";
+    } else if (typeLabel.includes("Together")) {
+      defaultName = "Together AI";
+      defaultUrl = "https://api.together.xyz/v1";
+    } else if (typeLabel.includes("Venice")) {
+      defaultName = "Venice AI";
+      defaultUrl = "https://api.venice.ai/api/v1";
+    } else if (typeLabel.includes("OpenRouter")) {
+      defaultName = "OpenRouter AI";
+      defaultUrl = "https://openrouter.ai/api/v1";
+    }
+
+    setInstFormName(defaultName);
+    setInstFormUrl(defaultUrl);
+    setInstFormApiKey("");
+    setShowApiKeyText(false);
+    setInstFormThink(false);
+    setInstFormShareName(2);
+    setInstFormShowMetadata(false);
+    setInstFormAllowSsl(false);
+    setInstFormOverrideParams(true);
+    setIsOverrideAccordionOpen(true);
+    setInstFormTemp(0.70);
+    setInstFormSeed(0);
+    setInstFormNumCtx(16384);
+    setInstFormKeepAlivePreset("Set Timer");
+    setInstFormKeepAliveMinutes(5);
+
+    setInstanceSubView("form");
+  };
+
+  const handleOpenEditInstanceModal = (inst: InstanceItem) => {
+    setEditingInstanceId(inst.id); // Edit mode - type is locked!
+    setSelectedInstanceType(
+      inst.type === "ollama"
+        ? "Ollama"
+        : inst.type === "openai"
+        ? "OpenAI ChatGPT"
+        : inst.type === "gemini"
+        ? "Google Gemini"
+        : inst.type === "anthropic"
+        ? "Anthropic"
+        : inst.type === "deepseek"
+        ? "Deepseek"
+        : inst.type === "groq"
+        ? "Groq Cloud"
+        : inst.type === "together"
+        ? "Together AI"
+        : inst.type === "venice"
+        ? "Venice"
+        : inst.type === "openrouter"
+        ? "OpenRouter AI"
+        : inst.type
+    );
+    setInstFormName(inst.properties?.name || "Instance");
+    setInstFormUrl(inst.properties?.url || "http://0.0.0.0:11434");
+    setInstFormApiKey(inst.properties?.api && inst.properties.api !== "NOKEY" ? inst.properties.api : "");
+    setShowApiKeyText(false);
+    setInstFormThink(Boolean(inst.properties?.think));
+    setInstFormShareName(inst.properties?.share_name ?? 2);
+    setInstFormShowMetadata(Boolean(inst.properties?.show_response_metadata));
+    setInstFormAllowSsl(Boolean(inst.properties?.allow_self_signed_ssl));
+    setInstFormOverrideParams(inst.properties?.override_parameters ?? true);
+    setIsOverrideAccordionOpen(true);
+    setInstFormTemp(inst.properties?.temperature ?? 0.70);
+    setInstFormSeed(inst.properties?.seed ?? 0);
+    setInstFormNumCtx(inst.properties?.num_ctx ?? 16384);
+    setInstFormKeepAliveMinutes(inst.properties?.keep_alive ?? 5);
+
+    setInstanceSubView("form");
+  };
+
+  const handleDeleteInstance = async (id: string) => {
+    setInstances((prev) => prev.filter((item) => item.id !== id));
+    try {
+      await fetch(`${API_URL}/instances/${id}`, { method: "DELETE" });
+    } catch (err) {
+      console.warn("Could not delete instance:", err);
+    }
+  };
+
+  const handleSaveInstanceForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    let backendType = "ollama";
+    if (selectedInstanceType.includes("OpenAI")) backendType = "openai";
+    else if (selectedInstanceType.includes("Gemini")) backendType = "gemini";
+    else if (selectedInstanceType.includes("Anthropic")) backendType = "anthropic";
+    else if (selectedInstanceType.includes("Deepseek")) backendType = "deepseek";
+    else if (selectedInstanceType.includes("Groq")) backendType = "groq";
+    else if (selectedInstanceType.includes("Together")) backendType = "together";
+    else if (selectedInstanceType.includes("Venice")) backendType = "venice";
+    else if (selectedInstanceType.includes("OpenRouter")) backendType = "openrouter";
+
+    const payload = {
+      type: backendType,
+      pinned: false,
+      properties: {
+        name: instFormName.trim() || "Instance",
+        url: instFormUrl.trim() || "http://0.0.0.0:11434",
+        api: instFormApiKey.trim() || "NOKEY",
+        think: instFormThink,
+        share_name: Number(instFormShareName),
+        show_response_metadata: instFormShowMetadata,
+        allow_self_signed_ssl: instFormAllowSsl,
+        override_parameters: instFormOverrideParams,
+        temperature: Number(instFormTemp),
+        seed: Number(instFormSeed),
+        num_ctx: Number(instFormNumCtx),
+        keep_alive: Number(instFormKeepAliveMinutes),
+        default_model: null,
+        title_model: null,
+      },
+    };
+
+    if (editingInstanceId) {
+      setInstances((prev) =>
+        prev.map((inst) =>
+          inst.id === editingInstanceId ? { ...inst, type: backendType, properties: { ...inst.properties, ...payload.properties } } : inst
+        )
+      );
+      try {
+        await fetch(`${API_URL}/instances/${editingInstanceId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (err) {
+        console.warn("Could not update instance:", err);
+      }
+    } else {
+      const tempId = `inst-${Date.now()}`;
+      const newInst: InstanceItem = { id: tempId, pinned: false, type: backendType, properties: payload.properties };
+      setInstances((prev) => [...prev, newInst]);
+      try {
+        const res = await fetch(`${API_URL}/instances`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const created: InstanceItem = await res.json();
+          setInstances((prev) => prev.map((inst) => (inst.id === tempId ? created : inst)));
+        }
+      } catch (err) {
+        console.warn("Could not create instance:", err);
+      }
+    }
+
+    setInstanceSubView("list");
+  };
 
   // --- TTS Voice Playback State & Controls ---
   const [ttsState, setTtsState] = useState<{
@@ -808,7 +1310,7 @@ export default function AlpacaWebPage() {
       const res = await fetch(url);
       if (res.ok) {
         const data: BackendChat[] = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           const mapped = data.map(mapBackendChatToChatItem);
           setChatItems(mapped);
           return;
@@ -857,6 +1359,7 @@ export default function AlpacaWebPage() {
   useEffect(() => {
     fetchFolders();
     fetchModelPreferences();
+    fetchInstances();
 
     const handlePopState = () => {
       if (typeof window !== "undefined") {
@@ -1020,17 +1523,17 @@ export default function AlpacaWebPage() {
 				<aside className='w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#2d2d30]'>
 					{/* Top Alpaca Prism Logo */}
 					<div className='flex flex-col items-center gap-8 w-full'>
-						<div className='w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity'>
-							<img src='/icon-white.svg' alt='Alpaca Logo' className='w-9 h-9 object-contain' />
+						<div onClick={() => setCurrentView("chat")} className='w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity'>
+							<img src='/icon-white.svg' alt='Walpaca' className='w-9 h-9 object-contain' />
 						</div>
 
 						{/* Navigation Tabs (Backend Folders API Integrated) */}
 						<nav className='flex flex-col items-center gap-3 w-full overflow-y-auto max-h-[calc(100vh-220px)] px-1'>
 							{/* All chats tab */}
 							<button
-								onClick={() => setActiveTab('all')}
-								className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative ${
-									activeTab === 'all' ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
+								onClick={() => { setActiveTab('all'); setCurrentView('chat'); }}
+								className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative cursor-pointer ${
+									activeTab === 'all' && currentView === 'chat' ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
 								}`}
 								title='All chats'
 							>
@@ -1056,12 +1559,12 @@ export default function AlpacaWebPage() {
 
 							{/* Dynamic Folders from /api/folders */}
 							{folders.map((folder) => {
-								const isActive = activeTab === folder.id;
+								const isActive = activeTab === folder.id && currentView === 'chat';
 								return (
 									<button
 										key={folder.id}
-										onClick={() => setActiveTab(folder.id)}
-										className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative ${
+										onClick={() => { setActiveTab(folder.id); setCurrentView('chat'); }}
+										className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative cursor-pointer ${
 											isActive ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
 										}`}
 										title={folder.name}
@@ -1110,7 +1613,13 @@ export default function AlpacaWebPage() {
 					</div>
 
 					{/* Bottom Settings */}
-					<button className='w-full py-3 rounded-2xl flex flex-col items-center gap-1.5 text-[#8b8d97] hover:text-white transition-all cursor-pointer'>
+					<button
+						onClick={() => setCurrentView('settings')}
+						className={`w-full py-3 rounded-2xl flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+							currentView === 'settings' ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
+						}`}
+						title='Settings'
+					>
 						<svg
 							width='22'
 							height='22'
@@ -1130,9 +1639,1545 @@ export default function AlpacaWebPage() {
 
 				{/* Inner App Container with Rounded Right / Light Theme Area */}
 				<div className='flex-1 flex overflow-hidden bg-[#f9fafc] rounded-l-[32px]'>
-					{/* ========================================================= */}
-					{/* 2. CHAT LIST PANEL (#f9fafc) */}
-					{/* ========================================================= */}
+					{currentView === 'settings' ? (
+						<div className='flex-1 flex h-full overflow-hidden bg-[#f9fafc] select-text'>
+							{/* 1. SETTINGS CATEGORIES SIDEBAR */}
+							<aside className='w-[260px] border-r border-[#e8ebf3] bg-[#f9fafc] p-5 flex flex-col justify-between shrink-0 select-none'>
+								<div>
+									<h2 className='text-xl font-bold text-[#202022] mb-6 px-2 tracking-tight'>Settings</h2>
+									<nav className='space-y-1.5'>
+										{[
+											{
+												id: 'import-chat',
+												label: 'Import Chat',
+												icon: (
+													<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+														<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
+														<polyline points='17 8 12 3 7 8' />
+														<line x1='12' y1='3' x2='12' y2='15' />
+													</svg>
+												),
+											},
+											{
+												id: 'manage-instances',
+												label: 'Manage Instances',
+												icon: (
+													<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+														<rect x='2' y='2' width='20' height='8' rx='2' ry='2' />
+														<rect x='2' y='14' width='20' height='8' rx='2' ry='2' />
+														<line x1='6' y1='6' x2='6.01' y2='6' />
+														<line x1='6' y1='18' x2='6.01' y2='18' />
+													</svg>
+												),
+											},
+											{
+												id: 'preferences',
+												label: 'Preferences',
+												icon: (
+													<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+														<line x1='4' y1='21' x2='4' y2='14' />
+														<line x1='4' y1='10' x2='4' y2='3' />
+														<line x1='12' y1='21' x2='12' y2='12' />
+														<line x1='12' y1='8' x2='12' y2='3' />
+														<line x1='20' y1='21' x2='20' y2='16' />
+														<line x1='20' y1='12' x2='20' y2='3' />
+														<line x1='1' y1='14' x2='7' y2='14' />
+														<line x1='9' y1='8' x2='15' y2='8' />
+														<line x1='17' y1='16' x2='23' y2='16' />
+													</svg>
+												),
+											},
+											{
+												id: 'about-walpaca',
+												label: 'About Walpaca',
+												icon: (
+													<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+														<circle cx='12' cy='12' r='10' />
+														<line x1='12' y1='16' x2='12' y2='12' />
+														<line x1='12' y1='8' x2='12.01' y2='8' />
+													</svg>
+												),
+											},
+										].map((cat) => {
+											const isActive = activeSettingsCategory === cat.id;
+											return (
+												<button
+													key={cat.id}
+													onClick={() => setActiveSettingsCategory(cat.id as any)}
+													className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-base font-semibold transition-all cursor-pointer ${
+														isActive
+															? 'bg-[#7678ed] text-white shadow-md shadow-[#7678ed]/20'
+															: 'text-[#5d6075] hover:bg-[#ebedf7] hover:text-[#202022]'
+													}`}
+												>
+													<span className={isActive ? 'text-white' : 'text-[#7678ed]'}>{cat.icon}</span>
+													<span className='truncate'>{cat.label}</span>
+												</button>
+											);
+										})}
+									</nav>
+								</div>
+
+								<button
+									onClick={() => setCurrentView('chat')}
+									className='w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] font-semibold text-sm transition-all cursor-pointer shadow-xs'
+								>
+									<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+										<line x1='19' y1='12' x2='5' y2='12' />
+										<polyline points='12 19 5 12 12 5' />
+									</svg>
+									Back to Chat
+								</button>
+							</aside>
+
+							{/* 2. MIDDLE SETTINGS CONTENT AREA */}
+							<main className='flex-1 bg-white p-8 overflow-y-auto'>
+								<div className='max-w-3xl mx-auto space-y-8'>
+									{activeSettingsCategory === 'import-chat' && (
+										<div className='space-y-6 animate-in fade-in duration-200'>
+											<div>
+												<h3 className='text-2xl font-bold text-[#202022]'>Import Chat</h3>
+												<p className='text-sm text-[#7a7d90] mt-1'>Import conversation logs, JSON backups, or zip archives from other LLM providers.</p>
+											</div>
+
+											<div className='border-2 border-dashed border-[#7678ed]/40 hover:border-[#7678ed] rounded-3xl p-10 bg-[#f9fafc] hover:bg-[#f3f4fd] transition-all flex flex-col items-center justify-center text-center cursor-pointer group'>
+												<div className='w-16 h-16 rounded-2xl bg-[#eaecf9] group-hover:bg-[#7678ed] group-hover:text-white text-[#7678ed] flex items-center justify-center mb-4 transition-colors shadow-sm'>
+													<svg width='28' height='28' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+														<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
+														<polyline points='17 8 12 3 7 8' />
+														<line x1='12' y1='3' x2='12' y2='15' />
+													</svg>
+												</div>
+												<h4 className='text-base font-bold text-[#202022] mb-1'>Drop chat export files here</h4>
+												<p className='text-sm text-[#8e90a6] mb-4'>Supports ChatGPT export (.json), Claude export (.json), and Walpaca backup (.zip)</p>
+												<button className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-sm cursor-pointer'>
+													Browse Files
+												</button>
+											</div>
+
+											<div className='bg-[#f9fafc] border border-[#e8ebf3] rounded-2xl p-5 space-y-3'>
+												<h5 className='text-sm font-bold text-[#202022]'>Import Preferences</h5>
+												<div className='space-y-2.5 text-sm text-[#404252]'>
+													<label className='flex items-center gap-3 cursor-pointer'>
+														<input type='checkbox' defaultChecked className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed]' />
+														<span>Merge imported conversations into existing folders</span>
+													</label>
+													<label className='flex items-center gap-3 cursor-pointer'>
+														<input type='checkbox' defaultChecked className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed]' />
+														<span>Auto-detect custom model avatars and names</span>
+													</label>
+													<label className='flex items-center gap-3 cursor-pointer'>
+														<input type='checkbox' className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed]' />
+														<span>Index imported message text for local semantic search</span>
+													</label>
+												</div>
+											</div>
+										</div>
+									)}
+
+									{activeSettingsCategory === 'manage-instances' && (
+										<div>
+											{/* View 1: Configured Instances List */}
+											{instanceSubView === 'list' && (
+												<div className='space-y-6 animate-in fade-in duration-200'>
+													<div className='flex items-center justify-between'>
+														<div>
+															<h3 className='text-2xl font-bold text-[#202022]'>Manage Instances</h3>
+															<p className='text-sm text-[#7a7d90] mt-1'>Configure local server connections, cloud API backends, and proxy endpoints.</p>
+														</div>
+														<button
+															onClick={handleOpenAddInstanceModal}
+															className='p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl transition-all shadow-sm flex items-center justify-center cursor-pointer'
+															title='Add Instance'
+														>
+															<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5'>
+																<line x1='12' y1='5' x2='12' y2='19' />
+																<line x1='6' y1='12' x2='18' y2='12' />
+															</svg>
+														</button>
+													</div>
+
+													{instances.length === 0 ? (
+														<div className='p-8 rounded-2xl border border-dashed border-[#7678ed]/30 bg-[#f9fafc] text-center space-y-3'>
+															<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center font-bold text-xl mx-auto'>
+																⚡
+															</div>
+															<p className='text-base font-bold text-[#202022]'>No Instances Configured</p>
+															<p className='text-xs text-[#8e90a6] max-w-sm mx-auto'>
+																Click "Add Instance" above to connect an Ollama local or remote server to Alpaca.
+															</p>
+															<button
+																onClick={handleOpenAddInstanceModal}
+																className='px-4 py-2 bg-[#7678ed] text-white text-xs font-semibold rounded-xl hover:bg-[#6869d9] transition-all cursor-pointer'
+															>
+																+ Add First Instance
+															</button>
+														</div>
+													) : (
+														<div className='space-y-3.5'>
+															{instances.map((inst) => {
+																const name = inst.properties?.name || "Instance";
+																const url = inst.properties?.url || "http://0.0.0.0:11434";
+																const typeLabel = inst.type === "ollama" ? "Ollama (External)" : inst.type;
+
+																return (
+																	<div key={inst.id} className='p-4 rounded-2xl border border-[#e8ebf3] bg-[#f9fafc] flex items-center justify-between hover:border-[#7678ed]/40 transition-all'>
+																		<div className='flex items-center gap-3.5'>
+																			<div className='w-10 h-10 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center font-bold text-base shrink-0'>
+																				⚡
+																			</div>
+																			<div>
+																				<div className='flex items-center gap-2'>
+																					<h4 className='text-base font-bold text-[#202022]'>{name}</h4>
+																					<span className='px-2 py-0.5 bg-[#eaecf9] text-[#7678ed] rounded-md text-[10px] font-bold uppercase tracking-wider'>
+																						{typeLabel}
+																					</span>
+																				</div>
+																				<p className='text-xs text-[#8e90a6] font-mono'>{url}</p>
+																			</div>
+																		</div>
+
+																		<div className='flex items-center gap-1.5'>
+																			<button
+																				onClick={() => handleManageInstanceModels(inst)}
+																				className='p-2 text-[#7678ed] hover:bg-[#eaecf9] rounded-2xl transition-colors cursor-pointer'
+																				title='Manage Models'
+																			>
+																				<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																					<path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' />
+																					<circle cx='9' cy='7' r='4' />
+																					<path d='M22 21v-2a4 4 0 0 0-3-3.87' />
+																					<path d='M16 3.13a4 4 0 0 1 0 7.75' />
+																				</svg>
+																			</button>
+																			<button
+																				onClick={() => handleOpenEditInstanceModal(inst)}
+																				className='p-2 text-[#7678ed] hover:bg-[#eaecf9] rounded-2xl transition-colors cursor-pointer'
+																				title='Edit Instance'
+																			>
+																				<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																					<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																				</svg>
+																			</button>
+																			<button
+																				onClick={() => handleDeleteInstance(inst.id)}
+																				className='p-2 text-[#ff4d4f] hover:bg-[#fff0f0] rounded-2xl transition-colors cursor-pointer'
+																				title='Delete Instance'
+																			>
+																				<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																					<polyline points='3 6 5 6 21 6' />
+																					<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																				</svg>
+																			</button>
+																		</div>
+																	</div>
+																);
+															})}
+														</div>
+													)}
+												</div>
+											)}
+
+											{/* View 2: Step 1 Provider Selection Full-Page View */}
+											{instanceSubView === 'select-type' && (
+												<div className='space-y-6 animate-in fade-in duration-200 select-none'>
+													<div className='flex items-center gap-3'>
+														<button
+															onClick={() => setInstanceSubView('list')}
+															className='p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer'
+															title='Back to Instances'
+														>
+															<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																<line x1='19' y1='12' x2='5' y2='12' />
+																<polyline points='12 19 5 12 12 5' />
+															</svg>
+														</button>
+														<div>
+															<h3 className='text-2xl font-bold text-[#202022]'>Add Instance</h3>
+															<p className='text-sm text-[#7a7d90] mt-0.5'>Select a type of instance to add to your workspace</p>
+														</div>
+													</div>
+
+													<div className='grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2'>
+														{[
+															{ label: "Ollama", tag: "Local / Remote", desc: "Local or remote AI instance not managed by Walpaca", icon: "🦙" },
+															{ label: "Ollama (Cloud)", tag: "Cloud API", desc: "Ollama server hosted on cloud infrastructure", icon: "☁️" },
+															{ label: "OpenAI ChatGPT", tag: "Cloud API", desc: "Official OpenAI GPT-4o & ChatGPT API endpoint", icon: "🌐" },
+															{ label: "Google Gemini", tag: "Cloud API", desc: "Google Gemini Flash & Pro API model suite", icon: "✨" },
+															{ label: "Together AI", tag: "Cloud API", desc: "Together AI open-source model cloud platform", icon: "🤝" },
+															{ label: "Venice", tag: "Cloud API", desc: "Venice private uncensored inference network", icon: "🔒" },
+															{ label: "Deepseek", tag: "Cloud API", desc: "Deepseek Coder & Reasoner LLM endpoints", icon: "🧠" },
+															{ label: "Groq Cloud", tag: "Cloud API", desc: "Groq ultra-fast LPU inference engine", icon: "🚀" },
+															{ label: "Anthropic", tag: "Cloud API", desc: "Anthropic Claude 3.5 Sonnet & Haiku API", icon: "🎭" },
+															{ label: "OpenRouter AI", tag: "Cloud API", desc: "OpenRouter unified multi-provider routing API", icon: "🔀" },
+														].map((provider) => (
+															<div
+																key={provider.label}
+																onClick={() => handleSelectInstanceType(provider.label)}
+																className='p-4 rounded-2xl border border-[#e8ebf3] bg-[#f9fafc] hover:bg-[#f2f4fa] hover:border-[#7678ed] transition-all cursor-pointer flex items-start gap-3.5 group shadow-xs'
+															>
+																<div className='w-11 h-11 rounded-2xl bg-[#eaecf9] group-hover:bg-[#7678ed] group-hover:text-white text-[#7678ed] flex items-center justify-center font-bold text-lg shrink-0 transition-colors'>
+																	{provider.icon}
+																</div>
+																<div className='flex-1 min-w-0'>
+																	<div className='flex items-center justify-between gap-2 mb-1'>
+																		<h4 className='text-base font-bold text-[#202022] group-hover:text-[#7678ed] transition-colors truncate'>
+																			{provider.label}
+																		</h4>
+																		<span className='px-2 py-0.5 bg-[#eaecf9] text-[#7678ed] rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0'>
+																			{provider.tag}
+																		</span>
+																	</div>
+																	<p className='text-xs text-[#7a7d90] line-clamp-2 leading-relaxed'>{provider.desc}</p>
+																</div>
+															</div>
+														))}
+													</div>
+												</div>
+											)}
+
+											{/* View 3: Step 2 Instance Configuration Full-Page View */}
+											{instanceSubView === 'form' && (
+												<div className='space-y-6 animate-in fade-in duration-200 select-text'>
+													{/* Action Header Bar */}
+													<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3] shrink-0'>
+														<div className='flex items-center gap-3'>
+															<button
+																type='button'
+																onClick={() => setInstanceSubView(editingInstanceId ? 'list' : 'select-type')}
+																className='p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer'
+																title='Back'
+															>
+																<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																	<line x1='19' y1='12' x2='5' y2='12' />
+																	<polyline points='12 19 5 12 12 5' />
+																</svg>
+															</button>
+															<div>
+																<div className='flex items-center gap-2'>
+																	<h3 className='text-2xl font-bold text-[#202022]'>
+																		{editingInstanceId ? 'Edit Instance' : 'Create Instance'}
+																	</h3>
+																	<span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+																		editingInstanceId ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-[#eaecf9] text-[#7678ed]'
+																	} flex items-center gap-1.5`}>
+																		{editingInstanceId && (
+																			<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5'>
+																				<rect x='3' y='11' width='18' height='11' rx='2' ry='2' />
+																				<path d='M7 11V7a5 5 0 0 1 10 0v4' />
+																			</svg>
+																		)}
+																		{selectedInstanceType}
+																	</span>
+																</div>
+																<p className='text-sm text-[#7a7d90] mt-0.5'>
+																	{editingInstanceId
+																		? 'LLM server type cannot be changed when editing an existing instance'
+																		: 'Local or remote AI instance not managed by Alpaca'}
+																</p>
+															</div>
+														</div>
+
+														<div className='flex items-center gap-2'>
+															<button
+																type='button'
+																onClick={() => setInstanceSubView(editingInstanceId ? 'list' : 'select-type')}
+																className='p-2.5 rounded-2xl border border-[#e8ebf3] hover:bg-[#f4f6fc] text-[#5d6075] transition-all cursor-pointer flex items-center justify-center'
+																title='Cancel'
+															>
+																<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																	<line x1='18' y1='6' x2='6' y2='18' />
+																	<line x1='6' y1='6' x2='18' y2='18' />
+																</svg>
+															</button>
+															<button
+																type='button'
+																onClick={handleSaveInstanceForm}
+																className='p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl transition-all shadow-md shadow-[#7678ed]/20 cursor-pointer flex items-center justify-center'
+																title='Save Instance'
+															>
+																<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+																	<polyline points='20 6 9 17 4 12' />
+																</svg>
+															</button>
+														</div>
+													</div>
+
+													{/* Dynamic Form Body */}
+													{(() => {
+														const isOllamaProvider = selectedInstanceType.startsWith("Ollama");
+														return (
+															<form onSubmit={handleSaveInstanceForm} className='space-y-6 text-sm max-w-3xl'>
+																{/* Card 1: Basic Information */}
+																<div className='bg-[#f9fafc] border border-[#e8ebf3] rounded-3xl p-6 space-y-5 shadow-xs'>
+																	<h4 className='font-bold text-base text-[#202022] border-b border-[#e8ebf3] pb-3 flex items-center justify-between'>
+																		<span>Basic Configuration</span>
+																		<span className='text-xs font-semibold px-2.5 py-1 rounded-full bg-[#eaecf9] text-[#7678ed]'>
+																			{isOllamaProvider ? "Ollama Server" : "Cloud Provider API"}
+																		</span>
+																	</h4>
+
+																	{/* Name Field */}
+																	<div>
+																		<div className='flex items-center justify-between text-xs text-[#7a7d90] mb-1.5'>
+																			<label className='font-semibold text-[#202022]'>Name</label>
+																			<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																			</svg>
+																		</div>
+																		<input
+																			type='text'
+																			value={instFormName}
+																			onChange={(e) => setInstFormName(e.target.value)}
+																			className='w-full bg-white border border-[#e8ebf3] rounded-2xl px-4 py-3 text-sm font-medium text-[#202022] outline-none focus:border-[#7678ed] transition-colors shadow-xs'
+																			placeholder='Instance Name (e.g. Phanteks)'
+																		/>
+																	</div>
+
+																	{/* API Key Field */}
+																	<div>
+																		<div className='flex items-center justify-between text-xs text-[#7a7d90] mb-1.5'>
+																			<div className='flex items-center gap-1.5'>
+																				<label className='font-semibold text-[#202022]'>
+																					{isOllamaProvider ? "API Key (Optional)" : "API Key"}
+																				</label>
+																				{!isOllamaProvider && (
+																					<span className='text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 uppercase tracking-wider'>
+																						Required
+																					</span>
+																				)}
+																			</div>
+																			<div className='flex items-center gap-2'>
+																				<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																					<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																				</svg>
+																				<button
+																					type='button'
+																					onClick={() => setShowApiKeyText(!showApiKeyText)}
+																					className='text-[#7a7d90] hover:text-[#202022] transition-colors cursor-pointer'
+																				>
+																					<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																						<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' />
+																						<circle cx='12' cy='12' r='3' />
+																					</svg>
+																				</button>
+																			</div>
+																		</div>
+																		<input
+																			type={showApiKeyText ? "text" : "password"}
+																			value={instFormApiKey}
+																			onChange={(e) => setInstFormApiKey(e.target.value)}
+																			className='w-full bg-white border border-[#e8ebf3] rounded-2xl px-4 py-3 text-sm font-medium text-[#202022] outline-none focus:border-[#7678ed] transition-colors font-mono shadow-xs'
+																			placeholder={isOllamaProvider ? "Optional API Key" : "Enter Provider API Key"}
+																		/>
+																	</div>
+
+																	{/* URL / Endpoint Field */}
+																	<div>
+																		<div className='flex items-center justify-between text-xs text-[#7a7d90] mb-1.5'>
+																			<label className='font-semibold text-[#202022]'>
+																				{isOllamaProvider ? "Instance URL" : "API Base URL (Endpoint Override)"}
+																			</label>
+																			<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																			</svg>
+																		</div>
+																		<input
+																			type='text'
+																			value={instFormUrl}
+																			onChange={(e) => setInstFormUrl(e.target.value)}
+																			className='w-full bg-white border border-[#e8ebf3] rounded-2xl px-4 py-3 text-sm font-medium text-[#202022] outline-none focus:border-[#7678ed] transition-colors font-mono shadow-xs'
+																			placeholder={isOllamaProvider ? "http://0.0.0.0:11434" : "https://api.provider.com/v1"}
+																		/>
+																	</div>
+																</div>
+
+																{/* Card 2: Feature Toggles */}
+																<div className='bg-[#f9fafc] border border-[#e8ebf3] rounded-3xl p-6 space-y-5 shadow-xs'>
+																	<h4 className='font-bold text-base text-[#202022] border-b border-[#e8ebf3] pb-3'>Behavior & Security Toggles</h4>
+
+																	{/* Thought Processing Toggle */}
+																	<div className='flex items-center justify-between gap-4'>
+																		<div>
+																			<h5 className='font-bold text-[#202022] text-sm'>Thought Processing</h5>
+																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Have compatible reasoning models think about their response before generating a message</p>
+																		</div>
+																		<label className='relative inline-flex items-center cursor-pointer shrink-0'>
+																			<input
+																				type='checkbox'
+																				checked={instFormThink}
+																				onChange={(e) => setInstFormThink(e.target.checked)}
+																				className='sr-only peer'
+																			/>
+																			<div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#7678ed]"></div>
+																		</label>
+																	</div>
+
+																	{/* Share Name Select */}
+																	<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
+																		<div>
+																			<h5 className='font-bold text-[#202022] text-sm'>Share Name</h5>
+																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Automatically share your name with the AI models</p>
+																		</div>
+																		<select
+																			value={instFormShareName}
+																			onChange={(e) => setInstFormShareName(Number(e.target.value))}
+																			className='bg-white text-[#202022] text-xs font-semibold px-3.5 py-2.5 rounded-xl outline-none border border-[#e8ebf3] focus:border-[#7678ed] cursor-pointer shadow-xs'
+																		>
+																			<option value={2}>Do Not Share</option>
+																			<option value={1}>Share First Name</option>
+																			<option value={0}>Share Full Name</option>
+																		</select>
+																	</div>
+
+																	{/* Show Response Metadata Toggle */}
+																	<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
+																		<div>
+																			<h5 className='font-bold text-[#202022] text-sm'>Show Response Metadata</h5>
+																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Add the option to show reply metadata in the message as an attachment</p>
+																		</div>
+																		<label className='relative inline-flex items-center cursor-pointer shrink-0'>
+																			<input
+																				type='checkbox'
+																				checked={instFormShowMetadata}
+																				onChange={(e) => setInstFormShowMetadata(e.target.checked)}
+																				className='sr-only peer'
+																			/>
+																			<div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#7678ed]"></div>
+																		</label>
+																	</div>
+
+																	{/* Allow Self-Signed SSL Toggle */}
+																	{isOllamaProvider && (
+																		<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
+																			<div>
+																				<h5 className='font-bold text-[#202022] text-sm'>Allow Self-Signed SSL Certificates</h5>
+																				<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Only use if you trust the server</p>
+																			</div>
+																			<label className='relative inline-flex items-center cursor-pointer shrink-0'>
+																				<input
+																					type='checkbox'
+																					checked={instFormAllowSsl}
+																					onChange={(e) => setInstFormAllowSsl(e.target.checked)}
+																					className='sr-only peer'
+																				/>
+																				<div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#7678ed]"></div>
+																			</label>
+																		</div>
+																	)}
+																</div>
+
+																{/* Card 3: Override Parameters Accordion */}
+																<div className='bg-[#f9fafc] border border-[#7678ed]/40 rounded-3xl p-6 space-y-5 shadow-xs'>
+																	<div className='flex items-center justify-between gap-4'>
+																		<div>
+																			<h5 className='font-bold text-[#202022] text-sm'>Override Parameters</h5>
+																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>These parameters overrides the behavior of the instance and models</p>
+																		</div>
+																		<div className='flex items-center gap-3 shrink-0'>
+																			<label className='relative inline-flex items-center cursor-pointer'>
+																				<input
+																					type='checkbox'
+																					checked={instFormOverrideParams}
+																					onChange={(e) => setInstFormOverrideParams(e.target.checked)}
+																					className='sr-only peer'
+																				/>
+																				<div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#7678ed]"></div>
+																			</label>
+																			<button
+																				type='button'
+																				onClick={() => setIsOverrideAccordionOpen(!isOverrideAccordionOpen)}
+																				className='p-1 text-[#7a7d90] hover:text-[#202022] transition-colors cursor-pointer'
+																			>
+																				<svg
+																					width='18'
+																					height='18'
+																					viewBox='0 0 24 24'
+																					fill='none'
+																					stroke='currentColor'
+																					strokeWidth='2.5'
+																					strokeLinecap='round'
+																					strokeLinejoin='round'
+																					className={`transition-transform duration-200 ${isOverrideAccordionOpen ? "rotate-180" : ""}`}
+																				>
+																					<path d='M6 9l6 6 6-6' />
+																				</svg>
+																			</button>
+																		</div>
+																	</div>
+
+																	{instFormOverrideParams && isOverrideAccordionOpen && (
+																		<div className='space-y-4 pt-4 border-t border-[#e8ebf3] animate-in fade-in duration-150'>
+																			{/* Temperature Stepper */}
+																			<div className='flex items-center justify-between gap-4'>
+																				<div className='flex-1 min-w-0'>
+																					<h6 className='font-bold text-[#202022] text-sm'>Temperature</h6>
+																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Increasing the temperature will make the models answer more creatively</p>
+																				</div>
+																				<div className='flex items-center gap-2 shrink-0 bg-white border border-[#e8ebf3] rounded-2xl p-1.5 shadow-xs'>
+																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>{instFormTemp.toFixed(2)}</span>
+																					<button
+																						type='button'
+																						onClick={() => setInstFormTemp((prev) => Math.max(0, parseFloat((prev - 0.05).toFixed(2))))}
+																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
+																					>
+																						-
+																					</button>
+																					<button
+																						type='button'
+																						onClick={() => setInstFormTemp((prev) => Math.min(2, parseFloat((prev + 0.05).toFixed(2))))}
+																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
+																					>
+																						+
+																					</button>
+																				</div>
+																			</div>
+
+																			{/* Seed Stepper */}
+																			<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
+																				<div className='flex-1 min-w-0'>
+																					<h6 className='font-bold text-[#202022] text-sm'>Seed</h6>
+																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Setting this to a specific number other than 0 will make the model generate the same text for the same prompt</p>
+																				</div>
+																				<div className='flex items-center gap-2 shrink-0 bg-white border border-[#e8ebf3] rounded-2xl p-1.5 shadow-xs'>
+																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>{instFormSeed}</span>
+																					<button
+																						type='button'
+																						onClick={() => setInstFormSeed((prev) => Math.max(0, prev - 1))}
+																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
+																					>
+																						-
+																					</button>
+																					<button
+																						type='button'
+																						onClick={() => setInstFormSeed((prev) => prev + 1)}
+																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
+																					>
+																						+
+																					</button>
+																				</div>
+																			</div>
+
+																			{/* Context Window Size Stepper */}
+																			<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
+																				<div className='flex-1 min-w-0'>
+																					<h6 className='font-bold text-[#202022] text-sm'>Context Window Size</h6>
+																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Controls how many tokens (pieces of text) the model can process and remember at once</p>
+																				</div>
+																				<div className='flex items-center gap-2 shrink-0 bg-white border border-[#e8ebf3] rounded-2xl p-1.5 shadow-xs'>
+																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>{instFormNumCtx}</span>
+																					<button
+																						type='button'
+																						onClick={() => setInstFormNumCtx((prev) => Math.max(1024, prev - 2048))}
+																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
+																					>
+																						-
+																					</button>
+																					<button
+																						type='button'
+																						onClick={() => setInstFormNumCtx((prev) => prev + 2048)}
+																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
+																					>
+																						+
+																					</button>
+																				</div>
+																			</div>
+																		</div>
+																	)}
+																</div>
+
+																{/* Card 4: Keep Alive Settings (Ollama specific) */}
+																{isOllamaProvider && (
+																	<div className='bg-[#f9fafc] border border-[#e8ebf3] rounded-3xl p-6 space-y-5 shadow-xs'>
+																		<h4 className='font-bold text-base text-[#202022] border-b border-[#e8ebf3] pb-3'>Idle Keep Alive Settings</h4>
+
+																		<div className='flex items-center justify-between gap-4'>
+																			<div>
+																				<h5 className='font-bold text-[#202022] text-sm'>Keep Alive Presets</h5>
+																				<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>How the instance should handle idle models</p>
+																			</div>
+																			<select
+																				value={instFormKeepAlivePreset}
+																				onChange={(e) => {
+																					const val = e.target.value;
+																					setInstFormKeepAlivePreset(val);
+																					if (val === "Indefinitely (-1)") setInstFormKeepAliveMinutes(-1);
+																					else if (val === "Immediate Unload (0)") setInstFormKeepAliveMinutes(0);
+																					else setInstFormKeepAliveMinutes(5);
+																				}}
+																				className='bg-white text-[#202022] text-xs font-semibold px-3.5 py-2.5 rounded-xl outline-none border border-[#e8ebf3] focus:border-[#7678ed] cursor-pointer shadow-xs'
+																			>
+																				<option value='Set Timer'>Set Timer</option>
+																				<option value='Indefinitely (-1)'>Indefinitely (-1)</option>
+																				<option value='Immediate Unload (0)'>Immediate Unload (0)</option>
+																			</select>
+																		</div>
+
+																		{instFormKeepAlivePreset === "Set Timer" && (
+																			<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
+																				<div className='flex-1 min-w-0'>
+																					<h6 className='font-bold text-[#202022] text-sm'>Minutes</h6>
+																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>The amount of time the instance should keep models loaded after they go idle</p>
+																				</div>
+																				<div className='flex items-center gap-2 shrink-0 bg-white border border-[#e8ebf3] rounded-2xl p-1.5 shadow-xs'>
+																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>{instFormKeepAliveMinutes}</span>
+																					<button
+																						type='button'
+																						onClick={() => setInstFormKeepAliveMinutes((prev) => Math.max(1, prev - 1))}
+																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
+																					>
+																						-
+																					</button>
+																					<button
+																						type='button'
+																						onClick={() => setInstFormKeepAliveMinutes((prev) => prev + 1)}
+																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
+																					>
+																						+
+																					</button>
+																				</div>
+																			</div>
+																		)}
+																	</div>
+																)}
+															</form>
+														);
+													})()}
+												</div>
+											)}
+
+											{/* View 4: Instance Models View */}
+											{instanceSubView === 'instance-models' && selectedInstanceForModels && (
+												<div className='space-y-8 animate-in fade-in duration-200 select-none'>
+													<div className='flex items-center gap-3'>
+														<button
+															onClick={() => setInstanceSubView('list')}
+															className='p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer'
+															title='Back to Instances'
+														>
+															<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+																<line x1='19' y1='12' x2='5' y2='12' />
+																<polyline points='12 19 5 12 12 5' />
+															</svg>
+														</button>
+														<div>
+															<h3 className='text-2xl font-bold text-[#202022]'>
+																Models — {selectedInstanceForModels.properties?.name || selectedInstanceForModels.type}
+															</h3>
+															<p className='text-sm text-[#7a7d90] mt-0.5'>
+																Configure default TTS voices and settings for models on this instance.
+															</p>
+														</div>
+													</div>
+
+													{(() => {
+														const preferencesList = Array.from(
+															new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()
+														);
+
+														const unmatchedModels = instanceModelsList.filter(
+															(mod) =>
+																!preferencesList.some(
+																	(pref) =>
+																		pref.id.toLowerCase() === String(mod.id || '').toLowerCase() ||
+																		pref.id.toLowerCase() === String(mod.name || '').toLowerCase()
+																)
+														);
+
+														return (
+															<div className='space-y-10'>
+																{/* Section 1: Model Preferences */}
+																<div className='space-y-4'>
+																	<div>
+																		<h4 className='text-lg font-bold text-[#202022] flex items-center gap-2'>
+																			<span>Model Preferences</span>
+																			<span className='px-2 py-0.5 bg-[#eaecf9] text-[#7678ed] rounded-full text-xs font-semibold'>
+																				{preferencesList.length}
+																			</span>
+																		</h4>
+																		<p className='text-xs text-[#7a7d90]'>
+																			Configured model preferences mapped to available instance models.
+																		</p>
+																	</div>
+
+																	{preferencesList.length === 0 ? (
+																		<div className='p-8 text-center bg-[#f9fafc] rounded-3xl border border-[#e8ebf3] text-sm text-[#8e90a6] font-medium'>
+																			No model preferences found.
+																		</div>
+																	) : (
+																		<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
+																			{preferencesList.map((pref) => {
+																				const matchedModel = instanceModelsList.find(
+																					(mod) =>
+																						String(mod.id || '').toLowerCase() === pref.id.toLowerCase() ||
+																						String(mod.name || '').toLowerCase() === pref.id.toLowerCase()
+																				);
+
+																				const displayName =
+																					getCharacterName(pref?.character) ||
+																					(pref as any)?.name ||
+																					matchedModel?.name ||
+																					matchedModel?.id ||
+																					pref.id;
+																				const displayVoice = pref?.voice || matchedModel?.voice || 'af_heart';
+																				const displayPicture = getModelAvatarPicture(pref, matchedModel);
+
+																				return (
+																					<div
+																						key={pref.id}
+																						className='p-5 rounded-3xl border border-[#e8ebf3] bg-white flex flex-col justify-between space-y-4 shadow-xs hover:shadow-md hover:border-[#7678ed]/40 transition-all'
+																					>
+																						<div className='space-y-3 text-center'>
+																							{/* Big Avatar */}
+																							<div className='relative w-36 h-36 mx-auto'>
+																								{displayPicture ? (
+																									<img
+																										src={displayPicture}
+																										alt={displayName}
+																										className='w-36 h-36 rounded-2xl object-cover shadow-sm border-2 border-white transition-transform duration-200 hover:scale-[1.02]'
+																										onError={(e) => {
+																											e.currentTarget.style.display = 'none';
+																											const fallbackElem = e.currentTarget.nextElementSibling as HTMLElement;
+																											if (fallbackElem) fallbackElem.style.display = 'flex';
+																										}}
+																									/>
+																								) : null}
+																								<div
+																									className='w-36 h-36 rounded-2xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center font-bold text-3xl shadow-sm border-2 border-white'
+																									style={{ display: displayPicture ? 'none' : 'flex' }}
+																								>
+																									🤖
+																								</div>
+																							</div>
+
+																							{/* Details */}
+																							<div>
+																								<h4 className='text-base font-bold text-[#202022] truncate' title={displayName}>
+																									{displayName}
+																								</h4>
+																								<p className='text-xs text-[#8e90a6] font-medium mt-0.5 truncate font-mono'>
+																									ID: {pref.id}
+																								</p>
+
+																								{matchedModel ? (
+																									<span className='inline-flex items-center gap-1 mt-2 px-3 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/60 rounded-full text-[10px] font-bold uppercase tracking-wider'>
+																										<span className='w-1.5 h-1.5 rounded-full bg-emerald-500'></span>
+																										Matched: {matchedModel.name || matchedModel.id}
+																									</span>
+																								) : (
+																									<span className='inline-flex items-center gap-1 mt-2 px-3 py-0.5 bg-amber-50 text-amber-700 border border-amber-200/60 rounded-full text-[10px] font-bold uppercase tracking-wider'>
+																										<span className='w-1.5 h-1.5 rounded-full bg-amber-500'></span>
+																										No Model Matched
+																									</span>
+																								)}
+																							</div>
+
+																							{/* Ollama / Model Specs Grid */}
+																							{matchedModel && (matchedModel.tag || matchedModel.family || matchedModel.parameter_size || matchedModel.quantization_level) && (
+																								<div className='bg-[#f8f9fc] border border-[#e8ebf3] rounded-2xl p-3 space-y-2 text-left text-xs'>
+																									<div className='grid grid-cols-2 gap-2'>
+																										<div>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Tag</span>
+																											<span className='font-mono font-bold text-[#202022] truncate block'>{matchedModel.tag || matchedModel.id}</span>
+																										</div>
+																										<div>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Family</span>
+																											<span className='font-semibold text-[#202022] truncate block'>{matchedModel.family || '—'}</span>
+																										</div>
+																										<div>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Parameter Size</span>
+																											<span className='font-semibold text-[#202022] truncate block'>{matchedModel.parameter_size || '—'}</span>
+																										</div>
+																										<div>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Quantization Level</span>
+																											<span className='font-mono font-semibold text-[#202022] truncate block'>{matchedModel.quantization_level || '—'}</span>
+																										</div>
+																									</div>
+
+																									{matchedModel.modified_at && (
+																										<div className='pt-1 border-t border-[#e8ebf3]'>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Modified At</span>
+																											<span className='font-mono text-[11px] text-[#5d6075] truncate block'>
+																												{typeof matchedModel.modified_at === 'string'
+																													? matchedModel.modified_at.replace('T', ' ').substring(0, 16)
+																													: matchedModel.modified_at}
+																											</span>
+																										</div>
+																									)}
+																								</div>
+																							)}
+
+																							{/* Capability Badges */}
+																							{matchedModel && Array.isArray(matchedModel.capabilities) && matchedModel.capabilities.length > 0 && (
+																								<div className='flex items-center justify-center gap-1.5 flex-wrap pt-1'>
+																									{matchedModel.capabilities.includes('code') && (
+																										<span className='px-2.5 py-1 bg-[#1e293b] text-[#93c5fd] rounded-xl text-[11px] font-bold flex items-center gap-1'>
+																											<span className='font-mono'>&lt;/&gt;</span> Code
+																										</span>
+																									)}
+																									{matchedModel.capabilities.includes('vision') && (
+																										<span className='px-2.5 py-1 bg-[#4c1d95] text-[#f472b6] rounded-xl text-[11px] font-bold flex items-center gap-1'>
+																											<span>👁</span> Vision
+																										</span>
+																									)}
+																									{matchedModel.capabilities.includes('reasoning') && (
+																										<span className='px-2.5 py-1 bg-[#581c87] text-[#c084fc] rounded-xl text-[11px] font-bold flex items-center gap-1'>
+																											<span>🧠</span> Reasoning
+																										</span>
+																									)}
+																								</div>
+																							)}
+
+																							{/* Selected TTS Display */}
+																							<div className='bg-[#eaecf9]/50 border border-[#7678ed]/10 rounded-2xl px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-[#5d6075]'>
+																								<span>TTS Voice</span>
+																								<span className='font-mono font-bold text-[#7678ed] truncate max-w-[110px]'>
+																									{displayVoice}
+																								</span>
+																							</div>
+																						</div>
+
+																						{/* Edit Model Button */}
+																						<button
+																							type='button'
+																							onClick={() => handleOpenEditModelModal(matchedModel || { id: pref.id, name: pref.id })}
+																							className='w-full py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-bold rounded-2xl transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer'
+																						>
+																							<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																								<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																							</svg>
+																							Edit Model
+																						</button>
+																					</div>
+																				);
+																			})}
+																		</div>
+																	)}
+																</div>
+
+																{/* Section 2: Models Without Preferences */}
+																<div className='space-y-4 pt-4 border-t border-[#e8ebf3]'>
+																	<div>
+																		<h4 className='text-lg font-bold text-[#202022] flex items-center gap-2'>
+																			<span>Models Without Preferences</span>
+																			<span className='px-2 py-0.5 bg-[#f0f2f5] text-[#7a7d90] rounded-full text-xs font-semibold'>
+																				{unmatchedModels.length}
+																			</span>
+																		</h4>
+																		<p className='text-xs text-[#7a7d90]'>
+																			Models available on this instance that have no configured model preferences.
+																		</p>
+																	</div>
+
+																	{unmatchedModels.length === 0 ? (
+																		<div className='p-8 text-center bg-[#f9fafc] rounded-3xl border border-[#e8ebf3] text-sm text-[#8e90a6] font-medium'>
+																			All instance models have matching preferences.
+																		</div>
+																	) : (
+																		<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
+																			{unmatchedModels.map((mod) => {
+																				const displayName = mod.name || mod.id;
+																				const displayVoice = mod.voice || 'af_heart';
+																				const displayPicture = getModelAvatarPicture(null, mod);
+
+																				return (
+																					<div
+																						key={mod.id}
+																						className='p-5 rounded-3xl border border-[#e8ebf3] bg-white flex flex-col justify-between space-y-4 shadow-xs hover:shadow-md hover:border-[#7678ed]/40 transition-all opacity-95 hover:opacity-100'
+																					>
+																						<div className='space-y-3 text-center'>
+																							{/* Big Avatar */}
+																							<div className='relative w-36 h-36 mx-auto'>
+																								{displayPicture ? (
+																									<img
+																										src={displayPicture}
+																										alt={displayName}
+																										className='w-36 h-36 rounded-2xl object-cover shadow-sm border-2 border-white transition-transform duration-200 hover:scale-[1.02]'
+																										onError={(e) => {
+																											e.currentTarget.style.display = 'none';
+																											const fallbackElem = e.currentTarget.nextElementSibling as HTMLElement;
+																											if (fallbackElem) fallbackElem.style.display = 'flex';
+																										}}
+																									/>
+																								) : null}
+																								<div
+																									className='w-36 h-36 rounded-2xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center font-bold text-3xl shadow-sm border-2 border-white'
+																									style={{ display: displayPicture ? 'none' : 'flex' }}
+																								>
+																									🤖
+																								</div>
+																							</div>
+
+																							{/* Details */}
+																							<div>
+																								<h4 className='text-base font-bold text-[#202022] truncate' title={displayName}>
+																									{displayName}
+																								</h4>
+																								<p className='text-xs text-[#8e90a6] font-medium mt-0.5 truncate font-mono'>
+																									{mod.provider || selectedInstanceForModels.type} • {mod.context || '8k ctx'}
+																								</p>
+																								<span className='inline-flex items-center gap-1 mt-2 px-3 py-0.5 bg-[#f0f2f5] text-[#5d6075] border border-[#e8ebf3] rounded-full text-[10px] font-bold uppercase tracking-wider'>
+																									No Preference
+																								</span>
+																							</div>
+
+																							{/* Ollama / Model Specs Grid */}
+																							{(mod.tag || mod.family || mod.parameter_size || mod.quantization_level) && (
+																								<div className='bg-[#f8f9fc] border border-[#e8ebf3] rounded-2xl p-3 space-y-2 text-left text-xs'>
+																									<div className='grid grid-cols-2 gap-2'>
+																										<div>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Tag</span>
+																											<span className='font-mono font-bold text-[#202022] truncate block'>{mod.tag || mod.id}</span>
+																										</div>
+																										<div>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Family</span>
+																											<span className='font-semibold text-[#202022] truncate block'>{mod.family || '—'}</span>
+																										</div>
+																										<div>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Parameter Size</span>
+																											<span className='font-semibold text-[#202022] truncate block'>{mod.parameter_size || '—'}</span>
+																										</div>
+																										<div>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Quantization Level</span>
+																											<span className='font-mono font-semibold text-[#202022] truncate block'>{mod.quantization_level || '—'}</span>
+																										</div>
+																									</div>
+
+																									{mod.modified_at && (
+																										<div className='pt-1 border-t border-[#e8ebf3]'>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Modified At</span>
+																											<span className='font-mono text-[11px] text-[#5d6075] truncate block'>
+																												{typeof mod.modified_at === 'string'
+																													? mod.modified_at.replace('T', ' ').substring(0, 16)
+																													: mod.modified_at}
+																											</span>
+																										</div>
+																									)}
+																								</div>
+																							)}
+
+																							{/* Capability Badges */}
+																							{Array.isArray(mod.capabilities) && mod.capabilities.length > 0 && (
+																								<div className='flex items-center justify-center gap-1.5 flex-wrap pt-1'>
+																									{mod.capabilities.includes('code') && (
+																										<span className='px-2.5 py-1 bg-[#1e293b] text-[#93c5fd] rounded-xl text-[11px] font-bold flex items-center gap-1'>
+																											<span className='font-mono'>&lt;/&gt;</span> Code
+																										</span>
+																									)}
+																									{mod.capabilities.includes('vision') && (
+																										<span className='px-2.5 py-1 bg-[#4c1d95] text-[#f472b6] rounded-xl text-[11px] font-bold flex items-center gap-1'>
+																											<span>👁</span> Vision
+																										</span>
+																									)}
+																									{mod.capabilities.includes('reasoning') && (
+																										<span className='px-2.5 py-1 bg-[#581c87] text-[#c084fc] rounded-xl text-[11px] font-bold flex items-center gap-1'>
+																											<span>🧠</span> Reasoning
+																										</span>
+																									)}
+																								</div>
+																							)}
+
+																							{/* Selected TTS Display */}
+																							<div className='bg-[#eaecf9]/50 border border-[#7678ed]/10 rounded-2xl px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-[#5d6075]'>
+																								<span>TTS Voice</span>
+																								<span className='font-mono font-bold text-[#7678ed] truncate max-w-[110px]'>
+																									{displayVoice}
+																								</span>
+																							</div>
+																						</div>
+
+																						{/* Edit Model Button */}
+																						<button
+																							type='button'
+																							onClick={() => handleOpenEditModelModal(mod)}
+																							className='w-full py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-bold rounded-2xl transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer'
+																						>
+																							<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																								<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																							</svg>
+																							Edit Model
+																						</button>
+																					</div>
+																				);
+																			})}
+																		</div>
+																	)}
+																</div>
+															</div>
+														);
+													})()}
+												</div>
+											)}
+
+											{/* View 5: Edit Model Page View */}
+											{instanceSubView === 'edit-model' && editingModel && (
+												<div className='space-y-8 animate-in fade-in duration-200 select-none'>
+													{/* Header with Back Button */}
+													<div className='flex items-center gap-3'>
+														<button
+															onClick={() => setInstanceSubView('instance-models')}
+															className='p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer'
+															title='Back to Manage Models'
+														>
+															<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+																<line x1='19' y1='12' x2='5' y2='12' />
+																<polyline points='12 19 5 12 12 5' />
+															</svg>
+														</button>
+														<div>
+															<h3 className='text-2xl font-bold text-[#202022]'>
+																Edit Model — {editingModel.name || editingModel.id}
+															</h3>
+															<p className='text-sm text-[#7a7d90] mt-0.5'>
+																Configure persona details, greetings, character book lore, and default TTS voice.
+															</p>
+														</div>
+													</div>
+
+													{/* Top Card Information (Previous Information Preview) */}
+													{(() => {
+														const rawId = String(editingModel.id || '');
+														const pref = modelPreferences[rawId] || modelPreferences[rawId.toLowerCase()];
+														const matchedModel = instanceModelsList.find(
+															(mod) =>
+																String(mod.id || '').toLowerCase() === rawId.toLowerCase() ||
+																String(mod.name || '').toLowerCase() === rawId.toLowerCase()
+														);
+														const displayName = getCharacterName(pref?.character) || (pref as any)?.name || editingModel.name || editingModel.id;
+														const displayPicture = getModelAvatarPicture(pref, editingModel);
+														const displayVoice = pref?.voice || editingModel.voice || 'af_heart';
+														const displayCtx = editModelNumCtx
+															? `${editModelNumCtx.toLocaleString()} tokens`
+															: pref?.num_ctx
+															? `${pref.num_ctx.toLocaleString()} tokens`
+															: editingModel.context || '8,192 tokens';
+
+														return (
+															<div className='p-6 rounded-3xl border border-[#e8ebf3] bg-white flex flex-col md:flex-row items-center gap-6 shadow-sm'>
+																{/* Avatar */}
+																<div className='relative w-32 h-32 shrink-0 mx-auto md:mx-0'>
+																	{displayPicture ? (
+																		<img
+																			src={displayPicture}
+																			alt={displayName}
+																			className='w-32 h-32 rounded-2xl object-cover shadow-sm border-2 border-white'
+																			onError={(e) => {
+																				e.currentTarget.style.display = 'none';
+																				const fallbackElem = e.currentTarget.nextElementSibling as HTMLElement;
+																				if (fallbackElem) fallbackElem.style.display = 'flex';
+																			}}
+																		/>
+																	) : null}
+																	<div
+																		className='w-32 h-32 rounded-2xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center font-bold text-4xl shadow-sm border-2 border-white'
+																		style={{ display: displayPicture ? 'none' : 'flex' }}
+																	>
+																		🤖
+																	</div>
+																</div>
+
+																{/* Model Details */}
+																<div className='flex-1 space-y-2 text-center md:text-left min-w-0'>
+																	<div className='flex flex-wrap items-center justify-center md:justify-start gap-2'>
+																		<h4 className='text-xl font-bold text-[#202022] truncate'>{displayName}</h4>
+																		{matchedModel ? (
+																			<span className='inline-flex items-center gap-1 px-3 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/60 rounded-full text-[10px] font-bold uppercase tracking-wider'>
+																				<span className='w-1.5 h-1.5 rounded-full bg-emerald-500'></span>
+																				Matched: {matchedModel.name || matchedModel.id}
+																			</span>
+																		) : (
+																			<span className='inline-flex items-center gap-1 px-3 py-0.5 bg-amber-50 text-amber-700 border border-amber-200/60 rounded-full text-[10px] font-bold uppercase tracking-wider'>
+																				<span className='w-1.5 h-1.5 rounded-full bg-amber-500'></span>
+																				No Model Matched
+																			</span>
+																		)}
+																	</div>
+
+																	<p className='text-xs text-[#8e90a6] font-medium font-mono'>
+																		ID: {editingModel.id || rawId}
+																	</p>
+
+																	<div className='flex flex-wrap items-center justify-center md:justify-start gap-2.5 pt-1 text-xs text-[#5d6075]'>
+																		<span className='px-3 py-1 bg-[#eaecf9]/80 rounded-xl font-semibold text-[#7678ed]'>
+																			Provider: {editingModel.provider || selectedInstanceForModels?.type || 'Ollama'}
+																		</span>
+																		<span className='px-3 py-1 bg-[#eaecf9]/80 rounded-xl font-semibold text-[#7678ed]'>
+																			Context: {displayCtx}
+																		</span>
+																		<span className='px-3 py-1 bg-[#eaecf9]/80 rounded-xl font-semibold text-[#7678ed]'>
+																			TTS Voice: {displayVoice}
+																		</span>
+																	</div>
+																</div>
+															</div>
+														);
+													})()}
+
+													{/* Main Form Below */}
+													<form onSubmit={handleSaveEditModel} className='space-y-8 bg-white border border-[#e8ebf3] rounded-3xl p-6 shadow-xs'>
+														{/* 1. General Information */}
+														<div className='space-y-4'>
+															<div className='pb-2 border-b border-[#e8ebf3]'>
+																<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider'>General Information</h4>
+																<p className='text-xs text-[#7a7d90] mt-0.5'>Basic identity, context window, and voice configuration for this model.</p>
+															</div>
+
+															<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+																<div>
+																	<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Model / Character Name</label>
+																	<input
+																		type='text'
+																		value={editModelName}
+																		onChange={(e) => setEditModelName(e.target.value)}
+																		placeholder='e.g. Sora Assistant'
+																		className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all'
+																	/>
+																</div>
+
+																<div>
+																	<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Default TTS Voice</label>
+																	<select
+																		value={editModelVoice}
+																		onChange={(e) => setEditModelVoice(e.target.value)}
+																		className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all cursor-pointer'
+																	>
+																		<option value='af_heart'>af_heart (Female Warm)</option>
+																		<option value='af_bella'>af_bella (Female Expressive)</option>
+																		<option value='af_sky'>af_sky (Female Soft)</option>
+																		<option value='am_adam'>am_adam (Male Deep)</option>
+																		<option value='am_michael'>am_michael (Male Smooth)</option>
+																	</select>
+																</div>
+															</div>
+
+															<div>
+																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Context Window Size (num_ctx)</label>
+																<div className='space-y-2'>
+																	<input
+																		type='number'
+																		step={1024}
+																		min={512}
+																		max={1048576}
+																		value={editModelNumCtx}
+																		onChange={(e) => setEditModelNumCtx(Number(e.target.value))}
+																		placeholder='8192'
+																		className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all'
+																	/>
+																	<div className='flex items-center gap-1.5 flex-wrap'>
+																		{[2048, 4096, 8192, 16384, 32768, 65536, 131072].map((size) => (
+																			<button
+																				key={size}
+																				type='button'
+																				onClick={() => setEditModelNumCtx(size)}
+																				className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+																					editModelNumCtx === size
+																						? 'bg-[#7678ed] text-white shadow-xs'
+																						: 'bg-[#eaecf9]/80 text-[#5d6075] hover:bg-[#eaecf9]'
+																				}`}
+																			>
+																				{size >= 1024 ? `${size / 1024}k` : size}
+																			</button>
+																		))}
+																	</div>
+																</div>
+															</div>
+
+															<div>
+																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Description</label>
+																<textarea
+																	rows={3}
+																	value={editModelDescription}
+																	onChange={(e) => setEditModelDescription(e.target.value)}
+																	placeholder='Model persona description, system instructions, or background context...'
+																	className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-[#7678ed] resize-y'
+																/>
+															</div>
+
+															<div>
+																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>First Message (Greeting)</label>
+																<textarea
+																	rows={2}
+																	value={editModelFirstMessage}
+																	onChange={(e) => setEditModelFirstMessage(e.target.value)}
+																	placeholder='Initial greeting sent by model when starting a conversation...'
+																	className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-2xl px-4 py-3 text-sm font-medium outline-none focus:border-[#7678ed] resize-y'
+																/>
+															</div>
+														</div>
+
+														{/* 2. Alternative Greetings */}
+														<div className='space-y-4 pt-4 border-t border-[#e8ebf3]'>
+															<div className='flex items-center justify-between pb-2 border-b border-[#e8ebf3]'>
+																<div>
+																	<h4 className='text-base font-bold text-[#202022]'>Alternative Greetings</h4>
+																	<p className='text-xs text-[#7a7d90]'>Optional alternative opening lines for starting new chats.</p>
+																</div>
+																<button
+																	type='button'
+																	onClick={handleAddGreeting}
+																	className='px-3.5 py-2 rounded-2xl bg-[#eaecf9] hover:bg-[#e0e3f5] text-[#7678ed] text-xs font-bold transition-all flex items-center gap-1 cursor-pointer'
+																>
+																	+ Add Greeting
+																</button>
+															</div>
+
+															{editModelAlternateGreetings.length === 0 ? (
+																<p className='text-xs text-[#8e90a6] italic py-2 text-center'>No alternative greetings added.</p>
+															) : (
+																<div className='space-y-3'>
+																	{editModelAlternateGreetings.map((greeting, idx) => (
+																		<div key={idx} className='flex items-center gap-3'>
+																			<input
+																				type='text'
+																				value={greeting}
+																				onChange={(e) => handleUpdateGreeting(idx, e.target.value)}
+																				placeholder={`Greeting #${idx + 1}...`}
+																				className='flex-1 bg-white border border-[#e8ebf3] text-[#202022] rounded-2xl px-4 py-2.5 text-sm font-medium outline-none focus:border-[#7678ed]'
+																			/>
+																			<button
+																				type='button'
+																				onClick={() => handleRemoveGreeting(idx)}
+																				className='p-2.5 text-red-500 hover:bg-red-50 rounded-2xl transition-all cursor-pointer'
+																				title='Remove Greeting'
+																			>
+																				<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																					<polyline points='3 6 5 6 21 6' />
+																					<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																				</svg>
+																			</button>
+																		</div>
+																	))}
+																</div>
+															)}
+														</div>
+
+														{/* 3. Character Book */}
+														<div className='space-y-4 pt-4 border-t border-[#e8ebf3]'>
+															<div className='flex items-center justify-between pb-2 border-b border-[#e8ebf3]'>
+																<div>
+																	<h4 className='text-base font-bold text-[#202022]'>Character Book</h4>
+																	<p className='text-xs text-[#7a7d90]'>Lore items, world facts, and keyword-triggered context memories.</p>
+																</div>
+																<button
+																	type='button'
+																	onClick={handleAddBookItem}
+																	className='px-3.5 py-2 rounded-2xl bg-[#eaecf9] hover:bg-[#e0e3f5] text-[#7678ed] text-xs font-bold transition-all flex items-center gap-1 cursor-pointer'
+																>
+																	+ Add Item
+																</button>
+															</div>
+
+															{editModelCharacterBook.length === 0 ? (
+																<p className='text-xs text-[#8e90a6] italic py-2 text-center'>No character book items defined.</p>
+															) : (
+																<div className='space-y-4'>
+																	{editModelCharacterBook.map((item, idx) => (
+																		<div key={idx} className='bg-white p-5 rounded-2xl border border-[#e8ebf3] space-y-4 shadow-xs'>
+																			<div className='flex items-center justify-between gap-3'>
+																				<input
+																					type='text'
+																					value={item.name}
+																					onChange={(e) => handleUpdateBookItem(idx, 'name', e.target.value)}
+																					placeholder='Item Name (e.g. World Lore)...'
+																					className='flex-1 bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-3.5 py-2 text-xs font-bold outline-none focus:border-[#7678ed]'
+																				/>
+																				<button
+																					type='button'
+																					onClick={() => handleRemoveBookItem(idx)}
+																					className='p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer'
+																					title='Remove Item'
+																				>
+																					<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																						<polyline points='3 6 5 6 21 6' />
+																						<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																					</svg>
+																				</button>
+																			</div>
+
+																			<div>
+																				<label className='block text-[11px] font-bold text-[#7a7d90] mb-1 uppercase tracking-wider'>Description / Content</label>
+																				<textarea
+																					rows={2}
+																					value={item.description}
+																					onChange={(e) => handleUpdateBookItem(idx, 'description', e.target.value)}
+																					placeholder='Content inserted into context when keywords match...'
+																					className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-3.5 py-2 text-xs font-medium outline-none focus:border-[#7678ed] resize-y'
+																				/>
+																			</div>
+
+																			<div>
+																				<label className='block text-[11px] font-bold text-[#7a7d90] mb-1 uppercase tracking-wider'>Tags / Keywords (comma separated)</label>
+																				<input
+																					type='text'
+																					value={item.tags}
+																					onChange={(e) => handleUpdateBookItem(idx, 'tags', e.target.value)}
+																					placeholder='e.g. empire, capital, history'
+																					className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-3.5 py-2 text-xs font-medium outline-none focus:border-[#7678ed]'
+																				/>
+																			</div>
+																		</div>
+																	))}
+																</div>
+															)}
+														</div>
+
+														{/* Form Action Buttons */}
+														<div className='flex items-center justify-end gap-3 pt-6 border-t border-[#e8ebf3]'>
+															<button
+																type='button'
+																onClick={() => setInstanceSubView('instance-models')}
+																className='px-5 py-2.5 rounded-2xl text-xs font-bold text-[#7a7d90] hover:bg-[#eaecf8] transition-colors cursor-pointer'
+															>
+																Cancel
+															</button>
+															<button
+																type='submit'
+																className='px-6 py-2.5 rounded-2xl text-xs font-bold bg-[#7678ed] hover:bg-[#6869d9] text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer flex items-center gap-2'
+															>
+																<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																	<polyline points='20 6 9 17 4 12' />
+																</svg>
+																Save Model Preference
+															</button>
+														</div>
+													</form>
+												</div>
+											)}
+										</div>
+									)}
+
+									{activeSettingsCategory === 'preferences' && (
+										<div className='space-y-6 animate-in fade-in duration-200'>
+											<div>
+												<h3 className='text-2xl font-bold text-[#202022]'>Preferences</h3>
+												<p className='text-sm text-[#7a7d90] mt-1'>Configure playback options, user interface defaults, and system notifications.</p>
+											</div>
+
+											<div className='space-y-4 bg-[#f9fafc] border border-[#e8ebf3] rounded-2xl p-6'>
+												<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
+													<div>
+														<h4 className='text-base font-bold text-[#202022]'>Auto-play Assistant Voice</h4>
+														<p className='text-xs text-[#8e90a6]'>Automatically start TTS voice playback when assistant finishes generating response.</p>
+													</div>
+													<input type='checkbox' className='w-5 h-5 rounded text-[#7678ed] focus:ring-[#7678ed]' />
+												</div>
+
+												<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
+													<div>
+														<h4 className='text-base font-bold text-[#202022]'>Desktop Notifications</h4>
+														<p className='text-xs text-[#8e90a6]'>Send desktop alert when background LLM generation completes.</p>
+													</div>
+													<input type='checkbox' defaultChecked className='w-5 h-5 rounded text-[#7678ed] focus:ring-[#7678ed]' />
+												</div>
+
+												<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
+													<div>
+														<h4 className='text-base font-bold text-[#202022]'>Auto-scroll during generation</h4>
+														<p className='text-xs text-[#8e90a6]'>Keep chat window scrolled to the latest incoming message tokens.</p>
+													</div>
+													<input type='checkbox' defaultChecked className='w-5 h-5 rounded text-[#7678ed] focus:ring-[#7678ed]' />
+												</div>
+
+												<div className='pt-2'>
+													<h4 className='text-base font-bold text-[#202022] mb-2'>Default Audio Output Device</h4>
+													<select className='w-full bg-white border border-[#e8ebf3] rounded-xl px-3.5 py-2.5 text-sm text-[#202022] font-semibold outline-none focus:border-[#7678ed]'>
+														<option value='default'>System Default Speaker</option>
+														<option value='headphones'>Headphones / Headset</option>
+													</select>
+												</div>
+											</div>
+										</div>
+									)}
+
+									{activeSettingsCategory === 'about-walpaca' && (
+										<div className='space-y-6 animate-in fade-in duration-200'>
+											<div className='p-8 rounded-3xl bg-gradient-to-br from-[#202022] to-[#2d2d30] text-white shadow-xl relative overflow-hidden'>
+												<div className='relative z-10 space-y-4'>
+													<div className='w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center p-2.5'>
+														<img src='/icon-white.svg' alt='Walpaca Logo' className='w-full h-full object-contain' />
+													</div>
+													<div>
+														<h3 className='text-3xl font-extrabold tracking-tight'>Walpaca</h3>
+														<p className='text-sm text-white/70 font-mono mt-1'>Version 1.0.0 (Build 2026.09.29-release)</p>
+													</div>
+													<p className='text-sm text-white/80 leading-relaxed max-w-xl'>
+														Next-generation local & multi-model AI assistant workspace featuring high-performance TTS audio streaming, character persona engines, and custom folder management.
+													</p>
+													<div className='flex items-center gap-3 pt-2'>
+														<button className='px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-all border border-white/15 cursor-pointer'>
+															Documentation
+														</button>
+													</div>
+												</div>
+											</div>
+										</div>
+									)}
+								</div>
+							</main>
+
+							{/* 3. RIGHT SIDEBAR - HELP & TIPS */}
+							<aside className='w-[320px] bg-[#f9fafc] border-l border-[#e8ebf3] p-6 flex flex-col gap-5 overflow-y-auto shrink-0 select-none'>
+								<div className='flex items-center gap-2 text-[#7678ed] font-bold text-lg border-b border-[#e8ebf3] pb-3'>
+									<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+										<path d='M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z' />
+									</svg>
+									<span>Help & Tips</span>
+								</div>
+
+								{activeSettingsCategory === 'import-chat' && (
+									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
+										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
+											<h5 className='font-bold text-[#202022] text-sm'>Supported File Types</h5>
+											<p className='text-xs text-[#7a7d90]'>
+												You can import JSON files exported directly from ChatGPT (<code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>conversations.json</code>) or Anthropic Claude exports.
+											</p>
+										</div>
+										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
+											<h5 className='font-bold text-[#202022] text-sm'>Size Limits</h5>
+											<p className='text-xs text-[#7a7d90]'>Single file archives up to 500 MB are processed locally without leaving your browser workspace.</p>
+										</div>
+									</div>
+								)}
+
+								{activeSettingsCategory === 'manage-instances' && (
+									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
+										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
+											<h5 className='font-bold text-[#202022] text-sm'>Connecting Ollama</h5>
+											<p className='text-xs text-[#7a7d90]'>
+												Ensure Ollama is running locally with <code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>OLLAMA_ORIGINS="*"</code> enabled for web CORS access.
+											</p>
+										</div>
+										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
+											<h5 className='font-bold text-[#202022] text-sm'>API Key Security</h5>
+											<p className='text-xs text-[#7a7d90]'>Cloud API tokens are encrypted in your browser's local secure storage and never transmitted to third parties.</p>
+										</div>
+									</div>
+								)}
+
+								{activeSettingsCategory === 'preferences' && (
+									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
+										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
+											<h5 className='font-bold text-[#202022] text-sm'>TTS Audio Output</h5>
+											<p className='text-xs text-[#7a7d90]'>Ensure your browser permission allows HTML5 Web Audio auto-play for seamless speech output.</p>
+										</div>
+									</div>
+								)}
+
+								{activeSettingsCategory === 'about-walpaca' && (
+									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
+										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
+											<h5 className='font-bold text-[#202022] text-sm'>System Health</h5>
+											<p className='text-xs text-[#7a7d90]'>All core sub-services (Frontend Next.js app and Python API backend) operating nominally.</p>
+										</div>
+									</div>
+								)}
+							</aside>
+						</div>
+					) : (
+						<>
+							{/* ========================================================= */}
+							{/* 2. CHAT LIST PANEL (#f9fafc) */}
+							{/* ========================================================= */}
 					<section className='w-[350px] border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0'>
 						{/* Search Bar Header */}
 						<div className='p-4 pb-3 flex items-center gap-2'>
@@ -1183,7 +3228,11 @@ export default function AlpacaWebPage() {
 						{/* Chat List Scrollable Items */}
 						<div className='flex-1 overflow-y-auto px-2 space-y-1.5 pb-4'>
 							{chatItems
-								.filter((chat) => chat.name.toLowerCase().includes(searchQuery.toLowerCase()))
+								.filter((chat) => {
+									const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase());
+									const matchesFolder = activeTab === "all" || chat.folder === activeTab;
+									return matchesSearch && matchesFolder;
+								})
 								.map((chat) => {
 									const isSelected = activeChatId === chat.id;
 									return (
@@ -1341,6 +3390,25 @@ export default function AlpacaWebPage() {
 																<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
 															</svg>
 															Rename
+														</button>
+														<button
+															onClick={handleOpenDuplicateModal}
+															className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer'
+														>
+															<svg
+																width='16'
+																height='16'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='currentColor'
+																strokeWidth='2'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+															>
+																<rect x='9' y='9' width='13' height='13' rx='2' ry='2' />
+																<path d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' />
+															</svg>
+															Duplicate
 														</button>
 														<button
 															onClick={handleOpenDeleteModal}
@@ -1838,6 +3906,8 @@ export default function AlpacaWebPage() {
 							})()}
 						</aside>
 					) : null}
+						</>
+					)}
 				</div>
 			</div>
 			{/* Create Folder Modal */}
@@ -2142,6 +4212,43 @@ export default function AlpacaWebPage() {
 					</div>
 				</div>
 			)}
+
+			{/* Custom Duplicate Chat Modal */}
+			{isDuplicateModalOpen && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-4'>
+							<h3 className='text-lg font-bold tracking-tight'>Duplicate Chat</h3>
+							<button onClick={() => setIsDuplicateModalOpen(false)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<p className='text-sm text-white/70 leading-relaxed mb-6'>
+							Are you sure you want to duplicate this chat? A new conversation with the same content will be created and opened automatically.
+						</p>
+						<div className='flex items-center justify-end gap-3'>
+							<button
+								type='button'
+								onClick={() => setIsDuplicateModalOpen(false)}
+								className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+							>
+								Cancel
+							</button>
+							<button
+								type='button'
+								onClick={handleConfirmDuplicateChat}
+								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer'
+							>
+								Duplicate Chat
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
 		</main>
   );
 }
