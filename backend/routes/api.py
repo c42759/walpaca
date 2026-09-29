@@ -1,4 +1,8 @@
-from flask import Blueprint, request, jsonify
+import json
+import os
+import urllib.error
+import urllib.request
+from flask import Blueprint, request, jsonify, Response, stream_with_context
 from models import (
     db,
     Chat,
@@ -54,10 +58,21 @@ def update_folder(folder_id):
     return jsonify(folder.to_dict())
 
 
+# ----------------- DELETION HELPERS -----------------
+def _delete_chat_internal(chat):
+    """Delete a chat and all its messages and attachments via cascade."""
+    db.session.delete(chat)
+
+
+def _delete_folder_internal(folder):
+    """Delete a folder, its subfolders, and all contained chats and messages via cascade."""
+    db.session.delete(folder)
+
+
 @api_bp.route("/folders/<folder_id>", methods=["DELETE"])
 def delete_folder(folder_id):
     folder = ChatFolder.query.get_or_404(folder_id)
-    db.session.delete(folder)
+    _delete_folder_internal(folder)
     db.session.commit()
     return jsonify({"success": True, "deleted": folder_id})
 
@@ -119,7 +134,7 @@ def update_chat(chat_id):
 @api_bp.route("/chats/<chat_id>", methods=["DELETE"])
 def delete_chat(chat_id):
     chat = Chat.query.get_or_404(chat_id)
-    db.session.delete(chat)
+    _delete_chat_internal(chat)
     db.session.commit()
     return jsonify({"success": True, "deleted": chat_id})
 
@@ -355,3 +370,84 @@ def search():
             m.to_dict(include_attachments=False) for m in matched_messages
         ],
     })
+
+
+# ----------------- TEXT-TO-SPEECH (TTS) -----------------
+@api_bp.route("/tts", methods=["GET", "POST", "OPTIONS"])
+def text_to_speech():
+    if request.method == "OPTIONS":
+        resp = Response("", status=200)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return resp
+
+    if request.method == "POST":
+        data = request.get_json(silent=True) or request.form or {}
+    else:
+        data = request.args
+
+    text = data.get("text") or data.get("input")
+    if not text or not str(text).strip():
+        return jsonify({"error": "Missing required parameter 'text' or 'input'"}), 400
+
+    voice = data.get("voice") or "af_heart"
+    model = data.get("model") or "kokoro"
+    try:
+        speed = float(data.get("speed", 1.0))
+    except (ValueError, TypeError):
+        speed = 1.0
+
+    response_format = data.get("response_format") or "mp3"
+
+    payload = {
+        "model": model,
+        "input": str(text).strip(),
+        "voice": voice,
+        "speed": speed,
+        "response_format": response_format,
+    }
+
+    tts_server_url = os.getenv("TTS_SERVER_URL", "http://kokoro:8880").rstrip("/")
+    tts_api_key = os.getenv("TTS_API_KEY")
+
+    target_url = f"{tts_server_url}/v1/audio/speech"
+
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if tts_api_key:
+        headers["Authorization"] = f"Bearer {tts_api_key}"
+
+    req = urllib.request.Request(
+        target_url, data=payload_bytes, headers=headers, method="POST"
+    )
+
+    try:
+        resp = urllib.request.urlopen(req, timeout=60)
+        content_type = (
+            resp.headers.get("Content-Type") or f"audio/{response_format}"
+        )
+
+        def generate():
+            while True:
+                chunk = resp.read(4096)
+                if not chunk:
+                    break
+                yield chunk
+
+        res = Response(stream_with_context(generate()), content_type=content_type)
+        res.headers["Access-Control-Allow-Origin"] = "*"
+        return res
+
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace")[:500]
+        return jsonify({
+            "error": "TTS server error",
+            "status_code": e.code,
+            "detail": detail,
+        }), e.code
+    except urllib.error.URLError as e:
+        return jsonify({
+            "error": "Failed to reach TTS server",
+            "detail": str(e.reason),
+        }), 502
