@@ -5,3 +5,4 @@
 # File patterns
 .agents
 *.db
+.env

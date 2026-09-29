@@ -6,10 +6,12 @@ services:
     ports:
       - "5000:5000"
     volumes:
+      - ./backend:/app
       - ./alpaca.db:/app/alpaca.db
     environment:
-      - ALPACA_DB_PATH=/app/alpaca.db
-      - TTS_SERVER_URL=http://kokoro:8880
+      ALPACA_DB_PATH: "/app/alpaca.db"
+      TTS_SERVER_URL: "http://kokoro:8880"
+      TTS_API_KEY: ${KOKORO_API_KEY}
     restart: always
 
   frontend:
@@ -32,6 +34,8 @@ services:
       - "8880:8880"
     volumes:
       - kokoro-data:/var/lib/kokoro
+    environment:
+      KOKORO_API_KEY: ${KOKORO_API_KEY}
     restart: always
 
 volumes:
