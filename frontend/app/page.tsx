@@ -4588,28 +4588,44 @@ export default function AlpacaWebPage() {
 												<button
 													type='button'
 													onClick={() => setIsSelectModelModalOpen(true)}
-													className='relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl px-3.5 py-2 hover:bg-[#eaecf9] transition-all shadow-xs cursor-pointer group text-xs font-bold text-[#202022] max-w-[280px]'
-													title='Select Model & Instance'
+													className='group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2.5 hover:px-3.5 hover:bg-[#eaecf9] transition-all duration-300 ease-in-out shadow-xs cursor-pointer text-xs font-bold text-[#202022] max-w-[42px] hover:max-w-[340px] overflow-hidden'
+													title={`Model: ${selectedModelName} @ ${selectedInstName}`}
 												>
-													<div className='flex items-center gap-1.5 truncate'>
-														<span className='text-[#7678ed] font-bold'>🤖</span>
-														<span className='truncate'>{selectedModelName}</span>
-														<span className='text-[#8e90a6] font-semibold'>@</span>
-														<span className='text-[#7678ed] truncate'>{selectedInstName}</span>
+													<div className='flex items-center gap-2 pl-1 shrink-0'>
+														<svg
+															width='18'
+															height='18'
+															viewBox='0 0 24 24'
+															fill='none'
+															stroke='currentColor'
+															strokeWidth='2'
+															strokeLinecap='round'
+															strokeLinejoin='round'
+															className='text-[#7678ed] shrink-0'
+														>
+															<rect x='2' y='3' width='20' height='14' rx='2' ry='2' />
+															<line x1='8' y1='21' x2='16' y2='21' />
+															<line x1='12' y1='17' x2='12' y2='21' />
+														</svg>
+														<div className='flex items-center gap-1.5 opacity-0 max-w-0 group-hover:opacity-100 group-hover:max-w-[280px] transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden'>
+															<span className='truncate'>{selectedModelName}</span>
+															<span className='text-[#8e90a6] font-semibold'>@</span>
+															<span className='text-[#7678ed] truncate'>{selectedInstName}</span>
+															<svg
+																width='14'
+																height='14'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='#8e90a6'
+																strokeWidth='2.2'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+																className='ml-0.5 shrink-0 group-hover:text-[#202022] transition-colors'
+															>
+																<polyline points='6 9 12 15 18 9' />
+															</svg>
+														</div>
 													</div>
-													<svg
-														width='14'
-														height='14'
-														viewBox='0 0 24 24'
-														fill='none'
-														stroke='#8e90a6'
-														strokeWidth='2.2'
-														strokeLinecap='round'
-														strokeLinejoin='round'
-														className='ml-1.5 shrink-0 group-hover:text-[#202022] transition-colors'
-													>
-														<polyline points='6 9 12 15 18 9' />
-													</svg>
 												</button>
 											);
 										})()}
