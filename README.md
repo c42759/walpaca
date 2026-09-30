@@ -31,7 +31,7 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 - [x] Regenerate messages
 - [ ] Pull and delete models directly from the UI
 - [x] Image recognition (multimodal models)
-- [ ] Document recognition (plain text files)
+- [x] Document recognition (plain text files)
 - [ ] Code syntax highlighting
 - [ ] Multiple concurrent conversations
 - [ ] System notifications

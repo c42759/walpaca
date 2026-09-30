@@ -1029,6 +1029,16 @@ def generate_response(chat_id=None):
                     raw_imgs = [clean_base64_image(a.content) for a in img_atts if clean_base64_image(a.content)]
                     if raw_imgs:
                         msg_obj["images"] = raw_imgs
+                doc_atts = [
+                    a for a in m.attachments
+                    if a.type not in ("thought", "metadata", "image", "png", "jpg", "jpeg", "webp") and not (a.content and a.content.startswith("data:image"))
+                ]
+                if doc_atts:
+                    doc_blocks = []
+                    for da in doc_atts:
+                        doc_blocks.append(f"```{da.name} ({da.type})\n{da.content}\n```")
+                    if doc_blocks:
+                        msg_obj["content"] = (msg_obj.get("content", "") + "\n\n" + "\n\n".join(doc_blocks)).strip()
                 messages.append(msg_obj)
 
     message_id = None
@@ -1077,13 +1087,28 @@ def generate_response(chat_id=None):
         messages_payload = []
         for m in messages:
             m_copy = dict(m)
-            if "attachments" in m_copy and not m_copy.get("images"):
+            atts = m_copy.get("attachments", [])
+            if atts:
                 img_atts = [
-                    a for a in m_copy.get("attachments", [])
-                    if isinstance(a, dict) and (a.get("type") == "image" or (isinstance(a.get("content"), str) and a.get("content").startswith("data:image")))
+                    a for a in atts
+                    if isinstance(a, dict) and (a.get("type") in ("image", "png", "jpg", "jpeg", "webp") or (isinstance(a.get("content"), str) and a.get("content").startswith("data:image")))
                 ]
-                if img_atts:
+                if img_atts and not m_copy.get("images"):
                     m_copy["images"] = [clean_base64_image(a.get("content", "")) for a in img_atts if clean_base64_image(a.get("content", ""))]
+                doc_atts = [
+                    a for a in atts
+                    if isinstance(a, dict) and a.get("type") not in ("thought", "metadata", "image", "png", "jpg", "jpeg", "webp") and not (isinstance(a.get("content"), str) and a.get("content").startswith("data:image"))
+                ]
+                if doc_atts:
+                    doc_blocks = []
+                    for da in doc_atts:
+                        name = da.get("name", "document")
+                        att_type = da.get("type", "plain_text")
+                        content = da.get("content", "")
+                        if content:
+                            doc_blocks.append(f"```{name} ({att_type})\n{content}\n```")
+                    if doc_blocks:
+                        m_copy["content"] = (m_copy.get("content", "") + "\n\n" + "\n\n".join(doc_blocks)).strip()
             if "images" in m_copy:
                 m_copy["images"] = [clean_base64_image(img) for img in m_copy["images"] if clean_base64_image(img)]
             messages_payload.append(m_copy)
@@ -1109,9 +1134,6 @@ def generate_response(chat_id=None):
 
     if effective_system:
         messages_payload.insert(0, {"role": "system", "content": effective_system})
-
-    with open("messages.json", "w") as f:
-        json.dump(messages_payload, f, indent=4)
 
     raw_num_ctx = (data.get("num_ctx")
                    or props.get("num_ctx")

@@ -19,6 +19,15 @@ interface MessageAttachment {
   content: string;
 }
 
+interface SelectedAttachment {
+  id: string;
+  name: string;
+  type: "image" | "plain_text" | "code";
+  content: string;
+  size?: number;
+  extension?: string;
+}
+
 interface Message {
   id: string;
   senderName: string;
@@ -561,54 +570,186 @@ const renderMarkdownText = (
   return <>{elements}</>;
 };
 
+const getAttachmentType = (fileName: string, mimeType: string): "image" | "plain_text" | "code" => {
+  if (mimeType.startsWith("image/")) return "image";
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const codeExts = [
+    "c", "h", "css", "html", "js", "ts", "jsx", "tsx", "py", "java", "json", "xml", "asm", "nasm",
+    "cs", "cpp", "cxx", "hpp", "csv", "lsp", "lisp", "dockerfile", "glsl", "lua", "php", "rb", "ru", "rs",
+    "sql", "sh", "yaml", "yml", "p8", "go", "env"
+  ];
+  const imageExts = ["png", "jpeg", "jpg", "webp", "gif", "svg", "bmp"];
+  if (imageExts.includes(ext)) return "image";
+  if (codeExts.includes(ext)) return "code";
+  return "plain_text";
+};
+
+const DocumentAttachmentCard = ({ attachment, extension, isSelf }: { attachment: MessageAttachment | any; extension: string; isSelf?: boolean }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(attachment.content || "");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const name = attachment.name || `file.${extension}`;
+  const lines = attachment.content ? attachment.content.split("\n").length : 0;
+  const sizeKb = attachment.content ? (new Blob([attachment.content]).size / 1024).toFixed(1) : "0";
+
+  return (
+    <div className={`rounded-xl border transition-all overflow-hidden my-1 w-full max-w-full ${
+      isSelf 
+        ? 'bg-white/10 border-white/25 text-white shadow-xs' 
+        : 'bg-white border-[#e2e5f1] text-[#2d3142] shadow-xs'
+    }`}>
+      <div className="flex items-center justify-between px-3.5 py-2.5 gap-3">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs uppercase shrink-0 ${
+            isSelf ? 'bg-white/20 text-white' : 'bg-[#7678ed]/15 text-[#7678ed]'
+          }`}>
+            {extension}
+          </div>
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="text-sm font-semibold truncate" title={name}>{name}</span>
+            <span className={`text-[11px] ${isSelf ? 'text-white/75' : 'text-[#8e90a6]'}`}>
+              {sizeKb} KB • {lines} line{lines !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+              isSelf 
+                ? 'bg-white/20 hover:bg-white/30 text-white' 
+                : 'bg-[#f4f6fc] hover:bg-[#eef0f6] text-[#7678ed] border border-[#e2e5f1]'
+            }`}
+            title="Copy content"
+          >
+            {copied ? (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Copied</span>
+              </>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className={`p-1.5 rounded-lg text-xs transition-all cursor-pointer ${
+              isSelf 
+                ? 'bg-white/20 hover:bg-white/30 text-white' 
+                : 'bg-[#f4f6fc] hover:bg-[#eef0f6] text-[#5d6075] border border-[#e2e5f1]'
+            }`}
+            title={expanded ? 'Collapse preview' : 'View content'}
+          >
+            <svg 
+              width="14" 
+              height="14" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+            >
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className={`p-3 border-t text-xs font-mono overflow-x-auto max-h-60 leading-relaxed whitespace-pre-wrap select-text ${
+          isSelf 
+            ? 'bg-black/30 border-white/15 text-white/90' 
+            : 'bg-[#1e1e24] border-[#e2e5f1] text-[#f8f8f2]'
+        }`}>
+          {attachment.content}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function AlpacaWebPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedAttachments, setSelectedAttachments] = useState<SelectedAttachment[]>([]);
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const currentCount = selectedImages.length;
+    const currentCount = selectedAttachments.length;
     const maxAllowed = 4;
     const remaining = maxAllowed - currentCount;
 
     if (remaining <= 0) {
+      alert("Maximum limit of 4 attachments (images or document files) reached.");
       if (e.target) e.target.value = "";
       return;
     }
 
     const selectedFiles = Array.from(files).slice(0, remaining);
+    if (files.length > remaining) {
+      alert(`Only ${remaining} more attachment(s) allowed (limit is 4 total).`);
+    }
+
     const readPromises = selectedFiles.map((file) => {
-      return new Promise<string>((resolve, reject) => {
+      return new Promise<SelectedAttachment>((resolve, reject) => {
         const reader = new FileReader();
+        const attType = getAttachmentType(file.name, file.type);
+        const ext = file.name.split(".").pop()?.toLowerCase() || "txt";
+
         reader.onload = () => {
           if (typeof reader.result === "string") {
-            resolve(reader.result);
+            resolve({
+              id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              name: file.name,
+              type: attType,
+              content: reader.result,
+              size: file.size,
+              extension: ext,
+            });
           } else {
             reject(new Error("Failed to read file"));
           }
         };
         reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
+
+        if (attType === "image") {
+          reader.readAsDataURL(file);
+        } else {
+          reader.readAsText(file);
+        }
       });
     });
 
     Promise.all(readPromises)
-      .then((newImages) => {
-        setSelectedImages((prev) => [...prev, ...newImages].slice(0, maxAllowed));
+      .then((newAtts) => {
+        setSelectedAttachments((prev) => [...prev, ...newAtts].slice(0, maxAllowed));
       })
       .catch((err) => {
-        console.error("Error reading image files:", err);
+        console.error("Error reading attached files:", err);
       });
 
     if (e.target) e.target.value = "";
   };
 
-  const handleRemoveSelectedImage = (indexToRemove: number) => {
-    setSelectedImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  const handleRemoveSelectedAttachment = (indexToRemove: number) => {
+    setSelectedAttachments((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
   const [folders, setFolders] = useState<ChatFolder[]>([]);
@@ -1885,24 +2026,26 @@ export default function AlpacaWebPage() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() && selectedImages.length === 0) return;
+    if (!inputText.trim() && selectedAttachments.length === 0) return;
 
     const content = inputText.trim();
-    const currentImages = [...selectedImages];
+    const currentAttachments = [...selectedAttachments];
     setInputText("");
-    setSelectedImages([]);
+    setSelectedAttachments([]);
 
     if (promptTextareaRef.current) {
       promptTextareaRef.current.style.height = "auto";
       promptTextareaRef.current.style.overflowY = "hidden";
     }
 
-    const attachmentsPayload: MessageAttachment[] = currentImages.map((imgSrc, idx) => ({
-      id: `att-${Date.now()}-${idx}`,
-      type: "image",
-      name: `image_${idx + 1}.png`,
-      content: imgSrc,
+    const attachmentsPayload: MessageAttachment[] = currentAttachments.map((att, idx) => ({
+      id: att.id || `att-${Date.now()}-${idx}`,
+      type: att.type,
+      name: att.name,
+      content: att.content,
     }));
+
+    const firstImage = currentAttachments.find((a) => a.type === "image")?.content;
 
     const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
     const userMsg: Message = {
@@ -1912,7 +2055,7 @@ export default function AlpacaWebPage() {
       isSelf: true,
       content,
       time: nowStr,
-      image: currentImages.length > 0 ? currentImages[0] : undefined,
+      image: firstImage,
       attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
     };
 
@@ -4218,6 +4361,20 @@ export default function AlpacaWebPage() {
 																			))}
 																		</div>
 																	)}
+																	{(() => {
+																		const docAtts = (msg.attachments || []).filter(
+																			(att) => att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att)
+																		);
+																		if (docAtts.length === 0) return null;
+																		return (
+																			<div className="flex flex-col gap-2 mt-3 w-full max-w-full">
+																				{docAtts.map((att, idx) => {
+																					const ext = att.name ? att.name.split(".").pop()?.toLowerCase() || "txt" : "file";
+																					return <DocumentAttachmentCard key={att.id || idx} attachment={att} extension={ext} isSelf={msg.isSelf} />;
+																				})}
+																			</div>
+																		);
+																	})()}
 																	<div className='flex items-center justify-end gap-2 text-sm text-white/80 mt-2'>
 																		<button
 																			type='button'
@@ -4465,6 +4622,20 @@ export default function AlpacaWebPage() {
 																		}
 																	)
 																)}
+																{(() => {
+																	const docAtts = (msg.attachments || []).filter(
+																		(att) => att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att)
+																	);
+																	if (docAtts.length === 0) return null;
+																	return (
+																		<div className="flex flex-col gap-2 mt-3 w-full max-w-full">
+																			{docAtts.map((att, idx) => {
+																				const ext = att.name ? att.name.split(".").pop()?.toLowerCase() || "txt" : "file";
+																				return <DocumentAttachmentCard key={att.id || idx} attachment={att} extension={ext} isSelf={false} />;
+																			})}
+																		</div>
+																	);
+																})()}
 															</div>
 															<div className='flex items-center justify-between gap-4 mt-2.5 pt-1'>
 																{msg.reactions && msg.reactions.length > 0 && (
@@ -4526,34 +4697,59 @@ export default function AlpacaWebPage() {
 									<input
 										type='file'
 										ref={fileInputRef}
-										accept='image/*'
+										accept='image/*,.txt,.md,.css,.js,.jsx,.ts,.tsx,.php,.py,.html,.json,.xml,.csv,.c,.cpp,.h,.hpp,.cs,.java,.rb,.rs,.go,.sql,.sh,.yaml,.yml,.dockerfile,.env,.odt,.docx,.pptx,.pdf'
 										multiple
-										onChange={handleImageSelect}
+										onChange={handleAttachmentSelect}
 										className='hidden'
 									/>
 
-									{/* Image Attachments Preview Strip */}
-									{selectedImages.length > 0 && (
+									{/* Attachments Preview Strip */}
+									{selectedAttachments.length > 0 && (
 										<div className='flex items-center gap-3 px-1 py-1.5 overflow-x-auto w-full border-b border-[#eef0f6]/60 pb-3'>
-											{selectedImages.map((src, idx) => (
-												<div key={idx} className='relative group w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#e2e5f1] shadow-xs bg-[#f4f6fc]'>
-													<img src={src} alt={`Selected ${idx + 1}`} className='w-full h-full object-cover' />
-													<button
-														type='button'
-														onClick={() => handleRemoveSelectedImage(idx)}
-														className='absolute top-1 right-1 bg-black/60 hover:bg-[#ff4d4f] text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer shadow-sm'
-														title='Remove image'
-													>
-														<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
-															<line x1='18' y1='6' x2='6' y2='18' />
-															<line x1='6' y1='6' x2='18' y2='18' />
-														</svg>
-													</button>
-												</div>
-											))}
-											{selectedImages.length < 4 && (
-												<span className='text-xs text-[#8e90a6] font-medium ml-1 select-none'>
-													{selectedImages.length}/4 images
+											{selectedAttachments.map((att, idx) =>
+												att.type === 'image' ? (
+													<div key={att.id || idx} className='relative group w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#e2e5f1] shadow-xs bg-[#f4f6fc]'>
+														<img src={att.content} alt={att.name || `Selected ${idx + 1}`} className='w-full h-full object-cover' />
+														<button
+															type='button'
+															onClick={() => handleRemoveSelectedAttachment(idx)}
+															className='absolute top-1 right-1 bg-black/60 hover:bg-[#ff4d4f] text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer shadow-sm'
+															title='Remove image'
+														>
+															<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+																<line x1='18' y1='6' x2='6' y2='18' />
+																<line x1='6' y1='6' x2='18' y2='18' />
+															</svg>
+														</button>
+													</div>
+												) : (
+													<div key={att.id || idx} className='relative group flex items-center gap-2.5 px-3 py-2 rounded-xl border border-[#7678ed]/30 bg-[#7678ed]/5 hover:bg-[#7678ed]/10 transition-all shrink-0 max-w-[220px] shadow-2xs'>
+														<div className='w-8 h-8 rounded-lg bg-[#7678ed]/15 text-[#7678ed] flex items-center justify-center shrink-0 font-bold text-xs uppercase'>
+															{att.extension || 'txt'}
+														</div>
+														<div className='flex flex-col min-w-0 flex-1 pr-1'>
+															<span className='text-xs font-semibold text-[#2d3142] truncate' title={att.name}>{att.name}</span>
+															<span className='text-[10px] text-[#8e90a6] font-medium'>
+																{att.size ? `${(att.size / 1024).toFixed(1)} KB` : 'Document'}
+															</span>
+														</div>
+														<button
+															type='button'
+															onClick={() => handleRemoveSelectedAttachment(idx)}
+															className='text-[#8e90a6] hover:text-[#ff4d4f] p-1 rounded-full hover:bg-black/5 transition-all cursor-pointer shrink-0'
+															title='Remove attachment'
+														>
+															<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+																<line x1='18' y1='6' x2='6' y2='18' />
+																<line x1='6' y1='6' x2='18' y2='18' />
+															</svg>
+														</button>
+													</div>
+												)
+											)}
+											{selectedAttachments.length < 4 && (
+												<span className='text-xs text-[#8e90a6] font-medium ml-1 select-none whitespace-nowrap'>
+													{selectedAttachments.length}/4 attachments
 												</span>
 											)}
 										</div>
@@ -4647,14 +4843,14 @@ export default function AlpacaWebPage() {
 										{/* Attach file button */}
 										<button
 											type='button'
-											disabled={selectedImages.length >= 4}
+											disabled={selectedAttachments.length >= 4}
 											onClick={() => {
-												if (selectedImages.length < 4) {
+												if (selectedAttachments.length < 4) {
 													fileInputRef.current?.click();
 												}
 											}}
 											className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#8e90a6] disabled:hover:bg-transparent'
-											title={selectedImages.length >= 4 ? 'Maximum 4 images attached' : 'Attach file (Max 4 images)'}
+											title={selectedAttachments.length >= 4 ? 'Maximum 4 attachments reached' : 'Attach file (Max 4 attachments)'}
 										>
 											<svg
 												width='20'
@@ -4686,7 +4882,7 @@ export default function AlpacaWebPage() {
 											onKeyDown={(e) => {
 												if (e.key === 'Enter' && !e.shiftKey) {
 													e.preventDefault();
-													if (inputText.trim() || selectedImages.length > 0) {
+													if (inputText.trim() || selectedAttachments.length > 0) {
 														handleSendMessage(e);
 													}
 												}
