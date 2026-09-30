@@ -115,10 +115,15 @@ interface BackendChat {
 const initialMockChatList: ChatItem[] = [];
 
 const mapBackendChatToChatItem = (c: BackendChat): ChatItem => {
-  const words = c.name.trim().split(" ");
-  const initials = words.length > 1 && words[1]
-    ? `${words[0][0]}${words[1][0]}`.toUpperCase()
-    : c.name.slice(0, 2).toUpperCase();
+  const words = c.name.replace(/[^a-zA-Z0-9\s]/g, "").trim().split(/\s+/).filter(Boolean);
+  let initials = "CH";
+  if (words.length >= 2) {
+    initials = `${words[0][0]}${words[1][0]}`.toUpperCase();
+  } else if (words.length === 1 && words[0].length >= 2) {
+    initials = words[0].slice(0, 2).toUpperCase();
+  } else if (c.name.trim().length >= 2) {
+    initials = c.name.trim().slice(0, 2).toUpperCase();
+  }
 
   let timeStr = "now";
   if (c.latest_message_time) {
@@ -876,6 +881,8 @@ export default function AlpacaWebPage() {
   const [renameInputVal, setRenameInputVal] = useState<string>("");
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState<boolean>(false);
+  const [isForkModalOpen, setIsForkModalOpen] = useState<boolean>(false);
+  const [forkTargetMsg, setForkTargetMsg] = useState<Message | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [exportFormat, setExportFormat] = useState<"md" | "obsidian" | "json" | "txt">("md");
   const [editingModel, setEditingModel] = useState<any | null>(null);
@@ -1156,14 +1163,7 @@ export default function AlpacaWebPage() {
       const chatsRes = await fetch(`${API_URL}/chats`);
       if (chatsRes.ok) {
         const updatedList = await chatsRes.json();
-        setChatItems(
-          updatedList.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            time: c.date_time || "Just now",
-            folder: c.folder,
-          }))
-        );
+        setChatItems(updatedList.map(mapBackendChatToChatItem));
       }
 
       if (newChats.length > 0 && newChats[0].id) {
@@ -1286,6 +1286,48 @@ export default function AlpacaWebPage() {
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [editingMsgContent, setEditingMsgContent] = useState<string>("");
   const [deletingMsg, setDeletingMsg] = useState<Message | null>(null);
+
+  const handleOpenForkModal = (msg: Message) => {
+    setForkTargetMsg(msg);
+    setIsForkModalOpen(true);
+  };
+
+  const handleConfirmForkChat = async () => {
+    if (!activeChatId || !forkTargetMsg?.id) {
+      setIsForkModalOpen(false);
+      return;
+    }
+
+    const targetMsgId = forkTargetMsg.id;
+    setIsForkModalOpen(false);
+    setForkTargetMsg(null);
+
+    try {
+      const res = await fetch(`${API_URL}/chats/${activeChatId}/fork`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: targetMsgId }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to fork chat");
+      }
+
+      const newChat = await res.json();
+
+      const chatsRes = await fetch(`${API_URL}/chats`);
+      if (chatsRes.ok) {
+        const updatedList = await chatsRes.json();
+        setChatItems(updatedList.map(mapBackendChatToChatItem));
+      }
+
+      if (newChat && newChat.id) {
+        setActiveChatId(newChat.id);
+      }
+    } catch (e: any) {
+      console.error("Fork Chat Error:", e);
+    }
+  };
 
   const handleStartInlineEdit = (msg: Message) => {
     setEditingMsgId(msg.id);
@@ -5025,6 +5067,20 @@ export default function AlpacaWebPage() {
 																	<div className='flex items-center justify-end gap-2 text-sm text-white/80 mt-2'>
 																		<button
 																			type='button'
+																			onClick={() => handleOpenForkModal(msg)}
+																			className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white transition-all cursor-pointer'
+																			title='Fork Chat'
+																		>
+																			<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<circle cx='12' cy='18' r='3' />
+																				<circle cx='6' cy='6' r='3' />
+																				<circle cx='18' cy='6' r='3' />
+																				<path d='M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9' />
+																				<path d='M12 12v3' />
+																			</svg>
+																		</button>
+																		<button
+																			type='button'
 																			onClick={() => handleStartInlineEdit(msg)}
 																			className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white transition-all cursor-pointer'
 																			title='Edit Message'
@@ -5196,6 +5252,20 @@ export default function AlpacaWebPage() {
 																			<span>Metadata</span>
 																		</button>
 																	)}
+																	<button
+																		type='button'
+																		onClick={() => handleOpenForkModal(msg)}
+																		className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#7678ed] hover:border-[#7678ed] hover:bg-[#f4f6fc] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																		title='Fork Chat'
+																	>
+																		<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																			<circle cx='12' cy='18' r='3' />
+																			<circle cx='6' cy='6' r='3' />
+																			<circle cx='18' cy='6' r='3' />
+																			<path d='M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9' />
+																			<path d='M12 12v3' />
+																		</svg>
+																	</button>
 																	<button
 																		type='button'
 																		onClick={() => handleStartInlineEdit(msg)}
@@ -6092,6 +6162,51 @@ export default function AlpacaWebPage() {
 								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#ff4d4f] hover:bg-[#e04345] text-white transition-all shadow-md shadow-[#ff4d4f]/30 cursor-pointer'
 							>
 								Delete Chat
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Custom Fork Chat Confirmation Modal */}
+			{isForkModalOpen && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-3'>
+							<div className='flex items-center gap-2.5 text-[#7678ed] font-bold text-lg'>
+								<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<circle cx='12' cy='18' r='3' />
+									<circle cx='6' cy='6' r='3' />
+									<circle cx='18' cy='6' r='3' />
+									<path d='M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9' />
+									<path d='M12 12v3' />
+								</svg>
+								<span>Fork Conversation?</span>
+							</div>
+							<button onClick={() => setIsForkModalOpen(false)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<p className='text-sm text-white/70 leading-relaxed mb-6'>
+							This will create a new copy of this chat containing all messages up to and including the selected message.
+						</p>
+						<div className='flex items-center justify-end gap-3'>
+							<button
+								type='button'
+								onClick={() => setIsForkModalOpen(false)}
+								className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+							>
+								Cancel
+							</button>
+							<button
+								type='button'
+								onClick={handleConfirmForkChat}
+								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer flex items-center gap-1.5'
+							>
+								Fork Chat
 							</button>
 						</div>
 					</div>

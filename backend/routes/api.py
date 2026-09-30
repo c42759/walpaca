@@ -178,6 +178,55 @@ def duplicate_chat(chat_id):
     return jsonify(new_chat.to_dict(include_messages=True)), 201
 
 
+@api_bp.route("/chats/<chat_id>/fork", methods=["POST"])
+def fork_chat(chat_id):
+    data = request.json or {}
+    message_id = data.get("message_id")
+    if not message_id:
+        return jsonify({"error": "message_id is required to fork chat"}), 400
+
+    original = Chat.query.get_or_404(chat_id)
+    new_chat = Chat(
+        id=generate_uuid(),
+        name=f"{original.name} (Fork)",
+        folder=original.folder,
+        is_template=original.is_template,
+    )
+    db.session.add(new_chat)
+
+    messages = (
+        Message.query.filter_by(chat_id=chat_id)
+        .order_by(Message.date_time.asc())
+        .all()
+    )
+
+    for msg in messages:
+        new_msg = Message(
+            id=generate_uuid(),
+            chat_id=new_chat.id,
+            role=msg.role,
+            model=msg.model,
+            date_time=msg.date_time,
+            content=msg.content,
+        )
+        db.session.add(new_msg)
+        for att in msg.attachments:
+            new_att = Attachment(
+                id=generate_uuid(),
+                message_id=new_msg.id,
+                type=att.type,
+                name=att.name,
+                content=att.content,
+            )
+            db.session.add(new_att)
+
+        if msg.id == message_id:
+            break
+
+    db.session.commit()
+    return jsonify(new_chat.to_dict(include_messages=True)), 201
+
+
 @api_bp.route("/chats/import", methods=["POST"])
 def import_chats():
     data = request.json or {}

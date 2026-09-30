@@ -38,6 +38,7 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 - [ ] System notifications
 - [x] Import chats
 - [x] Export chats
+- [x] Fork chats
 - [ ] YouTube video recognition (transcript queries)
 - [ ] Website recognition (web scraping via URL)
 - [ ] Connect to cloud-hosted OpenAI-compatible APIs using personal API keys
