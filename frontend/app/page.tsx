@@ -876,6 +876,8 @@ export default function AlpacaWebPage() {
   const [renameInputVal, setRenameInputVal] = useState<string>("");
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState<boolean>(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [exportFormat, setExportFormat] = useState<"md" | "obsidian" | "json" | "txt">("md");
   const [editingModel, setEditingModel] = useState<any | null>(null);
   const [editModelVoice, setEditModelVoice] = useState<string>("af_heart");
   const [editModelNumCtx, setEditModelNumCtx] = useState<number>(8192);
@@ -1842,6 +1844,115 @@ export default function AlpacaWebPage() {
     } catch (err) {
       console.warn("Could not delete chat on backend API:", err);
     }
+  };
+
+  const handleOpenExportModal = () => {
+    setIsChatContextMenuOpen(false);
+    setIsExportModalOpen(true);
+  };
+
+  const handleExportChat = () => {
+    if (!messages || messages.length === 0) {
+      alert("No messages to export.");
+      return;
+    }
+
+    const currentChat = chatItems.find((c) => c.id === activeChatId);
+    const chatTitle = currentChat?.name || "Chat";
+    const safeTitle = chatTitle.replace(/[^a-zA-Z0-9_-]/g, "_");
+    let fileContent = "";
+    let mimeType = "text/plain";
+    let fileExt = "txt";
+
+    if (exportFormat === "json") {
+      mimeType = "application/json";
+      fileExt = "json";
+      const exportData = {
+        title: chatTitle,
+        exported_at: new Date().toISOString(),
+        messages: messages.map((m) => ({
+          id: m.id,
+          senderName: m.senderName,
+          role: m.isSelf ? "user" : m.senderRole || "assistant",
+          model: m.model,
+          content: m.content,
+          time: m.time,
+          image: m.image,
+          attachments: m.attachments,
+        })),
+      };
+      fileContent = JSON.stringify(exportData, null, 2);
+    } else if (exportFormat === "txt") {
+      mimeType = "text/plain";
+      fileExt = "txt";
+      const lines: string[] = [`=== ${chatTitle} ===\n`];
+      messages.forEach((m) => {
+        const sender = m.isSelf ? "You" : m.senderName || "Assistant";
+        lines.push(`[${m.time || ""}] ${sender}:`);
+        lines.push(m.content);
+        if (m.attachments && m.attachments.length > 0) {
+          m.attachments.forEach((att) => {
+            if (att.type !== "thought" && att.type !== "metadata") {
+              lines.push(`  [Attachment: ${att.name || att.type}]`);
+            }
+          });
+        }
+        lines.push("----------------------------------------");
+      });
+      lines.push("Generated from AlpacaWeb");
+      fileContent = lines.join("\n");
+    } else {
+      // Standard MD or Obsidian MD
+      mimeType = "text/markdown";
+      fileExt = "md";
+      const isObsidian = exportFormat === "obsidian";
+      const mdLines: string[] = [`# ${chatTitle}\n`];
+
+      messages.forEach((m) => {
+        const sender = m.isSelf ? "User" : m.senderName || "Assistant";
+        const timeStr = m.time || "";
+        mdLines.push(`### **${sender}** | ${timeStr}`);
+        mdLines.push(m.content);
+
+        if (m.image) {
+          mdLines.push(`![🖼️ Image](${m.image})`);
+        }
+
+        if (m.attachments && m.attachments.length > 0) {
+          m.attachments.forEach((att) => {
+            if (att.type === "thought" || att.type === "metadata") return;
+            const attName = att.name || "Attachment";
+            const attContent = att.content || "";
+            if (isObsidian) {
+              let block = `> [!quote]- ${attName}\n`;
+              attContent.split("\n").forEach((l) => {
+                block += `> ${l}\n`;
+              });
+              mdLines.push(block);
+            } else {
+              mdLines.push(
+                `<details>\n\n<summary>📄 ${attName}</summary>\n\n\`\`\`\n${attContent}\n\`\`\`\n\n</details>`
+              );
+            }
+          });
+        }
+        mdLines.push("----");
+      });
+      mdLines.push('Generated from [Walpaca](https://github.com/c42759/walpaca)');
+      fileContent = mdLines.join("\n\n");
+    }
+
+    const blob = new Blob([fileContent], { type: `${mimeType};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeTitle}_Export.${fileExt}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setIsExportModalOpen(false);
   };
 
   const getConversationAttachments = () => {
@@ -4338,6 +4449,26 @@ export default function AlpacaWebPage() {
 															Duplicate
 														</button>
 														<button
+															onClick={handleOpenExportModal}
+															className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer'
+														>
+															<svg
+																width='16'
+																height='16'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='currentColor'
+																strokeWidth='2'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+															>
+																<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
+																<polyline points='7 10 12 15 17 10' />
+																<line x1='12' y1='15' x2='12' y2='3' />
+															</svg>
+															Export Chat
+														</button>
+														<button
 															onClick={handleOpenDeleteModal}
 															className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#ff4d4f] hover:bg-[#fff1f0] transition-colors flex items-center gap-2.5 cursor-pointer'
 														>
@@ -5641,6 +5772,122 @@ export default function AlpacaWebPage() {
 								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer'
 							>
 								Duplicate Chat
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Custom Export Chat Modal */}
+			{isExportModalOpen && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-4'>
+							<div className='flex items-center gap-2.5'>
+								<div className='w-9 h-9 rounded-xl bg-[#7678ed]/20 text-[#7678ed] flex items-center justify-center'>
+									<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+										<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
+										<polyline points='7 10 12 15 17 10' />
+										<line x1='12' y1='15' x2='12' y2='3' />
+									</svg>
+								</div>
+								<div>
+									<h3 className='text-lg font-bold tracking-tight'>Export Chat</h3>
+									<p className='text-xs text-white/60'>Select export format to download transcript</p>
+								</div>
+							</div>
+							<button onClick={() => setIsExportModalOpen(false)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+
+						<div className='space-y-3 my-5'>
+							<label
+								onClick={() => setExportFormat('md')}
+								className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+									exportFormat === 'md'
+										? 'bg-[#7678ed]/15 border-[#7678ed] text-white'
+										: 'bg-[#2d2d30]/60 border-white/10 text-white/70 hover:bg-[#2d2d30]'
+								}`}
+							>
+								<input type='radio' name='exportFormat' checked={exportFormat === 'md'} onChange={() => setExportFormat('md')} className='mt-1 accent-[#7678ed]' />
+								<div>
+									<div className='text-sm font-semibold text-white flex items-center gap-2'>
+										<span>Standard Markdown (.md)</span>
+										<span className='px-2 py-0.5 text-[10px] rounded-md bg-white/10 text-white/80 font-mono'>DEFAULT</span>
+									</div>
+									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>Formatted Markdown transcript with timestamps and attachment blocks</p>
+								</div>
+							</label>
+
+							<label
+								onClick={() => setExportFormat('obsidian')}
+								className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+									exportFormat === 'obsidian'
+										? 'bg-[#7678ed]/15 border-[#7678ed] text-white'
+										: 'bg-[#2d2d30]/60 border-white/10 text-white/70 hover:bg-[#2d2d30]'
+								}`}
+							>
+								<input type='radio' name='exportFormat' checked={exportFormat === 'obsidian'} onChange={() => setExportFormat('obsidian')} className='mt-1 accent-[#7678ed]' />
+								<div>
+									<div className='text-sm font-semibold text-white'>Obsidian Markdown (.md)</div>
+									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>Uses Obsidian callouts (&gt; [!quote]- filename) for attachments</p>
+								</div>
+							</label>
+
+							<label
+								onClick={() => setExportFormat('json')}
+								className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+									exportFormat === 'json'
+										? 'bg-[#7678ed]/15 border-[#7678ed] text-white'
+										: 'bg-[#2d2d30]/60 border-white/10 text-white/70 hover:bg-[#2d2d30]'
+								}`}
+							>
+								<input type='radio' name='exportFormat' checked={exportFormat === 'json'} onChange={() => setExportFormat('json')} className='mt-1 accent-[#7678ed]' />
+								<div>
+									<div className='text-sm font-semibold text-white'>JSON (.json)</div>
+									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>Structured JSON containing chat metadata, messages, and attachments</p>
+								</div>
+							</label>
+
+							<label
+								onClick={() => setExportFormat('txt')}
+								className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+									exportFormat === 'txt'
+										? 'bg-[#7678ed]/15 border-[#7678ed] text-white'
+										: 'bg-[#2d2d30]/60 border-white/10 text-white/70 hover:bg-[#2d2d30]'
+								}`}
+							>
+								<input type='radio' name='exportFormat' checked={exportFormat === 'txt'} onChange={() => setExportFormat('txt')} className='mt-1 accent-[#7678ed]' />
+								<div>
+									<div className='text-sm font-semibold text-white'>Plain Text (.txt)</div>
+									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>Simple text transcript suitable for any text editor</p>
+								</div>
+							</label>
+						</div>
+
+						<div className='flex items-center justify-end gap-3 pt-2'>
+							<button
+								type='button'
+								onClick={() => setIsExportModalOpen(false)}
+								className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+							>
+								Cancel
+							</button>
+							<button
+								type='button'
+								onClick={handleExportChat}
+								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] text-white transition-all shadow-md shadow-[#7678ed]/30 flex items-center gap-2 cursor-pointer'
+							>
+								<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
+									<polyline points='7 10 12 15 17 10' />
+									<line x1='12' y1='15' x2='12' y2='3' />
+								</svg>
+								<span>Export &amp; Download</span>
 							</button>
 						</div>
 					</div>
