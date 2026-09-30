@@ -2788,16 +2788,25 @@ export default function AlpacaWebPage() {
 							</aside>
 
 							{/* 2. MIDDLE SETTINGS CONTENT AREA */}
-							<main className='flex-1 bg-white p-8 overflow-y-auto'>
+							<main className='flex-1 bg-[#f9fafc] p-8 overflow-y-auto'>
 								<div className='max-w-3xl mx-auto space-y-8'>
 									{activeSettingsCategory === 'import-chat' && (
 										<div className='space-y-6 animate-in fade-in duration-200'>
-											<div>
-												<h3 className='text-2xl font-bold text-[#202022]'>Import Chat</h3>
-												<p className='text-sm text-[#7a7d90] mt-1'>Import conversation logs, JSON backups, or zip archives from other LLM providers.</p>
+											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex items-center gap-3.5'>
+												<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 text-[#7678ed] flex items-center justify-center shrink-0 shadow-xs'>
+													<svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+														<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
+														<polyline points='17 8 12 3 7 8' />
+														<line x1='12' y1='3' x2='12' y2='15' />
+													</svg>
+												</div>
+												<div>
+													<h3 className='text-2xl font-bold text-[#202022] tracking-tight'>Import Chat</h3>
+													<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>Import conversation logs, JSON backups, or zip archives from other LLM providers.</p>
+												</div>
 											</div>
 
-											<div className='border-2 border-dashed border-[#7678ed]/40 hover:border-[#7678ed] rounded-3xl p-10 bg-[#f9fafc] hover:bg-[#f3f4fd] transition-all flex flex-col items-center justify-center text-center cursor-pointer group'>
+											<div className='border-2 border-dashed border-[#7678ed]/40 hover:border-[#7678ed] rounded-3xl p-10 bg-white hover:bg-[#f3f4fd] transition-all flex flex-col items-center justify-center text-center cursor-pointer group shadow-xs'>
 												<div className='w-16 h-16 rounded-2xl bg-[#eaecf9] group-hover:bg-[#7678ed] group-hover:text-white text-[#7678ed] flex items-center justify-center mb-4 transition-colors shadow-sm'>
 													<svg width='28' height='28' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
 														<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
@@ -2806,26 +2815,26 @@ export default function AlpacaWebPage() {
 													</svg>
 												</div>
 												<h4 className='text-base font-bold text-[#202022] mb-1'>Drop chat export files here</h4>
-												<p className='text-sm text-[#8e90a6] mb-4'>Supports ChatGPT export (.json), Claude export (.json), and Walpaca backup (.zip)</p>
-												<button className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-sm cursor-pointer'>
+												<p className='text-xs text-[#8e90a6] mb-4'>Supports ChatGPT export (.json), Claude export (.json), and Walpaca backup (.zip)</p>
+												<button className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md shadow-[#7678ed]/20 cursor-pointer'>
 													Browse Files
 												</button>
 											</div>
 
-											<div className='bg-[#f9fafc] border border-[#e8ebf3] rounded-2xl p-5 space-y-3'>
-												<h5 className='text-sm font-bold text-[#202022]'>Import Preferences</h5>
-												<div className='space-y-2.5 text-sm text-[#404252]'>
-													<label className='flex items-center gap-3 cursor-pointer'>
-														<input type='checkbox' defaultChecked className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed]' />
-														<span>Merge imported conversations into existing folders</span>
+											<div className='bg-white border border-[#e8ebf3] rounded-2xl p-6 space-y-4 shadow-xs'>
+												<h5 className='text-base font-bold text-[#202022] pb-3 border-b border-[#e8ebf3]'>Import Preferences</h5>
+												<div className='space-y-3 text-sm text-[#404252]'>
+													<label className='flex items-center gap-3 cursor-pointer p-2.5 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] hover:border-[#7678ed]/40 transition-all'>
+														<input type='checkbox' defaultChecked className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed]' />
+														<span className='text-xs font-semibold text-[#202022]'>Merge imported conversations into existing folders</span>
 													</label>
-													<label className='flex items-center gap-3 cursor-pointer'>
-														<input type='checkbox' defaultChecked className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed]' />
-														<span>Auto-detect custom model avatars and names</span>
+													<label className='flex items-center gap-3 cursor-pointer p-2.5 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] hover:border-[#7678ed]/40 transition-all'>
+														<input type='checkbox' defaultChecked className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed]' />
+														<span className='text-xs font-semibold text-[#202022]'>Auto-detect custom model avatars and names</span>
 													</label>
-													<label className='flex items-center gap-3 cursor-pointer'>
-														<input type='checkbox' className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed]' />
-														<span>Index imported message text for local semantic search</span>
+													<label className='flex items-center gap-3 cursor-pointer p-2.5 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] hover:border-[#7678ed]/40 transition-all'>
+														<input type='checkbox' className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed]' />
+														<span className='text-xs font-semibold text-[#202022]'>Index imported message text for local semantic search</span>
 													</label>
 												</div>
 											</div>
@@ -4070,39 +4079,54 @@ export default function AlpacaWebPage() {
 
 									{activeSettingsCategory === 'preferences' && (
 										<div className='space-y-6 animate-in fade-in duration-200'>
-											<div>
-												<h3 className='text-2xl font-bold text-[#202022]'>Preferences</h3>
-												<p className='text-sm text-[#7a7d90] mt-1'>Configure playback options, user interface defaults, and system notifications.</p>
+											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex items-center gap-3.5'>
+												<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 text-[#7678ed] flex items-center justify-center shrink-0 shadow-xs'>
+													<svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+														<line x1='4' y1='21' x2='4' y2='14' />
+														<line x1='4' y1='10' x2='4' y2='3' />
+														<line x1='12' y1='21' x2='12' y2='12' />
+														<line x1='12' y1='8' x2='12' y2='3' />
+														<line x1='20' y1='21' x2='20' y2='16' />
+														<line x1='20' y1='12' x2='20' y2='3' />
+														<line x1='1' y1='14' x2='7' y2='14' />
+														<line x1='9' y1='8' x2='15' y2='8' />
+														<line x1='17' y1='16' x2='23' y2='16' />
+													</svg>
+												</div>
+												<div>
+													<h3 className='text-2xl font-bold text-[#202022] tracking-tight'>Preferences</h3>
+													<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>Configure playback options, user interface defaults, and system notifications.</p>
+												</div>
 											</div>
 
-											<div className='space-y-4 bg-[#f9fafc] border border-[#e8ebf3] rounded-2xl p-6'>
+											<div className='space-y-4 bg-white border border-[#e8ebf3] rounded-2xl p-6 shadow-xs'>
 												<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
 													<div>
 														<h4 className='text-base font-bold text-[#202022]'>Auto-play Assistant Voice</h4>
-														<p className='text-xs text-[#8e90a6]'>Automatically start TTS voice playback when assistant finishes generating response.</p>
+														<p className='text-xs text-[#8e90a6] mt-0.5'>Automatically start TTS voice playback when assistant finishes generating response.</p>
 													</div>
-													<input type='checkbox' className='w-5 h-5 rounded text-[#7678ed] focus:ring-[#7678ed]' />
+													<input type='checkbox' className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer' />
 												</div>
 
 												<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
 													<div>
 														<h4 className='text-base font-bold text-[#202022]'>Desktop Notifications</h4>
-														<p className='text-xs text-[#8e90a6]'>Send desktop alert when background LLM generation completes.</p>
+														<p className='text-xs text-[#8e90a6] mt-0.5'>Send desktop alert when background LLM generation completes.</p>
 													</div>
-													<input type='checkbox' defaultChecked className='w-5 h-5 rounded text-[#7678ed] focus:ring-[#7678ed]' />
+													<input type='checkbox' defaultChecked className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer' />
 												</div>
 
 												<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
 													<div>
 														<h4 className='text-base font-bold text-[#202022]'>Auto-scroll during generation</h4>
-														<p className='text-xs text-[#8e90a6]'>Keep chat window scrolled to the latest incoming message tokens.</p>
+														<p className='text-xs text-[#8e90a6] mt-0.5'>Keep chat window scrolled to the latest incoming message tokens.</p>
 													</div>
-													<input type='checkbox' defaultChecked className='w-5 h-5 rounded text-[#7678ed] focus:ring-[#7678ed]' />
+													<input type='checkbox' defaultChecked className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer' />
 												</div>
 
-												<div className='pt-2'>
-													<h4 className='text-base font-bold text-[#202022] mb-2'>Default Audio Output Device</h4>
-													<select className='w-full bg-white border border-[#e8ebf3] rounded-xl px-3.5 py-2.5 text-sm text-[#202022] font-semibold outline-none focus:border-[#7678ed]'>
+												<div className='pt-2 space-y-2'>
+													<h4 className='text-base font-bold text-[#202022]'>Default Audio Output Device</h4>
+													<select className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-2xl px-4 py-3 text-sm text-[#202022] font-semibold outline-none focus:border-[#7678ed] transition-all cursor-pointer'>
 														<option value='default'>System Default Speaker</option>
 														<option value='headphones'>Headphones / Headset</option>
 													</select>
@@ -4112,24 +4136,92 @@ export default function AlpacaWebPage() {
 									)}
 
 									{activeSettingsCategory === 'about-walpaca' && (
-										<div className='space-y-6 animate-in fade-in duration-200'>
-											<div className='p-8 rounded-3xl bg-gradient-to-br from-[#202022] to-[#2d2d30] text-white shadow-xl relative overflow-hidden'>
-												<div className='relative z-10 space-y-4'>
-													<div className='w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center p-2.5'>
-														<img src='/icon-white.svg' alt='Walpaca Logo' className='w-full h-full object-contain' />
+										<div className='space-y-6 animate-in fade-in duration-200 pb-8'>
+											{/* Header Section */}
+											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+												<div className='flex items-center gap-3.5'>
+													<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 flex items-center justify-center p-2.5 shrink-0 shadow-xs'>
+														<img src='/icon-app.svg' alt='Walpaca Logo' className='w-full h-full object-contain' />
 													</div>
 													<div>
-														<h3 className='text-3xl font-extrabold tracking-tight'>Walpaca</h3>
-														<p className='text-sm text-white/70 font-mono mt-1'>Version 1.0.0 (Build 2026.09.29-release)</p>
+														<div className='flex items-center gap-2.5'>
+															<h3 className='text-2xl font-bold text-[#202022] tracking-tight'>Walpaca</h3>
+															<span className='px-2.5 py-0.5 text-xs font-semibold bg-[#eaecf9] text-[#7678ed] rounded-lg border border-[#7678ed]/20'>v1.0.0</span>
+														</div>
+														<p className='text-lg text-[#7a7d90] mt-0.5 font-medium'>
+															Web interface inspired on <a href='https://github.com/Jeffser/Alpaca' target='_blank' rel='noopener noreferrer' className='text-[#7678ed] underline hover:text-[#5d6075]'>Jeffser/Alpaca</a> GTK client.
+														</p>
 													</div>
-													<p className='text-sm text-white/80 leading-relaxed max-w-xl'>
-														Next-generation local & multi-model AI assistant workspace featuring high-performance TTS audio streaming, character persona engines, and custom folder management.
-													</p>
-													<div className='flex items-center gap-3 pt-2'>
-														<button className='px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-all border border-white/15 cursor-pointer'>
-															Documentation
-														</button>
-													</div>
+												</div>
+
+												<p className='text-lg text-[#404252] leading-relaxed pt-3 border-t border-[#e8ebf3]'>
+													Walpaca lets you access your local Alpaca workspace across your network or VPN. It mounts the exact same SQLite database file (<code className='bg-[#eaecf9] px-1.5 py-0.5 rounded-md text-[#7678ed] font-mono border border-[#7678ed]/20'>alpaca.db</code>) used by the native desktop app, keeping your existing chats and settings synchronized.
+												</p>
+											</div>
+
+											{/* Features Overview */}
+											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+												<div className='flex items-center gap-2.5 text-[#202022] font-bold text-lg pb-3 border-b border-[#e8ebf3]'>
+													<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#7678ed' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+														<polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' />
+													</svg>
+													<span>Features</span>
+												</div>
+
+												<div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-[#404252]'>
+													{[
+														{ icon: '💬', title: 'Multi-Model Chats', desc: 'Switch between Ollama & Cloud models in the same conversation.' },
+														{ icon: '📄', title: 'Document Recognition', desc: 'Attach text and code files (.txt, .md, .js, .py, .css) for prompt analysis.' },
+														{ icon: '🖼️', title: 'Image Support', desc: 'Attach up to 4 images per message for multimodal vision models.' },
+														{ icon: '💻', title: 'Syntax Highlighting', desc: 'Tokenized code blocks with copy button and line counters.' },
+														{ icon: '📥', title: 'Export Transcripts', desc: 'Export chats to Markdown (.md), Obsidian, JSON, or Plain Text.' },
+														{ icon: '🔊', title: 'Speech Output', desc: 'Line-by-line audio synthesis using Kokoro TTS integration.' },
+													].map((feat, i) => (
+														<div key={i} className='flex items-start gap-3 p-3.5 transition-all'>
+															<div className='w-9 h-9 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-bold text-base border border-[#7678ed]/20'>
+																{feat.icon}
+															</div>
+															<div>
+																<div className='font-bold text-[#202022] text-lg'>{feat.title}</div>
+																<div className='text-[#7a7d90] mt-0.5 leading-normal text-sm'>{feat.desc}</div>
+															</div>
+														</div>
+													))}
+												</div>
+											</div>
+
+											{/* Tech Stack & Credits */}
+											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4 text-xs text-[#404252]'>
+												<div className='flex items-center gap-2.5 text-[#202022] font-bold text-lg pb-3 border-b border-[#e8ebf3]'>
+													<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#7678ed' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+														<rect x='2' y='3' width='20' height='14' rx='2' ry='2' />
+														<line x1='8' y1='21' x2='16' y2='21' />
+														<line x1='12' y1='17' x2='12' y2='21' />
+													</svg>
+													<span>Tech Stack &amp; License</span>
+												</div>
+
+												<p className='leading-relaxed text-[#7a7d90] text-lg'>
+													Built with Next.js, React, Tailwind CSS, Zustand, and Python Flask. Uses shared SQLite database (<code className='font-mono text-[#7678ed] bg-[#eaecf9] px-1.5 py-0.5 rounded-md border border-[#7678ed]/20'>alpaca.db</code>).
+												</p>
+
+												<div className='pt-4 flex flex-wrap items-center gap-2.5'>
+													<span className='px-3 py-1.5 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] font-semibold text-sm flex items-center gap-1.5'>
+														<span className='w-2 h-2 rounded-full bg-[#7678ed]' />
+														Open Source (GPL License)
+													</span>
+													<a href='https://github.com/Jeffser/Alpaca' target='_blank' rel='noopener noreferrer' className='px-3 py-1.5 rounded-xl bg-[#eaecf9] text-[#7678ed] hover:bg-[#7678ed] hover:text-white font-semibold text-sm transition-all flex items-center gap-1.5 border border-[#7678ed]/20'>
+														<svg width='14' height='14' viewBox='0 0 24 24' fill='currentColor'>
+															<path d='M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z' />
+														</svg>
+														Jeffser/Alpaca
+													</a>
+													<a href='https://github.com/c42759/walpaca' target='_blank' rel='noopener noreferrer' className='px-3 py-1.5 rounded-xl bg-[#eaecf9] text-[#7678ed] hover:bg-[#7678ed] hover:text-white font-semibold text-sm transition-all flex items-center gap-1.5 border border-[#7678ed]/20'>
+														<svg width='14' height='14' viewBox='0 0 24 24' fill='currentColor'>
+															<path d='M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z' />
+														</svg>
+														c42759/walpaca
+													</a>
 												</div>
 											</div>
 										</div>
@@ -4143,7 +4235,7 @@ export default function AlpacaWebPage() {
 									<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
 										<path d='M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z' />
 									</svg>
-									<span>Help & Tips</span>
+									<span>Help &amp; Tips</span>
 								</div>
 
 								{activeSettingsCategory === 'import-chat' && (
@@ -4188,8 +4280,16 @@ export default function AlpacaWebPage() {
 								{activeSettingsCategory === 'about-walpaca' && (
 									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
 										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm'>System Health</h5>
-											<p className='text-xs text-[#7a7d90]'>All core sub-services (Frontend Next.js app and Python API backend) operating nominally.</p>
+											<h5 className='font-bold text-[#202022] text-sm flex items-center gap-2'>
+												<span className='w-2 h-2 rounded-full bg-[#27c93f] inline-block' />
+												<span>System Status</span>
+											</h5>
+											<p className='text-xs text-[#7a7d90]'>Frontend UI and Python API services are running.</p>
+										</div>
+
+										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
+											<h5 className='font-bold text-[#202022] text-sm'>Database Path</h5>
+											<p className='text-xs text-[#7a7d90] font-mono'>./alpaca.db</p>
 										</div>
 									</div>
 								)}
