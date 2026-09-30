@@ -35,6 +35,7 @@ services:
     environment:
       CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
+    command: npm run dev
 
   kokoro:
     container_name: walpaca_kokoro
