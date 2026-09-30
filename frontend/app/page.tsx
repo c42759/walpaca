@@ -613,6 +613,7 @@ export default function AlpacaWebPage() {
     lineText: string;
     lineIndex: number;
     voice?: string;
+    fullContent: string;
   } | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<{ id: string; name: string } | null>(null);
   const [renameFolderNameInput, setRenameFolderNameInput] = useState<string>("");
@@ -1245,7 +1246,7 @@ export default function AlpacaWebPage() {
     }
   };
 
-  const handlePlayTTS = async (msgId: string, content: string, voice?: string) => {
+  const handlePlayTTS = async (msgId: string, content: string, voice?: string, fromLineIndex?: number) => {
     if (ttsStateRef.current.msgId === msgId && ttsStateRef.current.status === "paused") {
       handleResumeTTS();
       return;
@@ -1257,6 +1258,7 @@ export default function AlpacaWebPage() {
     const validLines: { origIndex: number; cleanText: string }[] = [];
 
     rawLines.forEach((lineText, origIndex) => {
+      if (fromLineIndex !== undefined && origIndex < fromLineIndex) return;
       const trimmed = lineText.trim();
       if (!trimmed) return;
 
@@ -4351,6 +4353,7 @@ export default function AlpacaWebPage() {
 																				lineText,
 																				lineIndex: lineIdx,
 																				voice: modelVoice,
+																				fullContent: msg.content,
 																			});
 																		}
 																	)
@@ -5440,7 +5443,7 @@ export default function AlpacaWebPage() {
 			{/* Line Context Menu */}
 			{lineContextMenu && (
 				<div
-					className='fixed z-[9999] bg-[#28282b] text-white border border-[#3e3e42] rounded-2xl p-1.5 shadow-2xl min-w-[140px] animate-in fade-in zoom-in-95 duration-150 select-none'
+					className='fixed z-[9999] bg-[#28282b] text-white border border-[#3e3e42] rounded-2xl p-1.5 shadow-2xl min-w-[170px] animate-in fade-in zoom-in-95 duration-150 select-none'
 					style={{ left: `${lineContextMenu.x}px`, top: `${lineContextMenu.y}px` }}
 					onClick={(e) => e.stopPropagation()}
 				>
@@ -5456,7 +5459,22 @@ export default function AlpacaWebPage() {
 						<svg width='14' height='14' viewBox='0 0 24 24' fill='currentColor'>
 							<polygon points='5 3 19 12 5 21 5 3' />
 						</svg>
-						Play
+						Play Line
+					</button>
+					<button
+						type='button'
+						onClick={() => {
+							const { msgId, fullContent, lineIndex, voice } = lineContextMenu;
+							setLineContextMenu(null);
+							handlePlayTTS(msgId, fullContent, voice, lineIndex);
+						}}
+						className='w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] hover:text-[#7678ed] flex items-center gap-2 transition-colors cursor-pointer'
+					>
+						<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+							<polygon points='5 3 19 12 5 21 5 3' fill='currentColor' />
+							<line x1='19' y1='5' x2='19' y2='19' strokeWidth='2.5' />
+						</svg>
+						Play from here
 					</button>
 				</div>
 			)}
