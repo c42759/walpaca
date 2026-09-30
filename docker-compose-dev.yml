@@ -17,7 +17,6 @@ services:
       TTS_API_KEY: ${KOKORO_API_KEY}
       CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
-    command: sh run_server.sh
 
   frontend:
     container_name: walpaca_frontend
@@ -36,11 +35,14 @@ services:
     environment:
       CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
-    command: sh run_server.sh
 
   kokoro:
     container_name: walpaca_kokoro
     image: hwdsl2/kokoro-server
+    ports:
+      - "127.0.0.1:8880:8880"
+      - "${NETWORK_ADDRESS}:8880:8880"
+      - "${VPN_ADDRESS}:8880:8880"
     volumes:
       - kokoro-data:/var/lib/kokoro
     environment:
