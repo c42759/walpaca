@@ -966,9 +966,7 @@ def generate_response(chat_id=None):
             pass
 
     def generate_stream():
-        options = {}
-        if think:
-            options["think"] = True
+        options = {"think": bool(think)}
         if num_ctx_val is not None:
             options["num_ctx"] = num_ctx_val
 
@@ -985,9 +983,8 @@ def generate_response(chat_id=None):
                 "model": model,
                 "messages": messages_payload,
                 "stream": True,
+                "think": bool(think),
             }
-            if think:
-                payload["think"] = True
             if options:
                 payload["options"] = options
             req = urllib.request.Request(

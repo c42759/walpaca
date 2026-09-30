@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
+import PWAInstallPrompt from "./components/PWAInstallPrompt";
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -10,8 +11,28 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "Alpaca Web",
-  description: "Alpaca Web Client",
+  title: "Walpaca",
+  description: "Walpaca Client & AI Workspace",
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/icon-app.svg", type: "image/svg+xml" }
+    ],
+    apple: [
+      { url: "/icon-app.svg", type: "image/svg+xml" }
+    ]
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Walpaca",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#7678ed",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -21,7 +42,25 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${poppins.variable} font-sans h-full`}>
-      <body className="min-h-full flex flex-col antialiased">{children}</body>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                  });
+                });
+              }
+            `,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col antialiased">
+        {children}
+        <PWAInstallPrompt />
+      </body>
     </html>
   );
 }

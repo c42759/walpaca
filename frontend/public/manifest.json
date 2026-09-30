@@ -1,0 +1,23 @@
+{
+  "name": "Walpaca",
+  "short_name": "Walpaca",
+  "description": "Walpaca - Local LLM Client & AI Workspace",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#7678ed",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-app.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-app.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -4,7 +4,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
+      - "${NETWORK_ADDRESS}:5000:5000"
+      - "${VPN_ADDRESS}:5000:5000"
     volumes:
       - ./backend:/app
       - ./alpaca.db:/app/alpaca.db
@@ -12,6 +14,7 @@ services:
       ALPACA_DB_PATH: "/app/alpaca.db"
       TTS_SERVER_URL: "http://kokoro:8880"
       TTS_API_KEY: ${KOKORO_API_KEY}
+      CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
 
   frontend:
@@ -19,7 +22,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+      - "${NETWORK_ADDRESS}:3000:3000"
+      - "${VPN_ADDRESS}:3000:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -31,7 +36,9 @@ services:
     container_name: kokoro
     image: hwdsl2/kokoro-server
     ports:
-      - "8880:8880"
+      - "127.0.0.1:8880:8880"
+      - "${NETWORK_ADDRESS}:8880:8880"
+      - "${VPN_ADDRESS}:8880:8880"
     volumes:
       - kokoro-data:/var/lib/kokoro
     environment:

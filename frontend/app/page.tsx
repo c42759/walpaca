@@ -1860,6 +1860,16 @@ export default function AlpacaWebPage() {
     }
   };
 
+  const handleGoToRoot = () => {
+    setCurrentView("chat");
+    setActiveTab("all");
+    setActiveChatId("");
+    setMessages([]);
+    if (typeof window !== "undefined") {
+      window.history.pushState(null, "", "/");
+    }
+  };
+
   return (
 		<main className='topo-bg min-h-screen w-screen flex justify-center font-sans antialiased text-[#202022] box-border'>
 			{/* Outer Floating Application Window */}
@@ -1870,7 +1880,7 @@ export default function AlpacaWebPage() {
 				<aside className='w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#2d2d30]'>
 					{/* Top Alpaca Prism Logo */}
 					<div className='flex flex-col items-center gap-8 w-full'>
-						<div onClick={() => setCurrentView("chat")} className='w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity'>
+						<div onClick={handleGoToRoot} className='w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity'>
 							<img src='/icon-white.svg' alt='Walpaca' className='w-9 h-9 object-contain' />
 						</div>
 
@@ -2151,7 +2161,7 @@ export default function AlpacaWebPage() {
 															</div>
 															<p className='text-base font-bold text-[#202022]'>No Instances Configured</p>
 															<p className='text-xs text-[#8e90a6] max-w-sm mx-auto'>
-																Click "Add Instance" above to connect an Ollama local or remote server to Alpaca.
+																Click "Add Instance" above to connect an Ollama local or remote server to Walpaca.
 															</p>
 															<button
 																onClick={handleOpenAddInstanceModal}
@@ -2320,7 +2330,7 @@ export default function AlpacaWebPage() {
 																<p className='text-sm text-[#7a7d90] mt-0.5'>
 																	{editingInstanceId
 																		? 'LLM server type cannot be changed when editing an existing instance'
-																		: 'Local or remote AI instance not managed by Alpaca'}
+																		: 'Local or remote AI instance not managed by Walpaca'}
 																</p>
 															</div>
 														</div>
