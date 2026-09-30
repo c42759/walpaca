@@ -155,6 +155,33 @@ const formatAvatarPicture = (picture?: string | null): string | undefined => {
   return `data:image/png;base64,${picture}`;
 };
 
+const getAvatarColor = (name: string): string => {
+  if (!name) return "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)";
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  const gradients = [
+    "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)", // Indigo
+    "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)", // Violet
+    "linear-gradient(135deg, #ec4899 0%, #db2777 100%)", // Pink
+    "linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)", // Rose
+    "linear-gradient(135deg, #f97316 0%, #ea580c 100%)", // Orange
+    "linear-gradient(135deg, #10b981 0%, #059669 100%)", // Emerald
+    "linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)", // Teal
+    "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)", // Cyan
+    "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)", // Blue
+    "linear-gradient(135deg, #a855f7 0%, #9333ea 100%)", // Purple
+    "linear-gradient(135deg, #059669 0%, #047857 100%)", // Green
+    "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", // Indigo-Violet
+  ];
+
+  const idx = Math.abs(hash) % gradients.length;
+  return gradients[idx];
+};
+
+
 const autoResizeTextarea = (el: HTMLTextAreaElement | null) => {
   if (!el) return;
   el.style.height = "auto";
@@ -168,7 +195,23 @@ const autoResizeTextarea = (el: HTMLTextAreaElement | null) => {
   }
 };
 
-const getModelAvatarPicture = (pref?: ModelPreference | null, mod?: any): string | undefined => {
+const playNotificationSound = () => {
+  if (typeof window === "undefined") return;
+  try {
+    const audio = new Audio("/universfield-new-notification-036-485897.mp3");
+    audio.volume = 0.6;
+    audio.play().catch((err) => {
+      console.warn("Notification sound playback prevented or failed:", err);
+    });
+  } catch (err) {
+    console.warn("Notification sound playback error:", err);
+  }
+};
+
+
+const DEFAULT_MODEL_AVATAR = "/icon-app.svg";
+
+const getModelAvatarPicture = (pref?: ModelPreference | null, mod?: any): string => {
   const rawPic =
     pref?.picture ||
     pref?.character?.data?.avatar ||
@@ -176,7 +219,7 @@ const getModelAvatarPicture = (pref?: ModelPreference | null, mod?: any): string
     mod?.picture ||
     mod?.avatar ||
     mod?.senderAvatar;
-  return formatAvatarPicture(rawPic);
+  return formatAvatarPicture(rawPic) || DEFAULT_MODEL_AVATAR;
 };
 
 const isImageAttachment = (att: MessageAttachment | any): boolean => {
@@ -521,6 +564,53 @@ const renderMarkdownText = (
 export default function AlpacaWebPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const currentCount = selectedImages.length;
+    const maxAllowed = 4;
+    const remaining = maxAllowed - currentCount;
+
+    if (remaining <= 0) {
+      if (e.target) e.target.value = "";
+      return;
+    }
+
+    const selectedFiles = Array.from(files).slice(0, remaining);
+    const readPromises = selectedFiles.map((file) => {
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === "string") {
+            resolve(reader.result);
+          } else {
+            reject(new Error("Failed to read file"));
+          }
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(readPromises)
+      .then((newImages) => {
+        setSelectedImages((prev) => [...prev, ...newImages].slice(0, maxAllowed));
+      })
+      .catch((err) => {
+        console.error("Error reading image files:", err);
+      });
+
+    if (e.target) e.target.value = "";
+  };
+
+  const handleRemoveSelectedImage = (indexToRemove: number) => {
+    setSelectedImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
   const [folders, setFolders] = useState<ChatFolder[]>([]);
 
   // Zustand Store Integration for long-lived data caching
@@ -1424,7 +1514,7 @@ export default function AlpacaWebPage() {
         const key = (msg.senderName || "").toLowerCase();
         if (!map.has(key)) {
           const pref = modelPreferences[key] || modelPreferences[msg.senderName || ""];
-          const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80";
+          const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || DEFAULT_MODEL_AVATAR;
           const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
           const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
           const roleLabel = isCharEnabled(pref?.character) ? "Character" : "AI Model";
@@ -1795,14 +1885,24 @@ export default function AlpacaWebPage() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && selectedImages.length === 0) return;
 
     const content = inputText.trim();
+    const currentImages = [...selectedImages];
     setInputText("");
+    setSelectedImages([]);
+
     if (promptTextareaRef.current) {
       promptTextareaRef.current.style.height = "auto";
       promptTextareaRef.current.style.overflowY = "hidden";
     }
+
+    const attachmentsPayload: MessageAttachment[] = currentImages.map((imgSrc, idx) => ({
+      id: `att-${Date.now()}-${idx}`,
+      type: "image",
+      name: `image_${idx + 1}.png`,
+      content: imgSrc,
+    }));
 
     const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
     const userMsg: Message = {
@@ -1812,6 +1912,8 @@ export default function AlpacaWebPage() {
       isSelf: true,
       content,
       time: nowStr,
+      image: currentImages.length > 0 ? currentImages[0] : undefined,
+      attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -1827,6 +1929,7 @@ export default function AlpacaWebPage() {
             content,
             model: selectedChatModelId,
             instance_id: selectedChatInstanceId,
+            attachments: attachmentsPayload,
           }),
         });
       } catch (err) {
@@ -1846,7 +1949,7 @@ export default function AlpacaWebPage() {
       Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
 
     let assistantName = "Assistant";
-    let assistantAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80";
+    let assistantAvatar = DEFAULT_MODEL_AVATAR;
     let systemPrompt = "";
 
     if (selectedPref) {
@@ -2002,6 +2105,7 @@ export default function AlpacaWebPage() {
             }
           }
         }
+        playNotificationSound();
       }
     } catch (err) {
       console.warn("Error during LLM response generation:", err);
@@ -3819,7 +3923,10 @@ export default function AlpacaWebPage() {
 										>
 											{/* Avatar */}
 											{chat.avatarText ? (
-												<div className='w-12 h-12 rounded-2xl bg-[#202022] text-white flex items-center justify-center font-bold text-lg tracking-wide shrink-0 shadow-sm'>
+												<div
+													style={{ background: getAvatarColor(chat.name) }}
+													className='w-12 h-12 rounded-2xl text-white flex items-center justify-center font-bold text-lg tracking-wide shrink-0 shadow-sm'
+												>
 													{chat.avatarText}
 												</div>
 											) : (
@@ -4171,7 +4278,7 @@ export default function AlpacaWebPage() {
 											const avatarSrc =
 												msg.senderAvatar ||
 												formatAvatarPicture(pref?.picture) ||
-												'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80';
+												DEFAULT_MODEL_AVATAR;
 											const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
 											const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
 											const modelVoice = pref?.voice || undefined;
@@ -4415,160 +4522,204 @@ export default function AlpacaWebPage() {
 								</div>
 
 								{/* Input Composer */}
-								<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex items-center gap-2.5'>
-									{/* Combined Model & Instance Selector Button */}
-									{(() => {
-										const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
-										const selectedInstName = selectedInst?.properties?.name || selectedInst?.type || 'Instance';
-										const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
-										const selectedPref =
-											modelPreferences[selectedChatModelId] ||
-											modelPreferences[selectedPrefKey] ||
-											Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
-
-										let selectedModelName = selectedChatModelId;
-										if (selectedPref) {
-											selectedModelName = getCharacterName(selectedPref.character) || (selectedPref as any).name || selectedPref.id;
-										} else if (selectedChatModelId) {
-											const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
-											if (instMod) {
-												selectedModelName = instMod.name || instMod.id;
-											}
-										}
-
-										if (!selectedModelName) {
-											selectedModelName = 'Select Model';
-										}
-
-										return (
-											<button
-												type='button'
-												onClick={() => setIsSelectModelModalOpen(true)}
-												className='relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl px-3.5 py-2 hover:bg-[#eaecf9] transition-all shadow-xs cursor-pointer group text-xs font-bold text-[#202022] max-w-[280px]'
-												title='Select Model & Instance'
-											>
-												<div className='flex items-center gap-1.5 truncate'>
-													<span className='text-[#7678ed] font-bold'>🤖</span>
-													<span className='truncate'>{selectedModelName}</span>
-													<span className='text-[#8e90a6] font-semibold'>@</span>
-													<span className='text-[#7678ed] truncate'>{selectedInstName}</span>
-												</div>
-												<svg
-													width='14'
-													height='14'
-													viewBox='0 0 24 24'
-													fill='none'
-													stroke='#8e90a6'
-													strokeWidth='2.2'
-													strokeLinecap='round'
-													strokeLinejoin='round'
-													className='ml-1.5 shrink-0 group-hover:text-[#202022] transition-colors'
-												>
-													<polyline points='6 9 12 15 18 9' />
-												</svg>
-											</button>
-										);
-									})()}
-
-									{/* 3. Thinking Mode Brain Toggle Button */}
-									<button
-										type='button'
-										onClick={() => setIsThinkingEnabled((prev) => !prev)}
-										className={`p-2.5 rounded-2xl transition-all cursor-pointer shrink-0 border flex items-center justify-center ${
-											isThinkingEnabled
-												? 'bg-[#7678ed]/10 border-[#7678ed] text-[#7678ed] opacity-100 shadow-xs'
-												: 'bg-[#f0f2f9] border-[#e8ebf3] text-[#8e90a6] hover:bg-[#eaecf9] opacity-40 hover:opacity-70'
-										}`}
-										title={isThinkingEnabled ? 'Thinking Mode Enabled (think=True)' : 'Thinking Mode Disabled (click to enable)'}
-									>
-										<BrainIcon className='w-5 h-5' />
-									</button>
-
-									{/* Attach file button */}
-									<button
-										type='button'
-										className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors cursor-pointer shrink-0'
-										title='Attach file'
-									>
-										<svg
-											width='20'
-											height='20'
-											viewBox='0 0 24 24'
-											fill='none'
-											stroke='currentColor'
-											strokeWidth='2'
-											strokeLinecap='round'
-											strokeLinejoin='round'
-										>
-											<path d='M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48' />
-										</svg>
-									</button>
-
-									<textarea
-										ref={(el) => {
-											promptTextareaRef.current = el;
-											autoResizeTextarea(el);
-										}}
-										rows={1}
-										placeholder='Write a message...'
-										value={inputText}
-										onChange={(e) => {
-											setInputText(e.target.value);
-											autoResizeTextarea(e.currentTarget);
-										}}
-										onInput={(e) => autoResizeTextarea(e.currentTarget)}
-										onKeyDown={(e) => {
-											if (e.key === 'Enter' && !e.shiftKey) {
-												e.preventDefault();
-												if (inputText.trim()) {
-													handleSendMessage(e);
-												}
-											}
-										}}
-										className='flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]'
+								<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex flex-col gap-3'>
+									<input
+										type='file'
+										ref={fileInputRef}
+										accept='image/*'
+										multiple
+										onChange={handleImageSelect}
+										className='hidden'
 									/>
 
-									<button
-										type='button'
-										className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors'
-										title='Emoji'
-									>
-										<svg
-											width='20'
-											height='20'
-											viewBox='0 0 24 24'
-											fill='none'
-											stroke='currentColor'
-											strokeWidth='2'
-											strokeLinecap='round'
-											strokeLinejoin='round'
-										>
-											<circle cx='12' cy='12' r='10' />
-											<path d='M8 14s1.5 2 4 2 4-2 4-2' />
-											<line x1='9' y1='9' x2='9.01' y2='9' />
-											<line x1='15' y1='9' x2='15.01' y2='9' />
-										</svg>
-									</button>
+									{/* Image Attachments Preview Strip */}
+									{selectedImages.length > 0 && (
+										<div className='flex items-center gap-3 px-1 py-1.5 overflow-x-auto w-full border-b border-[#eef0f6]/60 pb-3'>
+											{selectedImages.map((src, idx) => (
+												<div key={idx} className='relative group w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#e2e5f1] shadow-xs bg-[#f4f6fc]'>
+													<img src={src} alt={`Selected ${idx + 1}`} className='w-full h-full object-cover' />
+													<button
+														type='button'
+														onClick={() => handleRemoveSelectedImage(idx)}
+														className='absolute top-1 right-1 bg-black/60 hover:bg-[#ff4d4f] text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer shadow-sm'
+														title='Remove image'
+													>
+														<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+															<line x1='18' y1='6' x2='6' y2='18' />
+															<line x1='6' y1='6' x2='18' y2='18' />
+														</svg>
+													</button>
+												</div>
+											))}
+											{selectedImages.length < 4 && (
+												<span className='text-xs text-[#8e90a6] font-medium ml-1 select-none'>
+													{selectedImages.length}/4 images
+												</span>
+											)}
+										</div>
+									)}
 
-									<button
-										type='submit'
-										className='w-11 h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0'
-										title='Send'
-									>
-										<svg
-											width='18'
-											height='18'
-											viewBox='0 0 24 24'
-											fill='none'
-											stroke='currentColor'
-											strokeWidth='2.5'
-											strokeLinecap='round'
-											strokeLinejoin='round'
+									<div className='flex items-center gap-2.5 w-full'>
+										{/* Combined Model & Instance Selector Button */}
+										{(() => {
+											const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
+											const selectedInstName = selectedInst?.properties?.name || selectedInst?.type || 'Instance';
+											const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
+											const selectedPref =
+												modelPreferences[selectedChatModelId] ||
+												modelPreferences[selectedPrefKey] ||
+												Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+
+											let selectedModelName = selectedChatModelId;
+											if (selectedPref) {
+												selectedModelName = getCharacterName(selectedPref.character) || (selectedPref as any).name || selectedPref.id;
+											} else if (selectedChatModelId) {
+												const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
+												if (instMod) {
+													selectedModelName = instMod.name || instMod.id;
+												}
+											}
+
+											if (!selectedModelName) {
+												selectedModelName = 'Select Model';
+											}
+
+											return (
+												<button
+													type='button'
+													onClick={() => setIsSelectModelModalOpen(true)}
+													className='relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl px-3.5 py-2 hover:bg-[#eaecf9] transition-all shadow-xs cursor-pointer group text-xs font-bold text-[#202022] max-w-[280px]'
+													title='Select Model & Instance'
+												>
+													<div className='flex items-center gap-1.5 truncate'>
+														<span className='text-[#7678ed] font-bold'>🤖</span>
+														<span className='truncate'>{selectedModelName}</span>
+														<span className='text-[#8e90a6] font-semibold'>@</span>
+														<span className='text-[#7678ed] truncate'>{selectedInstName}</span>
+													</div>
+													<svg
+														width='14'
+														height='14'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='#8e90a6'
+														strokeWidth='2.2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+														className='ml-1.5 shrink-0 group-hover:text-[#202022] transition-colors'
+													>
+														<polyline points='6 9 12 15 18 9' />
+													</svg>
+												</button>
+											);
+										})()}
+
+										{/* 3. Thinking Mode Brain Toggle Button */}
+										<button
+											type='button'
+											onClick={() => setIsThinkingEnabled((prev) => !prev)}
+											className={`p-2.5 rounded-2xl transition-all cursor-pointer shrink-0 border flex items-center justify-center ${
+												isThinkingEnabled
+													? 'bg-[#7678ed]/10 border-[#7678ed] text-[#7678ed] opacity-100 shadow-xs'
+													: 'bg-[#f0f2f9] border-[#e8ebf3] text-[#8e90a6] hover:bg-[#eaecf9] opacity-40 hover:opacity-70'
+											}`}
+											title={isThinkingEnabled ? 'Thinking Mode Enabled (think=True)' : 'Thinking Mode Disabled (click to enable)'}
 										>
-											<line x1='22' y1='2' x2='11' y2='13' />
-											<polygon points='22 2 15 22 11 13 2 9 22 2' />
-										</svg>
-									</button>
+											<BrainIcon className='w-5 h-5' />
+										</button>
+
+										{/* Attach file button */}
+										<button
+											type='button'
+											disabled={selectedImages.length >= 4}
+											onClick={() => {
+												if (selectedImages.length < 4) {
+													fileInputRef.current?.click();
+												}
+											}}
+											className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#8e90a6] disabled:hover:bg-transparent'
+											title={selectedImages.length >= 4 ? 'Maximum 4 images attached' : 'Attach file (Max 4 images)'}
+										>
+											<svg
+												width='20'
+												height='20'
+												viewBox='0 0 24 24'
+												fill='none'
+												stroke='currentColor'
+												strokeWidth='2'
+												strokeLinecap='round'
+												strokeLinejoin='round'
+											>
+												<path d='M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48' />
+											</svg>
+										</button>
+
+										<textarea
+											ref={(el) => {
+												promptTextareaRef.current = el;
+												autoResizeTextarea(el);
+											}}
+											rows={1}
+											placeholder='Write a message...'
+											value={inputText}
+											onChange={(e) => {
+												setInputText(e.target.value);
+												autoResizeTextarea(e.currentTarget);
+											}}
+											onInput={(e) => autoResizeTextarea(e.currentTarget)}
+											onKeyDown={(e) => {
+												if (e.key === 'Enter' && !e.shiftKey) {
+													e.preventDefault();
+													if (inputText.trim() || selectedImages.length > 0) {
+														handleSendMessage(e);
+													}
+												}
+											}}
+											className='flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]'
+										/>
+
+										<button
+											type='button'
+											className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0'
+											title='Emoji'
+										>
+											<svg
+												width='20'
+												height='20'
+												viewBox='0 0 24 24'
+												fill='none'
+												stroke='currentColor'
+												strokeWidth='2'
+												strokeLinecap='round'
+												strokeLinejoin='round'
+											>
+												<circle cx='12' cy='12' r='10' />
+												<path d='M8 14s1.5 2 4 2 4-2 4-2' />
+												<line x1='9' y1='9' x2='9.01' y2='9' />
+												<line x1='15' y1='9' x2='15.01' y2='9' />
+											</svg>
+										</button>
+
+										<button
+											type='submit'
+											className='w-11 h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0'
+											title='Send'
+										>
+											<svg
+												width='18'
+												height='18'
+												viewBox='0 0 24 24'
+												fill='none'
+												stroke='currentColor'
+												strokeWidth='2.5'
+												strokeLinecap='round'
+												strokeLinejoin='round'
+											>
+												<line x1='22' y1='2' x2='11' y2='13' />
+												<polygon points='22 2 15 22 11 13 2 9 22 2' />
+											</svg>
+										</button>
+									</div>
 								</form>
 							</section>
 						);
