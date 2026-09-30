@@ -30,6 +30,8 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+    environment:
+      CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
 
   kokoro:

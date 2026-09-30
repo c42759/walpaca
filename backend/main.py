@@ -19,11 +19,17 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
 
+    cors_domains_env = os.getenv("CORS_DOMAINS", "").strip()
+    if cors_domains_env and cors_domains_env != "*":
+        origins = [domain.strip() for domain in cors_domains_env.split(",") if domain.strip()]
+    else:
+        origins = "*"
+
     CORS(
         app,
         resources={
-            r"/api/*": {
-                "origins": "*",
+            r"/*": {
+                "origins": origins,
                 "allow_headers": "*",
                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             }
