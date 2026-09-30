@@ -1,8 +1,10 @@
 import json
 import os
+import threading
+import time
 import urllib.error
 import urllib.request
-from flask import Blueprint, request, jsonify, Response, stream_with_context
+from flask import Blueprint, request, jsonify, Response, stream_with_context, current_app
 from models import (
     db,
     Chat,
@@ -680,14 +682,207 @@ def text_to_speech():
         }), 502
 
 
+def _upsert_thought_attachment(message_id, thinking_content):
+    """Upsert an Attachment of type 'thought' for a message."""
+    if not message_id or not thinking_content:
+        return
+    try:
+        att = Attachment.query.filter_by(message_id=message_id, type="thought").first()
+        if att:
+            att.content = thinking_content
+        else:
+            att = Attachment(
+                id=generate_uuid(),
+                message_id=message_id,
+                type="thought",
+                name="Thought",
+                content=thinking_content,
+            )
+            db.session.add(att)
+        db.session.commit()
+    except Exception:
+        pass
+
+
+def format_duration(ns):
+    """Format nanoseconds into human-readable duration (MM:SS or X seconds)."""
+    if not ns or ns <= 0:
+        return "0 seconds"
+    s = ns / 1e9
+    if s >= 60:
+        mins = int(s // 60)
+        secs = int(round(s % 60))
+        if secs == 60:
+            mins += 1
+            secs = 0
+        return f"{mins}:{secs:02d}"
+    else:
+        sec_val = int(round(s))
+        if sec_val == 0 and s > 0:
+            return f"{s:.2f} seconds"
+        return f"{sec_val} seconds"
+
+
+def format_rate(count, duration_ns):
+    """Format token evaluation rate (tokens/s)."""
+    if not count or not duration_ns or duration_ns <= 0:
+        return "0.00 tokens/s"
+    rate = count / (duration_ns / 1e9)
+    return f"{rate:.2f} tokens/s"
+
+
+def build_metadata_markdown(stats):
+    """Generate Markdown metadata table from LLM stats."""
+    tot_dur = format_duration(stats.get("total_duration", 0))
+    load_dur = format_duration(stats.get("load_duration", 0))
+    prompt_count = stats.get("prompt_eval_count", 0)
+    prompt_dur = format_duration(stats.get("prompt_eval_duration", 0))
+    prompt_rate = format_rate(prompt_count, stats.get("prompt_eval_duration", 0))
+    eval_count = stats.get("eval_count", 0)
+    eval_dur = format_duration(stats.get("eval_duration", 0))
+    eval_rate = format_rate(eval_count, stats.get("eval_duration", 0))
+
+    return (
+        "| Metric | Value |\n"
+        "| ---- | ---- |\n"
+        f"| Total Duration | {tot_dur} |\n"
+        f"| Load Duration | {load_dur} |\n"
+        f"| Prompt Eval Count | {prompt_count} tokens |\n"
+        f"| Prompt Eval Duration | {prompt_dur} |\n"
+        f"| Prompt Eval Rate | {prompt_rate} |\n"
+        f"| Eval Count | {eval_count} tokens |\n"
+        f"| Eval Duration | {eval_dur} |\n"
+        f"| Eval Rate | {eval_rate} |"
+    )
+
+
+def _upsert_metadata_attachment(message_id, metadata_table):
+    """Upsert an Attachment of type 'metadata' for a message."""
+    if not message_id or not metadata_table:
+        return
+    try:
+        att = Attachment.query.filter_by(message_id=message_id, type="metadata").first()
+        if att:
+            att.content = metadata_table
+        else:
+            att = Attachment(
+                id=generate_uuid(),
+                message_id=message_id,
+                type="metadata",
+                name="Metadata",
+                content=metadata_table,
+            )
+            db.session.add(att)
+        db.session.commit()
+    except Exception:
+        pass
+
+
+def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_type, initial_thinking=""):
+    """
+    Continues consuming tokens from the upstream LLM HTTP response stream when the client disconnects,
+    persisting response content, thinking attachment & metadata attachment to database.
+    """
+    with app.app_context():
+        start_time = time.time()
+        full_text = initial_content
+        full_thinking = initial_thinking
+        last_db_update = time.time()
+        stats = {}
+        token_count = 0
+        try:
+            for line in resp:
+                if not line:
+                    continue
+                line_str = line.decode("utf-8").strip()
+                if not line_str:
+                    continue
+
+                token = ""
+                thinking_token = ""
+                if inst_type == "ollama":
+                    try:
+                        chunk_data = json.loads(line_str)
+                        msg_chunk = chunk_data.get("message", {})
+                        token = msg_chunk.get("content") or chunk_data.get("response", "")
+                        thinking_token = (
+                            msg_chunk.get("thinking")
+                            or chunk_data.get("thinking")
+                            or msg_chunk.get("reasoning_content")
+                            or chunk_data.get("reasoning_content")
+                            or ""
+                        )
+                        for k in ["total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"]:
+                            if k in chunk_data:
+                                stats[k] = chunk_data[k]
+                    except Exception:
+                        pass
+                else:
+                    if line_str.startswith("data: "):
+                        raw_data = line_str[6:].strip()
+                        if raw_data == "[DONE]":
+                            break
+                        try:
+                            chunk_data = json.loads(raw_data)
+                            choices = chunk_data.get("choices") or []
+                            delta = choices[0].get("delta", {}) if choices else {}
+                            token = delta.get("content", "")
+                            thinking_token = (
+                                delta.get("thinking")
+                                or delta.get("reasoning_content")
+                                or ""
+                            )
+                        except Exception:
+                            pass
+
+                if token:
+                    full_text += token
+                    token_count += 1
+                if thinking_token:
+                    full_thinking += thinking_token
+
+                now = time.time()
+                if message_id and (now - last_db_update >= 2.0):
+                    try:
+                        msg = Message.query.get(message_id)
+                        if msg:
+                            msg.content = full_text + " **processing**"
+                            db.session.commit()
+                        if full_thinking:
+                            _upsert_thought_attachment(message_id, full_thinking)
+                        last_db_update = now
+                    except Exception:
+                        pass
+
+            if not stats.get("total_duration"):
+                elapsed_ns = int((time.time() - start_time) * 1e9)
+                stats["total_duration"] = elapsed_ns
+                stats["eval_count"] = stats.get("eval_count") or token_count
+                stats["eval_duration"] = stats.get("eval_duration") or elapsed_ns
+
+            metadata_table = build_metadata_markdown(stats)
+
+            if message_id:
+                msg = Message.query.get(message_id)
+                if msg:
+                    msg.content = full_text
+                    db.session.commit()
+                if full_thinking:
+                    _upsert_thought_attachment(message_id, full_thinking)
+                _upsert_metadata_attachment(message_id, metadata_table)
+        except Exception as e:
+            print(f"[LLM Background Worker] Error completing response: {e}")
+
+
 # ----------------- STREAMING GENERATION / LLM INFERENCE -----------------
 @api_bp.route("/generate", methods=["POST"])
 @api_bp.route("/chats/<chat_id>/generate", methods=["POST"])
 def generate_response(chat_id=None):
     """
     Triggers an LLM response from the target instance model and streams tokens directly to the API caller.
-    Supports both Ollama (/api/chat or /api/generate) and OpenAI-compatible instances (/v1/chat/completions).
+    Persists updates to database incrementally and completes generation in background if client disconnects.
     """
+    app = current_app._get_current_object()
     data = request.json or {}
     instance_id = data.get("instance_id")
     model = data.get("model") or "llama3"
@@ -707,6 +902,22 @@ def generate_response(chat_id=None):
                 .all()
             )
             messages = [{"role": m.role, "content": m.content} for m in chat_msgs]
+
+    message_id = None
+    if chat_id:
+        chat = Chat.query.get(chat_id)
+        if chat:
+            db_msg = Message(
+                id=generate_uuid(),
+                chat_id=chat_id,
+                role="assistant",
+                model=model,
+                content=" **LLM still processing.**",
+                date_time=current_alpaca_timestamp(),
+            )
+            db.session.add(db_msg)
+            db.session.commit()
+            message_id = db_msg.id
 
     instance = Instance.query.get(instance_id) if instance_id else Instance.query.first()
     props = instance.get_properties() if instance else {}
@@ -737,6 +948,9 @@ def generate_response(chat_id=None):
     else:
         messages_payload = [{"role": "user", "content": "Hello"}]
 
+    if system_prompt:
+        messages_payload.insert(0, {"role": "system", "content": system_prompt})
+
     raw_num_ctx = (
         data.get("num_ctx")
         or props.get("num_ctx")
@@ -758,6 +972,13 @@ def generate_response(chat_id=None):
         if num_ctx_val is not None:
             options["num_ctx"] = num_ctx_val
 
+        start_time = time.time()
+        accumulated_content = ""
+        accumulated_thinking = ""
+        chunk_count = 0
+        last_db_update = time.time()
+        stream_stats = {}
+
         if inst_type == "ollama":
             target_url = f"{host}/api/chat"
             payload = {
@@ -776,7 +997,8 @@ def generate_response(chat_id=None):
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=120) as resp:
+                resp = urllib.request.urlopen(req, timeout=120)
+                try:
                     for line in resp:
                         if not line:
                             continue
@@ -787,16 +1009,82 @@ def generate_response(chat_id=None):
                             chunk_data = json.loads(line_str)
                             msg_chunk = chunk_data.get("message", {})
                             content_delta = msg_chunk.get("content") or chunk_data.get("response", "")
+                            thinking_delta = (
+                                msg_chunk.get("thinking")
+                                or chunk_data.get("thinking")
+                                or msg_chunk.get("reasoning_content")
+                                or chunk_data.get("reasoning_content")
+                                or ""
+                            )
                             is_done = chunk_data.get("done", False)
 
+                            for k in ["total_duration", "load_duration", "prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration"]:
+                                if k in chunk_data:
+                                    stream_stats[k] = chunk_data[k]
+
+                            if content_delta:
+                                accumulated_content += content_delta
+                                chunk_count += 1
+                            if thinking_delta:
+                                accumulated_thinking += thinking_delta
+
+                            metadata_table = None
+                            now = time.time()
+                            if message_id:
+                                if is_done:
+                                    if not stream_stats.get("total_duration"):
+                                        elapsed_ns = int((time.time() - start_time) * 1e9)
+                                        stream_stats["total_duration"] = elapsed_ns
+                                        stream_stats["eval_count"] = stream_stats.get("eval_count") or chunk_count
+                                        stream_stats["eval_duration"] = stream_stats.get("eval_duration") or elapsed_ns
+                                    metadata_table = build_metadata_markdown(stream_stats)
+                                    try:
+                                        msg = Message.query.get(message_id)
+                                        if msg:
+                                            msg.content = accumulated_content
+                                            db.session.commit()
+                                        if accumulated_thinking:
+                                            _upsert_thought_attachment(message_id, accumulated_thinking)
+                                        _upsert_metadata_attachment(message_id, metadata_table)
+                                    except Exception:
+                                        pass
+                                elif now - last_db_update >= 2.0:
+                                    try:
+                                        msg = Message.query.get(message_id)
+                                        if msg:
+                                            msg.content = accumulated_content + " **processing**"
+                                            db.session.commit()
+                                        if accumulated_thinking:
+                                            _upsert_thought_attachment(message_id, accumulated_thinking)
+                                        last_db_update = now
+                                    except Exception:
+                                        pass
+
                             out_payload = {
+                                "id": message_id,
                                 "model": model,
                                 "content": content_delta,
+                                "thinking": thinking_delta,
+                                "metadata": metadata_table,
                                 "done": is_done,
                             }
                             yield f"data: {json.dumps(out_payload)}\n\n"
+                        except GeneratorExit:
+                            threading.Thread(
+                                target=consume_upstream_to_completion,
+                                args=(resp, app, message_id, accumulated_content, inst_type, accumulated_thinking),
+                                daemon=True,
+                            ).start()
+                            return
                         except Exception:
                             yield f"data: {line_str}\n\n"
+                except GeneratorExit:
+                    threading.Thread(
+                        target=consume_upstream_to_completion,
+                        args=(resp, app, message_id, accumulated_content, inst_type, accumulated_thinking),
+                        daemon=True,
+                    ).start()
+                    return
             except Exception as e:
                 err_payload = {"error": f"Failed streaming from Ollama instance: {str(e)}", "done": True}
                 yield f"data: {json.dumps(err_payload)}\n\n"
@@ -819,7 +1107,8 @@ def generate_response(chat_id=None):
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=120) as resp:
+                resp = urllib.request.urlopen(req, timeout=120)
+                try:
                     for line in resp:
                         if not line:
                             continue
@@ -829,23 +1118,79 @@ def generate_response(chat_id=None):
                         if line_str.startswith("data: "):
                             raw_data = line_str[6:].strip()
                             if raw_data == "[DONE]":
-                                yield f"data: {json.dumps({'model': model, 'content': '', 'done': True})}\n\n"
+                                elapsed_ns = int((time.time() - start_time) * 1e9)
+                                stream_stats["total_duration"] = elapsed_ns
+                                stream_stats["eval_count"] = chunk_count
+                                stream_stats["eval_duration"] = elapsed_ns
+                                metadata_table = build_metadata_markdown(stream_stats)
+                                if message_id:
+                                    try:
+                                        msg = Message.query.get(message_id)
+                                        if msg:
+                                            msg.content = accumulated_content
+                                            db.session.commit()
+                                        if accumulated_thinking:
+                                            _upsert_thought_attachment(message_id, accumulated_thinking)
+                                        _upsert_metadata_attachment(message_id, metadata_table)
+                                    except Exception:
+                                        pass
+                                yield f"data: {json.dumps({'id': message_id, 'model': model, 'content': '', 'metadata': metadata_table, 'done': True})}\n\n"
                                 break
                             try:
                                 chunk_data = json.loads(raw_data)
                                 choices = chunk_data.get("choices") or []
                                 delta = choices[0].get("delta", {}) if choices else {}
                                 content_delta = delta.get("content", "")
+                                thinking_delta = (
+                                    delta.get("thinking")
+                                    or delta.get("reasoning_content")
+                                    or ""
+                                )
+                                if content_delta:
+                                    accumulated_content += content_delta
+                                    chunk_count += 1
+                                if thinking_delta:
+                                    accumulated_thinking += thinking_delta
+
+                                now = time.time()
+                                if message_id and (now - last_db_update >= 2.0):
+                                    try:
+                                        msg = Message.query.get(message_id)
+                                        if msg:
+                                            msg.content = accumulated_content + " **processing**"
+                                            db.session.commit()
+                                        if accumulated_thinking:
+                                            _upsert_thought_attachment(message_id, accumulated_thinking)
+                                        last_db_update = now
+                                    except Exception:
+                                        pass
+
                                 out_payload = {
+                                    "id": message_id,
                                     "model": model,
                                     "content": content_delta,
+                                    "thinking": thinking_delta,
                                     "done": False,
                                 }
                                 yield f"data: {json.dumps(out_payload)}\n\n"
+                            except GeneratorExit:
+                                threading.Thread(
+                                    target=consume_upstream_to_completion,
+                                    args=(resp, app, message_id, accumulated_content, inst_type, accumulated_thinking),
+                                    daemon=True,
+                                ).start()
+                                return
                             except Exception:
                                 yield f"{line_str}\n\n"
                         else:
                             yield f"data: {line_str}\n\n"
+                except GeneratorExit:
+                    threading.Thread(
+                        target=consume_upstream_to_completion,
+                        args=(resp, app, message_id, accumulated_content, inst_type, accumulated_thinking),
+                        daemon=True,
+                    ).start()
+                    return
             except Exception as e:
                 err_payload = {"error": f"Failed streaming from LLM instance: {str(e)}", "done": True}
                 yield f"data: {json.dumps(err_payload)}\n\n"

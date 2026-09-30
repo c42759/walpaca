@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useAppStore } from "../store/useAppStore";
 
 // --- Types ---
 interface ChatFolder {
@@ -493,7 +494,19 @@ const renderMarkdownText = (text: string, activeLineIndex?: number) => {
 export default function AlpacaWebPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [folders, setFolders] = useState<ChatFolder[]>([]);
-  const [modelPreferences, setModelPreferences] = useState<Record<string, ModelPreference>>({});
+
+  // Zustand Store Integration for long-lived data caching
+  const {
+    instances,
+    modelPreferences,
+    fetchInstances,
+    fetchModelPreferences,
+    fetchInstanceModels,
+    setInstances: setStoreInstances,
+    setModelPreference: setStoreModelPreference,
+    removeModelPreference: storeRemoveModelPreference,
+  } = useAppStore();
+
   const [activeAttachmentModal, setActiveAttachmentModal] = useState<{ title: string; type: string; content: string } | null>(null);
   const [activeImageModal, setActiveImageModal] = useState<{ src: string; title?: string } | null>(null);
   const [isChatContextMenuOpen, setIsChatContextMenuOpen] = useState<boolean>(false);
@@ -519,7 +532,6 @@ export default function AlpacaWebPage() {
   >("import-chat");
 
   // --- Instances Management State & Handlers ---
-  const [instances, setInstances] = useState<InstanceItem[]>([]);
   const [instanceSubView, setInstanceSubView] = useState<"list" | "select-type" | "form" | "instance-models" | "edit-model">("list");
   const [selectedInstanceForModels, setSelectedInstanceForModels] = useState<InstanceItem | null>(null);
   const [instanceModelsList, setInstanceModelsList] = useState<any[]>([]);
@@ -585,17 +597,10 @@ export default function AlpacaWebPage() {
 
   const fetchModelsForInstance = async (instId: string) => {
     if (!instId) return;
-    try {
-      const res = await fetch(`${API_URL}/instances/${instId}/models`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setInstanceModelsList(data);
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn("Could not fetch instance models for chat selector:", err);
+    const data = await fetchInstanceModels(instId);
+    if (Array.isArray(data) && data.length > 0) {
+      setInstanceModelsList(data);
+      return;
     }
     const inst = instances.find((i) => i.id === instId);
     if (inst) {
@@ -785,11 +790,7 @@ export default function AlpacaWebPage() {
       character: updatedCharacter,
     };
 
-    setModelPreferences((prev) => ({
-      ...prev,
-      [rawId]: updatedPref,
-      [prefKey]: updatedPref,
-    }));
+    setStoreModelPreference(rawId, updatedPref);
     setInstanceSubView("instance-models");
 
     try {
@@ -812,20 +813,11 @@ export default function AlpacaWebPage() {
     setSelectedInstanceForModels(inst);
     setInstanceSubView("instance-models");
 
-    // Fetch up-to-date model preferences first
     await fetchModelPreferences();
-
-    try {
-      const res = await fetch(`${API_URL}/instances/${inst.id}/models`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setInstanceModelsList(data);
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn("Could not fetch instance models:", err);
+    const data = await fetchInstanceModels(inst.id);
+    if (Array.isArray(data) && data.length > 0) {
+      setInstanceModelsList(data);
+      return;
     }
     const instName = inst.properties?.name || inst.type;
     setInstanceModelsList([
@@ -851,17 +843,7 @@ export default function AlpacaWebPage() {
   const [instFormKeepAlivePreset, setInstFormKeepAlivePreset] = useState<string>("Set Timer");
   const [instFormKeepAliveMinutes, setInstFormKeepAliveMinutes] = useState<number>(5);
 
-  const fetchInstances = async () => {
-    try {
-      const res = await fetch(`${API_URL}/instances`);
-      if (res.ok) {
-        const data: InstanceItem[] = await res.json();
-        setInstances(data);
-      }
-    } catch (err) {
-      console.warn("Could not fetch instances:", err);
-    }
-  };
+
 
   const handleOpenAddInstanceModal = () => {
     setInstanceSubView("select-type");
@@ -967,9 +949,10 @@ export default function AlpacaWebPage() {
   };
 
   const handleDeleteInstance = async (id: string) => {
-    setInstances((prev) => prev.filter((item) => item.id !== id));
+    setStoreInstances(instances.filter((item) => item.id !== id));
     try {
       await fetch(`${API_URL}/instances/${id}`, { method: "DELETE" });
+      fetchInstances(true);
     } catch (err) {
       console.warn("Could not delete instance:", err);
     }
@@ -1010,8 +993,8 @@ export default function AlpacaWebPage() {
     };
 
     if (editingInstanceId) {
-      setInstances((prev) =>
-        prev.map((inst) =>
+      setStoreInstances(
+        instances.map((inst) =>
           inst.id === editingInstanceId ? { ...inst, type: backendType, properties: { ...inst.properties, ...payload.properties } } : inst
         )
       );
@@ -1021,13 +1004,14 @@ export default function AlpacaWebPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        fetchInstances(true);
       } catch (err) {
         console.warn("Could not update instance:", err);
       }
     } else {
       const tempId = `inst-${Date.now()}`;
       const newInst: InstanceItem = { id: tempId, pinned: false, type: backendType, properties: payload.properties };
-      setInstances((prev) => [...prev, newInst]);
+      setStoreInstances([...instances, newInst]);
       try {
         const res = await fetch(`${API_URL}/instances`, {
           method: "POST",
@@ -1035,8 +1019,7 @@ export default function AlpacaWebPage() {
           body: JSON.stringify(payload),
         });
         if (res.ok) {
-          const created: InstanceItem = await res.json();
-          setInstances((prev) => prev.map((inst) => (inst.id === tempId ? created : inst)));
+          fetchInstances(true);
         }
       } catch (err) {
         console.warn("Could not create instance:", err);
@@ -1410,26 +1393,7 @@ export default function AlpacaWebPage() {
     }
   };
 
-  const fetchModelPreferences = async () => {
-    try {
-      const res = await fetch(`${API_URL}/model-preferences`);
-      if (res.ok) {
-        const data: ModelPreference[] = await res.json();
-        if (Array.isArray(data)) {
-          const prefMap: Record<string, ModelPreference> = {};
-          data.forEach((p) => {
-            if (p.id) {
-              prefMap[p.id.toLowerCase()] = p;
-              prefMap[p.id] = p;
-            }
-          });
-          setModelPreferences(prefMap);
-        }
-      }
-    } catch (err) {
-      console.warn("Could not fetch model preferences from backend API:", err);
-    }
-  };
+
 
   const fetchChatMessages = async (chatId: string) => {
     try {
@@ -1761,10 +1725,74 @@ export default function AlpacaWebPage() {
 
             try {
               const parsed = JSON.parse(dataStr);
+              if (parsed.id) {
+                const serverId = parsed.id;
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantMsgId ? { ...m, id: serverId } : m))
+                );
+              }
+              if (parsed.thinking) {
+                const thinkChunk = parsed.thinking;
+                setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.id === assistantMsgId || m.id === parsed.id) {
+                      const existingAtts = m.attachments || [];
+                      const thoughtIdx = existingAtts.findIndex(
+                        (a) => a.type?.toLowerCase() === "thought" || a.type?.toLowerCase() === "brain"
+                      );
+                      let updatedAtts = [...existingAtts];
+                      if (thoughtIdx >= 0) {
+                        updatedAtts[thoughtIdx] = {
+                          ...updatedAtts[thoughtIdx],
+                          content: updatedAtts[thoughtIdx].content + thinkChunk,
+                        };
+                      } else {
+                        updatedAtts.push({
+                          id: `thought-${Date.now()}`,
+                          type: "thought",
+                          name: "Thought",
+                          content: thinkChunk,
+                        });
+                      }
+                      return { ...m, attachments: updatedAtts };
+                    }
+                    return m;
+                  })
+                );
+              }
+              if (parsed.metadata) {
+                const metaContent = parsed.metadata;
+                setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.id === assistantMsgId || m.id === parsed.id) {
+                      const existingAtts = m.attachments || [];
+                      const metaIdx = existingAtts.findIndex(
+                        (a) => a.type?.toLowerCase() === "metadata" || a.type?.toLowerCase() === "data"
+                      );
+                      let updatedAtts = [...existingAtts];
+                      if (metaIdx >= 0) {
+                        updatedAtts[metaIdx] = {
+                          ...updatedAtts[metaIdx],
+                          content: metaContent,
+                        };
+                      } else {
+                        updatedAtts.push({
+                          id: `meta-${Date.now()}`,
+                          type: "metadata",
+                          name: "Metadata",
+                          content: metaContent,
+                        });
+                      }
+                      return { ...m, attachments: updatedAtts };
+                    }
+                    return m;
+                  })
+                );
+              }
               if (parsed.content) {
                 fullResponseText += parsed.content;
                 setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantMsgId ? { ...m, content: m.content + parsed.content } : m))
+                  prev.map((m) => (m.id === assistantMsgId || m.id === parsed.id ? { ...m, content: m.content + parsed.content } : m))
                 );
               }
             } catch {
@@ -1780,24 +1808,6 @@ export default function AlpacaWebPage() {
       }
     } catch (err) {
       console.warn("Error during LLM response generation:", err);
-    }
-
-    // Persist assistant message to DB
-    if (activeChatId && fullResponseText.trim()) {
-      try {
-        await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            role: "assistant",
-            content: fullResponseText,
-            model: selectedChatModelId,
-            instance_id: selectedChatInstanceId,
-          }),
-        });
-      } catch (err) {
-        console.warn("Could not post generated assistant response to backend API:", err);
-      }
     }
   };
 
@@ -1851,9 +1861,9 @@ export default function AlpacaWebPage() {
   };
 
   return (
-		<main className='topo-bg min-h-screen w-screen flex items-center justify-center p-[30px] md:p-[40px] lg:p-[50px] font-sans antialiased text-[#202022] box-border'>
+		<main className='topo-bg min-h-screen w-screen flex justify-center font-sans antialiased text-[#202022] box-border'>
 			{/* Outer Floating Application Window */}
-			<div className='w-full min-w-[90vw] h-[calc(100vh-60px)] md:h-[calc(100vh-80px)] lg:h-[calc(100vh-100px)] min-h-[90vh] bg-[#202022] rounded-[36px] shadow-[0_24px_70px_rgba(32,32,34,0.35)] flex overflow-hidden border-8 border-[#202022]'>
+			<div className='w-full min-w-[90vw] h-[calc(100vh-0px)] md:h-[calc(100vh-0px)] lg:h-100vh-0px)] bg-[#202022] flex overflow-hidden border-8 border-[#202022]'>
 				{/* ========================================================= */}
 				{/* 1. SLIM LEFT NAVIGATION RAIL (#202022) */}
 				{/* ========================================================= */}
@@ -4130,15 +4140,20 @@ export default function AlpacaWebPage() {
 
 								{/* Input Composer */}
 								<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex items-center gap-2.5'>
-									{/* 1. Instance Selector (Requirement 1: Before attach icon) */}
-									<div className='relative shrink-0'>
+									{/* 1. Instance Selector with PC Icon */}
+									<div className='relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl px-3 py-1 hover:bg-[#eaecf9] transition-all shadow-xs'>
+										<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='#7678ed' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='shrink-0 mr-1.5'>
+											<rect x='2' y='3' width='20' height='14' rx='2' ry='2' />
+											<line x1='8' y1='21' x2='16' y2='21' />
+											<line x1='12' y1='17' x2='12' y2='21' />
+										</svg>
 										<select
 											value={selectedChatInstanceId}
 											onChange={(e) => {
 												setSelectedChatInstanceId(e.target.value);
 												fetchModelsForInstance(e.target.value);
 											}}
-											className='bg-[#f0f2f9] text-[#202022] hover:bg-[#eaecf9] border border-[#e8ebf3] rounded-2xl px-3 py-2.5 text-xs font-bold outline-none focus:border-[#7678ed] cursor-pointer max-w-[130px] truncate transition-all shadow-xs'
+											className='bg-transparent text-[#202022] text-xs font-bold outline-none cursor-pointer max-w-[110px] truncate py-1.5'
 											title='Select Instance'
 										>
 											{instances.length === 0 ? (
@@ -4146,19 +4161,25 @@ export default function AlpacaWebPage() {
 											) : (
 												instances.map((inst) => (
 													<option key={inst.id} value={inst.id}>
-														⚡ {inst.properties?.name || inst.type}
+														💻 {inst.properties?.name || inst.type}
 													</option>
 												))
 											)}
 										</select>
 									</div>
 
-									{/* 2. Model Selector (Requirement 2: Before attach icon, Preferences on top) */}
-									<div className='relative shrink-0'>
+									{/* 2. Model Selector with Manage Models Icon */}
+									<div className='relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl px-3 py-1 hover:bg-[#eaecf9] transition-all shadow-xs'>
+										<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='#7678ed' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='shrink-0 mr-1.5'>
+											<path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' />
+											<circle cx='9' cy='7' r='4' />
+											<path d='M22 21v-2a4 4 0 0 0-3-3.87' />
+											<path d='M16 3.13a4 4 0 0 1 0 7.75' />
+										</svg>
 										<select
 											value={selectedChatModelId}
 											onChange={(e) => setSelectedChatModelId(e.target.value)}
-											className='bg-[#f0f2f9] text-[#202022] hover:bg-[#eaecf9] border border-[#e8ebf3] rounded-2xl px-3 py-2.5 text-xs font-bold outline-none focus:border-[#7678ed] cursor-pointer max-w-[160px] truncate transition-all shadow-xs'
+											className='bg-transparent text-[#202022] text-xs font-bold outline-none cursor-pointer max-w-[140px] truncate py-1.5'
 											title='Select Responding Model'
 										>
 											{(() => {

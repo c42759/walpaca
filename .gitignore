@@ -6,3 +6,4 @@
 .agents
 *.db
 .env
+*.db-journal
