@@ -536,6 +536,112 @@ const renderInlineMarkdown = (
   return <div key={keyPrefix} className="space-y-1">{elements}</div>;
 };
 
+const highlightCodeTokens = (code: string, lang?: string): React.ReactNode => {
+  if (!code) return null;
+  const language = (lang || "").toLowerCase();
+
+  const tokenRegex = new RegExp(
+    [
+      '(?:\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/|#[^\\n]*)',
+      '(?:"(?:\\\\.|[^"\\\\\\n])*"|\'(?:\\\\.|[^\'\\\\\\n])*\'|`(?:\\\\.|[^`\\\\])*`)',
+      '\\b(?:0x[0-9a-fA-F]+|\\d+\\.\\d+|\\d+)\\b',
+      '\\b(?:const|let|var|function|def|fn|class|extends|interface|type|struct|enum|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|delete|import|export|from|as|default|async|await|yield|this|super|self|public|private|protected|static|readonly|abstract|implements|namespace|using|package|include|require|typeof|instanceof|void|null|undefined|true|false|True|False|None|and|or|not|is|in|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|LEFT|RIGHT|INNER|GROUP|BY|ORDER|HAVING|LIMIT|CREATE|TABLE|DROP|ALTER|ADD|INDEX)\\b',
+      '\\b(?:string|number|boolean|any|unknown|never|object|symbol|bigint|int|float|double|char|bool|void|Array|Map|Set|Promise|Record|List|Dict|Tuple|React|useState|useEffect|useRef|useMemo|useCallback|useContext|useReducer|Component|HTML|Element|String|Number|Boolean|Object|Function|Math|JSON|Console|process|window|document)\\b',
+      '\\b[a-zA-Z_]\\w*\\b',
+      '[=\\+\\-\\*/%&\\|\\^!<>~\\?:;\\,\\.\\{\\}\\[\\]\\(\\)]',
+    ].join('|'),
+    'g'
+  );
+
+  const elements: React.ReactNode[] = [];
+  let lastIndex = 0;
+
+  code.replace(tokenRegex, (match, offset) => {
+    if (offset > lastIndex) {
+      elements.push(code.slice(lastIndex, offset));
+    }
+    lastIndex = offset + match.length;
+
+    let colorClass = 'text-[#f8f8f2]';
+    if (/^\/\//.test(match) || /^\/\*/.test(match) || (language !== 'css' && /^#[^\n]*/.test(match))) {
+      colorClass = 'text-[#75715e] italic';
+    } else if (/^["'`]/.test(match)) {
+      colorClass = 'text-[#e6db74]';
+    } else if (/^\d/.test(match) || /^0x/.test(match)) {
+      colorClass = 'text-[#ae81ff]';
+    } else if (/^(const|let|var|function|def|fn|class|extends|interface|type|struct|enum|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|delete|import|export|from|as|default|async|await|yield|this|super|self|public|private|protected|static|readonly|abstract|implements|namespace|using|package|include|require|typeof|instanceof|void|null|undefined|true|false|True|False|None|and|or|not|is|in|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|LEFT|RIGHT|INNER|GROUP|BY|ORDER|HAVING|LIMIT|CREATE|TABLE|DROP|ALTER|ADD|INDEX)$/i.test(match)) {
+      colorClass = 'text-[#ff79c6] font-semibold';
+    } else if (/^(string|number|boolean|any|unknown|never|object|symbol|bigint|int|float|double|char|bool|void|Array|Map|Set|Promise|Record|List|Dict|Tuple|React|useState|useEffect|useRef|useMemo|useCallback|useContext|useReducer|Component|HTML|Element|String|Number|Boolean|Object|Function|Math|JSON|Console|process|window|document)$/.test(match)) {
+      colorClass = 'text-[#8be9fd] font-semibold';
+    } else if (/^[a-zA-Z_]\w*$/.test(match) && code.slice(offset + match.length).trim().startsWith('(')) {
+      colorClass = 'text-[#50fa7b]';
+    } else if (/^[=\+\-\*/%&\|^\!<>~\?:;\,\.\{\}\[\]\(\)]$/.test(match)) {
+      colorClass = 'text-[#ff79c6]';
+    }
+
+    elements.push(
+      <span key={offset} className={colorClass}>
+        {match}
+      </span>
+    );
+
+    return match;
+  });
+
+  if (lastIndex < code.length) {
+    elements.push(code.slice(lastIndex));
+  }
+
+  return <>{elements}</>;
+};
+
+const CodeBlock = ({ code, language }: { code: string; language?: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const lineCount = code ? code.split('\n').length : 0;
+
+  return (
+    <div className="my-3 rounded-2xl bg-[#1e1e24] text-[#f8f8f2] overflow-hidden shadow-md border border-white/10 select-text">
+      <div className="flex items-center justify-between px-4 py-2 bg-[#18181c] border-b border-white/10 text-xs font-sans">
+        <div className="flex items-center gap-2 font-semibold text-white/70 uppercase tracking-wider">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] inline-block" />
+          <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] inline-block" />
+          <span className="w-2.5 h-2.5 rounded-full bg-[#27c93f] inline-block mr-1.5" />
+          <span>{language || 'code'}</span>
+          <span className="text-white/40 text-[10px] font-normal lowercase">({lineCount} lines)</span>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-all cursor-pointer font-medium"
+        >
+          {copied ? (
+            <>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Copied!</span>
+            </>
+          ) : (
+            <>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span>Copy code</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="p-4 overflow-x-auto text-sm font-mono leading-relaxed whitespace-pre-wrap">
+        {highlightCodeTokens(code, language)}
+      </div>
+    </div>
+  );
+};
+
 const renderMarkdownText = (
   text: string,
   activeLineIndex?: number,
@@ -555,10 +661,7 @@ const renderMarkdownText = (
     const lang = match[1] || "";
     const codeContent = match[2]?.trim() || "";
     elements.push(
-      <div key={`code-${match.index}`} className="my-2.5 rounded-2xl bg-[#1e1e24] text-[#f8f8f2] p-4 text-sm font-mono overflow-x-auto shadow-inner border border-white/10 select-text">
-        {lang && <div className="text-xs text-white/50 mb-1.5 pb-1 border-b border-white/10 font-sans uppercase tracking-wider font-semibold">{lang}</div>}
-        <pre className="whitespace-pre-wrap font-mono leading-relaxed">{codeContent}</pre>
-      </div>
+      <CodeBlock key={`code-${match.index}`} code={codeContent} language={lang} />
     );
     lastIndex = codeBlockRegex.lastIndex;
   }
@@ -675,7 +778,7 @@ const DocumentAttachmentCard = ({ attachment, extension, isSelf }: { attachment:
             ? 'bg-black/30 border-white/15 text-white/90' 
             : 'bg-[#1e1e24] border-[#e2e5f1] text-[#f8f8f2]'
         }`}>
-          {attachment.content}
+          {highlightCodeTokens(attachment.content || '', extension)}
         </div>
       )}
     </div>
