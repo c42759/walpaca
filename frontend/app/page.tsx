@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useAppStore } from "../store/useAppStore";
+import { getApiUrl } from "../lib/api";
 
 // --- Types ---
 interface ChatFolder {
@@ -157,7 +158,14 @@ const formatAvatarPicture = (picture?: string | null): string | undefined => {
 const autoResizeTextarea = (el: HTMLTextAreaElement | null) => {
   if (!el) return;
   el.style.height = "auto";
-  el.style.height = `${el.scrollHeight}px`;
+  const maxHeight = typeof window !== "undefined" ? window.innerHeight * 0.3 : 240;
+  if (el.scrollHeight > maxHeight) {
+    el.style.height = `${maxHeight}px`;
+    el.style.overflowY = "auto";
+  } else {
+    el.style.height = `${el.scrollHeight}px`;
+    el.style.overflowY = "hidden";
+  }
 };
 
 const getModelAvatarPicture = (pref?: ModelPreference | null, mod?: any): string | undefined => {
@@ -493,6 +501,7 @@ const renderMarkdownText = (text: string, activeLineIndex?: number) => {
 
 export default function AlpacaWebPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [folders, setFolders] = useState<ChatFolder[]>([]);
 
   // Zustand Store Integration for long-lived data caching
@@ -542,6 +551,102 @@ export default function AlpacaWebPage() {
   const [selectedChatInstanceId, setSelectedChatInstanceId] = useState<string>("");
   const [selectedChatModelId, setSelectedChatModelId] = useState<string>("");
   const [isThinkingEnabled, setIsThinkingEnabled] = useState<boolean>(false);
+  const [isSelectModelModalOpen, setIsSelectModelModalOpen] = useState<boolean>(false);
+  const [modelModalSearchQuery, setModelModalSearchQuery] = useState<string>("");
+
+  // Chat Drag & Drop to Folders State & Handler
+  const [draggedChatId, setDraggedChatId] = useState<string | null>(null);
+  const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
+
+  const handleDropChatToFolder = async (chatId: string, targetFolderId: string | null) => {
+    setDragOverFolderTarget(null);
+    setDraggedChatId(null);
+    if (!chatId) return;
+
+    const targetFolderVal = (targetFolderId === "none" || !targetFolderId) ? null : targetFolderId;
+
+    setChatItems((prev) =>
+      prev.map((c) => (c.id === chatId ? { ...c, folder: targetFolderVal || undefined } : c))
+    );
+
+    try {
+      await fetch(`${API_URL}/chats/${chatId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: targetFolderVal }),
+      });
+    } catch (err) {
+      console.warn("Could not move chat to folder on backend:", err);
+    }
+  };
+
+  // Folder Context Menu & Action States
+  const [folderContextMenu, setFolderContextMenu] = useState<{
+    x: number;
+    y: number;
+    folderId: string;
+    folderName: string;
+  } | null>(null);
+  const [renamingFolder, setRenamingFolder] = useState<{ id: string; name: string } | null>(null);
+  const [renameFolderNameInput, setRenameFolderNameInput] = useState<string>("");
+  const [deletingFolder, setDeletingFolder] = useState<{ id: string; name: string } | null>(null);
+
+  useEffect(() => {
+    const handleGlobalClick = () => setFolderContextMenu(null);
+    window.addEventListener("click", handleGlobalClick);
+    return () => window.removeEventListener("click", handleGlobalClick);
+  }, []);
+
+  const handleStartRenameFolder = (folderId: string, folderName: string) => {
+    setFolderContextMenu(null);
+    setRenamingFolder({ id: folderId, name: folderName });
+    setRenameFolderNameInput(folderName);
+  };
+
+  const handleConfirmRenameFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renamingFolder || !renameFolderNameInput.trim()) return;
+    const { id } = renamingFolder;
+    const newName = renameFolderNameInput.trim();
+    setRenamingFolder(null);
+
+    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name: newName } : f)));
+
+    try {
+      await fetch(`${API_URL}/folders/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+    } catch (err) {
+      console.warn("Could not rename folder on backend:", err);
+    }
+  };
+
+  const handleStartDeleteFolder = (folderId: string, folderName: string) => {
+    setFolderContextMenu(null);
+    setDeletingFolder({ id: folderId, name: folderName });
+  };
+
+  const handleConfirmDeleteFolder = async () => {
+    if (!deletingFolder) return;
+    const { id } = deletingFolder;
+    setDeletingFolder(null);
+
+    setFolders((prev) => prev.filter((f) => f.id !== id));
+    if (activeTab === id) {
+      setActiveTab("none");
+    }
+
+    try {
+      await fetch(`${API_URL}/folders/${id}`, {
+        method: "DELETE",
+      });
+      fetchChats(activeTab === id ? "none" : activeTab);
+    } catch (err) {
+      console.warn("Could not delete folder on backend:", err);
+    }
+  };
 
   // Inline Message Editing States & Handlers
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
@@ -1248,7 +1353,7 @@ export default function AlpacaWebPage() {
 
     return Array.from(map.values());
   };
-  const [activeTab, setActiveTab] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<string>("none");
   const [activeChatId, setActiveChatId] = useState<string>(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -1350,7 +1455,7 @@ export default function AlpacaWebPage() {
   const [chatItems, setChatItems] = useState<ChatItem[]>(initialMockChatList);
   const [messages, setMessages] = useState<Message[]>([]);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+  const API_URL = getApiUrl();
 
   const fetchFolders = async () => {
     try {
@@ -1568,7 +1673,7 @@ export default function AlpacaWebPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: chatName,
-          folder: activeTab !== "all" ? activeTab : null,
+          folder: (activeTab !== "none" && activeTab !== "all") ? activeTab : null,
         }),
       });
       if (res.ok) {
@@ -1606,6 +1711,10 @@ export default function AlpacaWebPage() {
 
     const content = inputText.trim();
     setInputText("");
+    if (promptTextareaRef.current) {
+      promptTextareaRef.current.style.height = "auto";
+      promptTextareaRef.current.style.overflowY = "hidden";
+    }
 
     const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
     const userMsg: Message = {
@@ -1886,13 +1995,30 @@ export default function AlpacaWebPage() {
 
 						{/* Navigation Tabs (Backend Folders API Integrated) */}
 						<nav className='flex flex-col items-center gap-3 w-full overflow-y-auto max-h-[calc(100vh-220px)] px-1'>
-							{/* All chats tab */}
+							{/* No Folder tab */}
 							<button
-								onClick={() => { setActiveTab('all'); setCurrentView('chat'); }}
+								onClick={() => { setActiveTab('none'); setCurrentView('chat'); }}
+								onDragOver={(e) => {
+									e.preventDefault();
+									e.dataTransfer.dropEffect = 'move';
+									setDragOverFolderTarget('none');
+								}}
+								onDragLeave={() => {
+									if (dragOverFolderTarget === 'none') setDragOverFolderTarget(null);
+								}}
+								onDrop={(e) => {
+									e.preventDefault();
+									const droppedId = e.dataTransfer.getData('text/plain') || draggedChatId;
+									if (droppedId) handleDropChatToFolder(droppedId, 'none');
+								}}
 								className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative cursor-pointer ${
-									activeTab === 'all' && currentView === 'chat' ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
+									dragOverFolderTarget === 'none'
+										? 'bg-[#7678ed]/30 border-2 border-[#7678ed] text-white scale-105 shadow-lg'
+										: (activeTab === 'none' || activeTab === 'all') && currentView === 'chat'
+										? 'bg-[#2e2f33] text-white shadow-inner'
+										: 'text-[#8b8d97] hover:text-white'
 								}`}
-								title='All chats'
+								title='No Folder'
 							>
 								<div className='relative'>
 									<svg
@@ -1907,24 +2033,49 @@ export default function AlpacaWebPage() {
 									>
 										<path d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' />
 									</svg>
-									<span className='absolute -top-1.5 -right-2.5 bg-[#ff7a55] text-white text-sm font-bold px-1.5 py-0.2 rounded-full leading-tight shadow-sm'>
-										{chatItems.length}
-									</span>
 								</div>
-								<span className='text-sm font-medium tracking-tight'>All chats</span>
+								<span className='text-xs font-medium tracking-tight text-center truncate w-full px-1'>No Folder</span>
 							</button>
 
 							{/* Dynamic Folders from /api/folders */}
 							{folders.map((folder) => {
 								const isActive = activeTab === folder.id && currentView === 'chat';
+								const isDragOver = dragOverFolderTarget === folder.id;
 								return (
 									<button
 										key={folder.id}
 										onClick={() => { setActiveTab(folder.id); setCurrentView('chat'); }}
-										className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative cursor-pointer ${
-											isActive ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
+										onContextMenu={(e) => {
+											e.preventDefault();
+											e.stopPropagation();
+											setFolderContextMenu({
+												x: e.clientX,
+												y: e.clientY,
+												folderId: folder.id,
+												folderName: folder.name,
+											});
+										}}
+										onDragOver={(e) => {
+											e.preventDefault();
+											e.dataTransfer.dropEffect = 'move';
+											setDragOverFolderTarget(folder.id);
+										}}
+										onDragLeave={() => {
+											if (dragOverFolderTarget === folder.id) setDragOverFolderTarget(null);
+										}}
+										onDrop={(e) => {
+											e.preventDefault();
+											const droppedId = e.dataTransfer.getData('text/plain') || draggedChatId;
+											if (droppedId) handleDropChatToFolder(droppedId, folder.id);
+										}}
+										className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative cursor-pointer group ${
+											isDragOver
+												? 'bg-[#7678ed]/30 border-2 border-[#7678ed] text-white scale-105 shadow-lg'
+												: isActive
+												? 'bg-[#2e2f33] text-white shadow-inner'
+												: 'text-[#8b8d97] hover:text-white'
 										}`}
-										title={folder.name}
+										title={`${folder.name} (Right-click for options)`}
 									>
 										<div className='relative'>
 											<svg
@@ -3552,16 +3703,29 @@ export default function AlpacaWebPage() {
 							{chatItems
 								.filter((chat) => {
 									const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase());
-									const matchesFolder = activeTab === "all" || chat.folder === activeTab;
+									const matchesFolder = (activeTab === "none" || activeTab === "all") ? (!chat.folder || chat.folder === "none") : chat.folder === activeTab;
 									return matchesSearch && matchesFolder;
 								})
 								.map((chat) => {
 									const isSelected = activeChatId === chat.id;
+									const isBeingDragged = draggedChatId === chat.id;
 									return (
 										<div
 											key={chat.id}
+											draggable={true}
+											onDragStart={(e) => {
+												e.dataTransfer.setData("text/plain", chat.id);
+												e.dataTransfer.effectAllowed = "move";
+												setDraggedChatId(chat.id);
+											}}
+											onDragEnd={() => {
+												setDraggedChatId(null);
+												setDragOverFolderTarget(null);
+											}}
 											onClick={() => setActiveChatId(chat.id)}
-											className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
+											className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-grab active:cursor-grabbing transition-all ${
+												isBeingDragged ? 'opacity-40 scale-95 border-2 border-dashed border-[#7678ed]' : ''
+											} ${
 												isSelected ? 'bg-[#edeffb] shadow-[0_2px_8px_rgba(118,120,237,0.08)]' : 'hover:bg-[#f2f4fa]'
 											}`}
 										>
@@ -4150,85 +4314,59 @@ export default function AlpacaWebPage() {
 
 								{/* Input Composer */}
 								<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex items-center gap-2.5'>
-									{/* 1. Instance Selector with PC Icon */}
-									<div className='relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl px-3 py-1 hover:bg-[#eaecf9] transition-all shadow-xs'>
-										<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='#7678ed' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='shrink-0 mr-1.5'>
-											<rect x='2' y='3' width='20' height='14' rx='2' ry='2' />
-											<line x1='8' y1='21' x2='16' y2='21' />
-											<line x1='12' y1='17' x2='12' y2='21' />
-										</svg>
-										<select
-											value={selectedChatInstanceId}
-											onChange={(e) => {
-												setSelectedChatInstanceId(e.target.value);
-												fetchModelsForInstance(e.target.value);
-											}}
-											className='bg-transparent text-[#202022] text-xs font-bold outline-none cursor-pointer max-w-[110px] truncate py-1.5'
-											title='Select Instance'
-										>
-											{instances.length === 0 ? (
-												<option value=''>No Instance</option>
-											) : (
-												instances.map((inst) => (
-													<option key={inst.id} value={inst.id}>
-														💻 {inst.properties?.name || inst.type}
-													</option>
-												))
-											)}
-										</select>
-									</div>
+									{/* Combined Model & Instance Selector Button */}
+									{(() => {
+										const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
+										const selectedInstName = selectedInst?.properties?.name || selectedInst?.type || 'Instance';
+										const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
+										const selectedPref =
+											modelPreferences[selectedChatModelId] ||
+											modelPreferences[selectedPrefKey] ||
+											Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
 
-									{/* 2. Model Selector with Manage Models Icon */}
-									<div className='relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl px-3 py-1 hover:bg-[#eaecf9] transition-all shadow-xs'>
-										<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='#7678ed' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='shrink-0 mr-1.5'>
-											<path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' />
-											<circle cx='9' cy='7' r='4' />
-											<path d='M22 21v-2a4 4 0 0 0-3-3.87' />
-											<path d='M16 3.13a4 4 0 0 1 0 7.75' />
-										</svg>
-										<select
-											value={selectedChatModelId}
-											onChange={(e) => setSelectedChatModelId(e.target.value)}
-											className='bg-transparent text-[#202022] text-xs font-bold outline-none cursor-pointer max-w-[140px] truncate py-1.5'
-											title='Select Responding Model'
-										>
-											{(() => {
-												const prefList = Array.from(
-													new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()
-												);
+										let selectedModelName = selectedChatModelId;
+										if (selectedPref) {
+											selectedModelName = getCharacterName(selectedPref.character) || (selectedPref as any).name || selectedPref.id;
+										} else if (selectedChatModelId) {
+											const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
+											if (instMod) {
+												selectedModelName = instMod.name || instMod.id;
+											}
+										}
 
-												return (
-													<>
-														{/* Preferences on top */}
-														{prefList.length > 0 && (
-															<optgroup label='Model Preferences'>
-																{prefList.map((pref) => (
-																	<option key={`pref-${pref.id}`} value={pref.id}>
-																		✨ {getCharacterName(pref.character) || (pref as any).name || pref.id} (Pref)
-																	</option>
-																))}
-															</optgroup>
-														)}
+										if (!selectedModelName) {
+											selectedModelName = 'Select Model';
+										}
 
-														{/* Instance models below */}
-														{instanceModelsList.length > 0 && (
-															<optgroup label='Instance Models'>
-																{instanceModelsList.map((mod) => (
-																	<option key={`mod-${mod.id}`} value={mod.id}>
-																		🤖 {mod.name || mod.id}
-																	</option>
-																))}
-															</optgroup>
-														)}
-
-														{prefList.length === 0 && instanceModelsList.length === 0 && (
-															<option value=''>No Models Available</option>
-														)}
-													</>
-												);
-											})()}
-										</select>
-									</div>
+										return (
+											<button
+												type='button'
+												onClick={() => setIsSelectModelModalOpen(true)}
+												className='relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl px-3.5 py-2 hover:bg-[#eaecf9] transition-all shadow-xs cursor-pointer group text-xs font-bold text-[#202022] max-w-[280px]'
+												title='Select Model & Instance'
+											>
+												<div className='flex items-center gap-1.5 truncate'>
+													<span className='text-[#7678ed] font-bold'>🤖</span>
+													<span className='truncate'>{selectedModelName}</span>
+													<span className='text-[#8e90a6] font-semibold'>@</span>
+													<span className='text-[#7678ed] truncate'>{selectedInstName}</span>
+												</div>
+												<svg
+													width='14'
+													height='14'
+													viewBox='0 0 24 24'
+													fill='none'
+													stroke='#8e90a6'
+													strokeWidth='2.2'
+													strokeLinecap='round'
+													strokeLinejoin='round'
+													className='ml-1.5 shrink-0 group-hover:text-[#202022] transition-colors'
+												>
+													<polyline points='6 9 12 15 18 9' />
+												</svg>
+											</button>
+										);
+									})()}
 
 									{/* 3. Thinking Mode Brain Toggle Button */}
 									<button
@@ -4264,12 +4402,28 @@ export default function AlpacaWebPage() {
 										</svg>
 									</button>
 
-									<input
-										type='text'
+									<textarea
+										ref={(el) => {
+											promptTextareaRef.current = el;
+											autoResizeTextarea(el);
+										}}
+										rows={1}
 										placeholder='Write a message...'
 										value={inputText}
-										onChange={(e) => setInputText(e.target.value)}
-										className='flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium'
+										onChange={(e) => {
+											setInputText(e.target.value);
+											autoResizeTextarea(e.currentTarget);
+										}}
+										onInput={(e) => autoResizeTextarea(e.currentTarget)}
+										onKeyDown={(e) => {
+											if (e.key === 'Enter' && !e.shiftKey) {
+												e.preventDefault();
+												if (inputText.trim()) {
+													handleSendMessage(e);
+												}
+											}
+										}}
+										className='flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]'
 									/>
 
 									<button
@@ -4323,7 +4477,106 @@ export default function AlpacaWebPage() {
 					{/* ========================================================= */}
 					{activeChatId && chatItems.some((c) => c.id === activeChatId) ? (
 						<aside className='w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0'>
-							{/* 1. Members Card (Top) */}
+							{/* Context Card */}
+							{(() => {
+								const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
+								const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
+								const selectedPref =
+									modelPreferences[selectedChatModelId] ||
+									modelPreferences[selectedPrefKey] ||
+									Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+
+								const props = selectedInst?.properties as any;
+								const rawNumCtx =
+									props?.num_ctx ||
+									props?.context_size ||
+									props?.numCtx ||
+									props?.context ||
+									selectedPref?.num_ctx ||
+									4096;
+
+								const totalTokens = Number(rawNumCtx) || 4096;
+
+								let consumedTokens = 0;
+								const assistantMsgs = [...messages].reverse().filter((m) => !m.isSelf);
+
+								for (const msg of assistantMsgs) {
+									const metaAtt = msg.attachments?.find(
+										(a) => a.type?.toLowerCase() === 'metadata' || a.type?.toLowerCase() === 'data'
+									);
+									if (metaAtt && metaAtt.content) {
+										const promptMatch = metaAtt.content.match(/Prompt Eval Count\s*\|\s*(\d+)/i);
+										const evalMatch = metaAtt.content.match(/Eval Count\s*\|\s*(\d+)/i);
+										const promptCount = promptMatch ? parseInt(promptMatch[1], 10) : 0;
+										const evalCount = evalMatch ? parseInt(evalMatch[1], 10) : 0;
+										const totalMsgTokens = promptCount + evalCount;
+										if (totalMsgTokens > 0) {
+											consumedTokens = totalMsgTokens;
+											break;
+										}
+									}
+								}
+
+								const rawPercentage = (consumedTokens / totalTokens) * 100;
+								const percentage = Math.min(Math.round(rawPercentage), 100);
+								const isOverconsumed = consumedTokens >= totalTokens;
+
+								let cardBg = 'bg-white border-[#edf0f7] text-[#202022]';
+								let iconColor = '#7678ed';
+								let titleColor = 'text-[#202022]';
+								let textColor = 'text-[#5d6075] font-medium';
+								let trackBg = 'bg-[#f0f2f9] border-[#e8ebf3]';
+								let barColor = 'bg-emerald-500';
+								let badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+
+								if (isOverconsumed) {
+									cardBg = 'bg-rose-50/90 border-rose-200 text-rose-950 shadow-sm';
+									iconColor = '#e11d48';
+									titleColor = 'text-rose-900';
+									textColor = 'text-rose-800 font-semibold';
+									trackBg = 'bg-rose-100 border-rose-200';
+									barColor = 'bg-rose-600';
+									badgeBg = 'bg-rose-600 text-white border-rose-600 font-extrabold shadow-xs';
+								} else if (rawPercentage >= 90) {
+									barColor = 'bg-rose-500';
+									badgeBg = 'bg-rose-50 text-rose-700 border-rose-200';
+								} else if (rawPercentage >= 65) {
+									barColor = 'bg-amber-500';
+									badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
+								}
+
+								return (
+									<div className={`rounded-3xl p-5 shadow-xs border flex flex-col gap-3 transition-all duration-300 ${cardBg}`}>
+										<div className='flex items-center justify-between'>
+											<div className='flex items-center gap-2'>
+												<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke={iconColor} strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+													<rect x='2' y='2' width='20' height='8' rx='2' ry='2' />
+													<rect x='2' y='14' width='20' height='8' rx='2' ry='2' />
+													<line x1='6' y1='6' x2='6.01' y2='6' />
+													<line x1='6' y1='18' x2='6.01' y2='18' />
+												</svg>
+												<h3 className={`font-bold text-xl ${titleColor}`}>Context</h3>
+											</div>
+											<span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeBg}`}>
+												{percentage}%
+											</span>
+										</div>
+
+										<p className={`text-sm ${textColor}`}>
+											Consumed {consumedTokens.toLocaleString()} from {totalTokens.toLocaleString()} tokens.
+										</p>
+
+										<div className={`w-full rounded-full h-2.5 overflow-hidden p-0.5 border ${trackBg}`}>
+											<div
+												className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+												style={{ width: `${percentage}%` }}
+											/>
+										</div>
+									</div>
+								);
+							})()}
+
+							{/* 1. Members Card (Middle) */}
 							{(() => {
 								const participants = getConversationParticipants();
 								return (
@@ -4856,6 +5109,311 @@ export default function AlpacaWebPage() {
 								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#ff4d4f] hover:bg-[#e04345] text-white transition-all shadow-md shadow-[#ff4d4f]/30 cursor-pointer'
 							>
 								Delete Message
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Select Model & Instance Modal */}
+			{isSelectModelModalOpen && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-white text-[#202022] rounded-3xl p-6 w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl border border-[#e8ebf3] animate-in fade-in zoom-in duration-200'>
+						{/* Modal Header */}
+						<div className='flex items-center justify-between pb-4 border-b border-[#eef0f6] shrink-0 mb-4'>
+							<div className='flex items-center gap-2.5'>
+								<div className='w-10 h-10 rounded-2xl bg-[#7678ed]/10 text-[#7678ed] flex items-center justify-center font-bold shrink-0 shadow-xs border border-[#7678ed]/20'>
+									<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+										<path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' />
+										<circle cx='9' cy='7' r='4' />
+										<path d='M22 21v-2a4 4 0 0 0-3-3.87' />
+										<path d='M16 3.13a4 4 0 0 1 0 7.75' />
+									</svg>
+								</div>
+								<div>
+									<h3 className='text-xl font-bold text-[#202022] tracking-tight'>Select Model & Instance</h3>
+									<p className='text-xs text-[#8e90a6] mt-0.5'>Choose the responding AI model and server instance</p>
+								</div>
+							</div>
+							<button
+								onClick={() => setIsSelectModelModalOpen(false)}
+								className='p-1.5 text-[#8e90a6] hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer'
+								title='Close'
+							>
+								<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+
+						{/* Search Input */}
+						<div className='mb-4 relative shrink-0'>
+							<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='#8e90a6' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='absolute left-3.5 top-3.5'>
+								<circle cx='11' cy='11' r='8' />
+								<line x1='21' y1='21' x2='16.65' y2='16.65' />
+							</svg>
+							<input
+								type='text'
+								placeholder='Search models or instances...'
+								value={modelModalSearchQuery}
+								onChange={(e) => setModelModalSearchQuery(e.target.value)}
+								className='w-full bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium border border-[#e8ebf3]'
+							/>
+						</div>
+
+						{/* Scrollable Instances & Models List */}
+						<div className='flex-1 overflow-y-auto space-y-4 pr-1'>
+							{(() => {
+								const query = modelModalSearchQuery.toLowerCase().trim();
+
+								const prefList = Array.from(
+									new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()
+								).filter((pref) => {
+									if (!query) return true;
+									const prefName = (getCharacterName(pref.character) || pref.name || pref.id).toLowerCase();
+									return prefName.includes(query) || pref.id.toLowerCase().includes(query);
+								});
+
+								const filteredInstanceModels = instanceModelsList.filter((mod) => {
+									if (!query) return true;
+									const modName = (mod.name || mod.id || '').toLowerCase();
+									return modName.includes(query);
+								});
+
+								if (instances.length === 0) {
+									return (
+										<div className='p-6 text-center text-[#8e90a6] text-sm italic'>
+											No instances connected. Add an instance in settings.
+										</div>
+									);
+								}
+
+								return (
+									<>
+										{instances.map((inst) => {
+											const instName = inst.properties?.name || inst.type;
+											const isCurrentInst = selectedChatInstanceId === inst.id;
+
+											return (
+												<div key={`inst-modal-${inst.id}`} className='bg-[#f9fafc] rounded-2xl p-3.5 border border-[#e8ebf3] space-y-2.5'>
+													<div className='flex items-center justify-between px-1'>
+														<div className='flex items-center gap-2'>
+															<span className='text-base'>💻</span>
+															<h4 className='font-bold text-sm text-[#202022]'>{instName}</h4>
+															<span className='text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#eaecf9] text-[#7678ed]'>
+																{inst.type}
+															</span>
+														</div>
+													</div>
+
+													<div className='space-y-1.5 pl-2 border-l-2 border-[#7678ed]/20 ml-2'>
+														{/* Model Preferences */}
+														{prefList.map((pref) => {
+															const prefName = getCharacterName(pref.character) || pref.name || pref.id;
+															const isSelected = isCurrentInst && selectedChatModelId === pref.id;
+
+															return (
+																<button
+																	key={`pref-opt-${inst.id}-${pref.id}`}
+																	type='button'
+																	onClick={() => {
+																		setSelectedChatInstanceId(inst.id);
+																		setSelectedChatModelId(pref.id);
+																		fetchModelsForInstance(inst.id);
+																		setIsSelectModelModalOpen(false);
+																	}}
+																	className={`w-full text-left p-2.5 rounded-xl transition-all flex items-center justify-between cursor-pointer border ${
+																		isSelected
+																			? 'bg-[#7678ed] text-white border-[#7678ed] shadow-md shadow-[#7678ed]/20'
+																			: 'bg-white hover:bg-[#eaecf9] text-[#202022] border-[#e8ebf3]'
+																	}`}
+																>
+																	<div className='flex items-center gap-2.5 truncate'>
+																		<span className='text-sm shrink-0'>✨</span>
+																		<div className='truncate'>
+																			<p className='font-semibold text-xs truncate'>{prefName}</p>
+																			<p className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-[#8e90a6]'}`}>
+																				Model Preference @ {instName}
+																			</p>
+																		</div>
+																	</div>
+																	{isSelected && (
+																		<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='3' strokeLinecap='round' strokeLinejoin='round' className='shrink-0 ml-2'>
+																			<polyline points='20 6 9 17 4 12' />
+																		</svg>
+																	)}
+																</button>
+															);
+														})}
+
+														{/* Instance Models */}
+														{filteredInstanceModels.map((mod) => {
+															const modName = mod.name || mod.id;
+															const isSelected = isCurrentInst && selectedChatModelId === mod.id;
+
+															return (
+																<button
+																	key={`mod-opt-${inst.id}-${mod.id}`}
+																	type='button'
+																	onClick={() => {
+																		setSelectedChatInstanceId(inst.id);
+																		setSelectedChatModelId(mod.id);
+																		fetchModelsForInstance(inst.id);
+																		setIsSelectModelModalOpen(false);
+																	}}
+																	className={`w-full text-left p-2.5 rounded-xl transition-all flex items-center justify-between cursor-pointer border ${
+																		isSelected
+																			? 'bg-[#7678ed] text-white border-[#7678ed] shadow-md shadow-[#7678ed]/20'
+																			: 'bg-white hover:bg-[#eaecf9] text-[#202022] border-[#e8ebf3]'
+																	}`}
+																>
+																	<div className='flex items-center gap-2.5 truncate'>
+																		<span className='text-sm shrink-0'>🤖</span>
+																		<div className='truncate'>
+																			<p className='font-semibold text-xs truncate'>{modName}</p>
+																			<p className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-[#8e90a6]'}`}>
+																				Model @ {instName}
+																			</p>
+																		</div>
+																	</div>
+																	{isSelected && (
+																		<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='3' strokeLinecap='round' strokeLinejoin='round' className='shrink-0 ml-2'>
+																			<polyline points='20 6 9 17 4 12' />
+																		</svg>
+																	)}
+																</button>
+															);
+														})}
+
+														{prefList.length === 0 && filteredInstanceModels.length === 0 && (
+															<div className='p-2 text-xs text-[#8e90a6] italic'>No models listed for this instance.</div>
+														)}
+													</div>
+												</div>
+											);
+										})}
+									</>
+								);
+							})()}
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Folder Context Menu */}
+			{folderContextMenu && (
+				<div
+					className='fixed z-[9999] bg-[#28282b] text-white border border-[#3e3e42] rounded-2xl p-1.5 shadow-2xl min-w-[160px] animate-in fade-in zoom-in-95 duration-150 select-none'
+					style={{ left: `${folderContextMenu.x}px`, top: `${folderContextMenu.y}px` }}
+					onClick={(e) => e.stopPropagation()}
+				>
+					<div className='px-3 py-1.5 border-b border-[#3e3e42] mb-1'>
+						<p className='text-[11px] font-bold text-[#8b8d97] uppercase tracking-wider truncate max-w-[140px]'>
+							{folderContextMenu.folderName}
+						</p>
+					</div>
+					<button
+						type='button'
+						onClick={() => handleStartRenameFolder(folderContextMenu.folderId, folderContextMenu.folderName)}
+						className='w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] hover:text-[#7678ed] flex items-center gap-2 transition-colors cursor-pointer'
+					>
+						<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+							<path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' />
+							<path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' />
+						</svg>
+						Rename
+					</button>
+					<button
+						type='button'
+						onClick={() => handleStartDeleteFolder(folderContextMenu.folderId, folderContextMenu.folderName)}
+						className='w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] text-rose-400 hover:text-rose-300 flex items-center gap-2 transition-colors cursor-pointer'
+					>
+						<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+							<polyline points='3 6 5 6 21 6' />
+							<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+						</svg>
+						Delete
+					</button>
+				</div>
+			)}
+
+			{/* Rename Folder Modal */}
+			{renamingFolder && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-4'>
+							<h3 className='text-lg font-bold'>Rename Folder</h3>
+							<button onClick={() => setRenamingFolder(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<form onSubmit={handleConfirmRenameFolder} className='space-y-4'>
+							<div>
+								<label className='block text-xs font-semibold text-white/70 mb-1'>Folder Name</label>
+								<input
+									type='text'
+									autoFocus
+									placeholder='Folder Name'
+									value={renameFolderNameInput}
+									onChange={(e) => setRenameFolderNameInput(e.target.value)}
+									className='w-full bg-[#2d2d30] border border-white/10 rounded-2xl px-4 py-3 text-base text-white placeholder-white/40 outline-none focus:border-[#7678ed] transition-colors'
+								/>
+							</div>
+							<div className='flex items-center justify-end gap-3 pt-2'>
+								<button
+									type='button'
+									onClick={() => setRenamingFolder(null)}
+									className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+								>
+									Cancel
+								</button>
+								<button
+									type='submit'
+									disabled={!renameFolderNameInput.trim()}
+									className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer'
+								>
+									Save Name
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+
+			{/* Delete Folder Confirmation Modal */}
+			{deletingFolder && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-2'>
+							<h3 className='text-lg font-bold text-rose-400'>Delete Folder?</h3>
+							<button onClick={() => setDeletingFolder(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<p className='text-sm text-white/70 leading-relaxed mb-6'>
+							Are you sure you want to delete <strong className='text-white'>"{deletingFolder.name}"</strong>? Chats in this folder will be moved to No Folder.
+						</p>
+						<div className='flex items-center justify-end gap-3'>
+							<button
+								type='button'
+								onClick={() => setDeletingFolder(null)}
+								className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+							>
+								Cancel
+							</button>
+							<button
+								type='button'
+								onClick={handleConfirmDeleteFolder}
+								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-all shadow-md shadow-rose-600/30 cursor-pointer'
+							>
+								Delete Folder
 							</button>
 						</div>
 					</div>

@@ -1,6 +1,5 @@
 import { create } from "zustand";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+import { getApiUrl } from "../lib/api";
 
 export interface ModelPreference {
   id: string;
@@ -106,7 +105,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
     set({ instancesLoading: true });
     try {
-      const res = await fetch(`${API_URL}/instances`);
+      const res = await fetch(`${getApiUrl()}/instances`);
       if (res.ok) {
         const data: InstanceItem[] = await res.json();
         set({ instances: data, instancesLoaded: true, instancesLoading: false });
@@ -130,7 +129,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
     set({ modelPreferencesLoading: true });
     try {
-      const res = await fetch(`${API_URL}/model-preferences`);
+      const res = await fetch(`${getApiUrl()}/model-preferences`);
       if (res.ok) {
         const data = await res.json();
         const map: Record<string, ModelPreference> = {};
@@ -178,7 +177,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     }));
 
     try {
-      const res = await fetch(`${API_URL}/instances/${instanceId}/models`);
+      const res = await fetch(`${getApiUrl()}/instances/${instanceId}/models`);
       if (res.ok) {
         const data: InstanceModel[] = await res.json();
         if (Array.isArray(data) && data.length > 0) {

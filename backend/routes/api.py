@@ -87,7 +87,10 @@ def get_chats():
 
     query = Chat.query
     if folder_id is not None:
-        query = query.filter_by(folder=folder_id if folder_id != "" else None)
+        if folder_id.lower() in ("none", "null", ""):
+            query = query.filter((Chat.folder == None) | (Chat.folder == "none") | (Chat.folder == ""))
+        else:
+            query = query.filter_by(folder=folder_id)
     if is_template is not None:
         query = query.filter_by(
             is_template=1 if is_template in ("1", "true", "True") else 0
