@@ -284,7 +284,12 @@ const parseFormatting = (str: string): React.ReactNode[] => {
   return parts;
 };
 
-const renderInlineMarkdown = (text: string, keyPrefix: string, activeLineIndex?: number) => {
+const renderInlineMarkdown = (
+  text: string,
+  keyPrefix: string,
+  activeLineIndex?: number,
+  onLineContextMenu?: (e: React.MouseEvent, lineText: string, lineIndex: number) => void
+) => {
   const lines = text.split("\n");
   const elements: React.ReactNode[] = [];
   let inUnorderedList = false;
@@ -377,6 +382,16 @@ const renderInlineMarkdown = (text: string, keyPrefix: string, activeLineIndex?:
     const trimmed = line.trim();
     const isHl = activeLineIndex === idx;
     const hlClass = isHl ? " bg-[#7678ed]/20 border-l-4 border-[#7678ed] pl-2.5 py-0.5 rounded-r-xl transition-all duration-300 font-medium text-[#111] shadow-xs" : "";
+    const getMenuProps = () => {
+      if (!onLineContextMenu) return {};
+      return {
+        onContextMenu: (e: React.MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onLineContextMenu(e, line, idx);
+        },
+      };
+    };
 
     // Check table line
     if (trimmed.startsWith("|") && (trimmed.endsWith("|") || trimmed.includes("|"))) {
@@ -393,27 +408,27 @@ const renderInlineMarkdown = (text: string, keyPrefix: string, activeLineIndex?:
     // Headers
     if (trimmed.startsWith("# ")) {
       flushListsAndTable();
-      elements.push(<h1 key={idx} className={`text-2xl font-extrabold text-[#202022] my-2${hlClass}`}>{parseFormatting(trimmed.slice(2))}</h1>);
+      elements.push(<h1 key={idx} {...getMenuProps()} className={`text-2xl font-extrabold text-[#202022] my-2${hlClass}`}>{parseFormatting(trimmed.slice(2))}</h1>);
       return;
     }
     if (trimmed.startsWith("## ")) {
       flushListsAndTable();
-      elements.push(<h2 key={idx} className={`text-xl font-bold text-[#202022] my-2${hlClass}`}>{parseFormatting(trimmed.slice(3))}</h2>);
+      elements.push(<h2 key={idx} {...getMenuProps()} className={`text-xl font-bold text-[#202022] my-2${hlClass}`}>{parseFormatting(trimmed.slice(3))}</h2>);
       return;
     }
     if (trimmed.startsWith("### ")) {
       flushListsAndTable();
-      elements.push(<h3 key={idx} className={`text-lg font-bold text-[#202022] my-1.5${hlClass}`}>{parseFormatting(trimmed.slice(4))}</h3>);
+      elements.push(<h3 key={idx} {...getMenuProps()} className={`text-lg font-bold text-[#202022] my-1.5${hlClass}`}>{parseFormatting(trimmed.slice(4))}</h3>);
       return;
     }
     if (trimmed.startsWith("#### ")) {
       flushListsAndTable();
-      elements.push(<h4 key={idx} className={`text-base font-bold text-[#202022] my-1${hlClass}`}>{parseFormatting(trimmed.slice(5))}</h4>);
+      elements.push(<h4 key={idx} {...getMenuProps()} className={`text-base font-bold text-[#202022] my-1${hlClass}`}>{parseFormatting(trimmed.slice(5))}</h4>);
       return;
     }
     if (trimmed.startsWith("##### ") || trimmed.startsWith("###### ")) {
       flushListsAndTable();
-      elements.push(<h5 key={idx} className={`text-sm font-bold uppercase tracking-wider text-[#8e90a6] my-1${hlClass}`}>{parseFormatting(trimmed.replace(/^#+\s*/, ""))}</h5>);
+      elements.push(<h5 key={idx} {...getMenuProps()} className={`text-sm font-bold uppercase tracking-wider text-[#8e90a6] my-1${hlClass}`}>{parseFormatting(trimmed.replace(/^#+\s*/, ""))}</h5>);
       return;
     }
 
@@ -428,7 +443,7 @@ const renderInlineMarkdown = (text: string, keyPrefix: string, activeLineIndex?:
     if (trimmed.startsWith("> ")) {
       flushListsAndTable();
       elements.push(
-        <blockquote key={idx} className={`border-l-4 border-[#7678ed] pl-3 py-1 my-2 text-[#4a4d63] italic bg-[#f0f2f9]/50 rounded-r-xl${hlClass}`}>
+        <blockquote key={idx} {...getMenuProps()} className={`border-l-4 border-[#7678ed] pl-3 py-1 my-2 text-[#4a4d63] italic bg-[#f0f2f9]/50 rounded-r-xl${hlClass}`}>
           {parseFormatting(trimmed.slice(2))}
         </blockquote>
       );
@@ -440,7 +455,7 @@ const renderInlineMarkdown = (text: string, keyPrefix: string, activeLineIndex?:
     if (ulMatch) {
       if (inOrderedList) flushListsAndTable();
       inUnorderedList = true;
-      currentUlItems.push(<li key={idx} className={`leading-relaxed${hlClass}`}>{parseFormatting(ulMatch[1])}</li>);
+      currentUlItems.push(<li key={idx} {...getMenuProps()} className={`leading-relaxed${hlClass}`}>{parseFormatting(ulMatch[1])}</li>);
       return;
     }
 
@@ -449,7 +464,7 @@ const renderInlineMarkdown = (text: string, keyPrefix: string, activeLineIndex?:
     if (olMatch) {
       if (inUnorderedList) flushListsAndTable();
       inOrderedList = true;
-      currentOlItems.push(<li key={idx} className={`leading-relaxed${hlClass}`}>{parseFormatting(olMatch[1])}</li>);
+      currentOlItems.push(<li key={idx} {...getMenuProps()} className={`leading-relaxed${hlClass}`}>{parseFormatting(olMatch[1])}</li>);
       return;
     }
 
@@ -462,14 +477,18 @@ const renderInlineMarkdown = (text: string, keyPrefix: string, activeLineIndex?:
 
     // Regular paragraph
     flushListsAndTable();
-    elements.push(<p key={idx} className={`leading-relaxed my-1${hlClass}`}>{parseFormatting(line)}</p>);
+    elements.push(<p key={idx} {...getMenuProps()} className={`leading-relaxed my-1${hlClass}`}>{parseFormatting(line)}</p>);
   });
 
   flushListsAndTable();
   return <div key={keyPrefix} className="space-y-1">{elements}</div>;
 };
 
-const renderMarkdownText = (text: string, activeLineIndex?: number) => {
+const renderMarkdownText = (
+  text: string,
+  activeLineIndex?: number,
+  onLineContextMenu?: (e: React.MouseEvent, lineText: string, lineIndex: number) => void
+) => {
   if (!text) return null;
 
   const codeBlockRegex = /```(\w+)?\s*\n?([\s\S]*?)```/g;
@@ -479,7 +498,7 @@ const renderMarkdownText = (text: string, activeLineIndex?: number) => {
 
   while ((match = codeBlockRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      elements.push(renderInlineMarkdown(text.slice(lastIndex, match.index), `text-${lastIndex}`, activeLineIndex));
+      elements.push(renderInlineMarkdown(text.slice(lastIndex, match.index), `text-${lastIndex}`, activeLineIndex, onLineContextMenu));
     }
     const lang = match[1] || "";
     const codeContent = match[2]?.trim() || "";
@@ -493,7 +512,7 @@ const renderMarkdownText = (text: string, activeLineIndex?: number) => {
   }
 
   if (lastIndex < text.length) {
-    elements.push(renderInlineMarkdown(text.slice(lastIndex), `text-${lastIndex}`, activeLineIndex));
+    elements.push(renderInlineMarkdown(text.slice(lastIndex), `text-${lastIndex}`, activeLineIndex, onLineContextMenu));
   }
 
   return <>{elements}</>;
@@ -587,12 +606,23 @@ export default function AlpacaWebPage() {
     folderId: string;
     folderName: string;
   } | null>(null);
+  const [lineContextMenu, setLineContextMenu] = useState<{
+    x: number;
+    y: number;
+    msgId: string;
+    lineText: string;
+    lineIndex: number;
+    voice?: string;
+  } | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<{ id: string; name: string } | null>(null);
   const [renameFolderNameInput, setRenameFolderNameInput] = useState<string>("");
   const [deletingFolder, setDeletingFolder] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
-    const handleGlobalClick = () => setFolderContextMenu(null);
+    const handleGlobalClick = () => {
+      setFolderContextMenu(null);
+      setLineContextMenu(null);
+    };
     window.addEventListener("click", handleGlobalClick);
     return () => window.removeEventListener("click", handleGlobalClick);
   }, []);
@@ -1315,6 +1345,62 @@ export default function AlpacaWebPage() {
         checkAndPlay();
       });
     }
+
+    if (ttsStateRef.current.msgId === msgId) {
+      updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
+    }
+  };
+
+  const handlePlayTTSLine = async (msgId: string, lineText: string, origIndex: number, voice?: string) => {
+    handleStopTTS();
+
+    const trimmed = lineText.trim();
+    if (!trimmed) return;
+
+    const cleanText = trimmed
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/^#+\s*/gm, "")
+      .replace(/^>\s*/gm, "")
+      .replace(/^[-*+]\s+/gm, "")
+      .replace(/^\d+\.\s+/gm, "")
+      .replace(/\|/g, " ")
+      .trim();
+
+    if (!cleanText) return;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    updateTTSState({ msgId, status: "playing", lineIndex: origIndex });
+
+    const blob = await fetchTTSBlob(cleanText, voice || "af_heart", controller.signal);
+    if (!blob || ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === "stopped") {
+      updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
+      return;
+    }
+
+    const audioUrl = URL.createObjectURL(blob);
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+
+    await new Promise<void>((resolve) => {
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        resolve();
+      };
+      audio.onerror = (e) => {
+        console.warn("Audio playback error:", e);
+        URL.revokeObjectURL(audioUrl);
+        resolve();
+      };
+      audio.play().catch((err) => {
+        console.warn("audio.play() error:", err);
+        resolve();
+      });
+    });
 
     if (ttsStateRef.current.msgId === msgId) {
       updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
@@ -4254,7 +4340,20 @@ export default function AlpacaWebPage() {
 																		</div>
 																	</div>
 																) : (
-																	renderMarkdownText(msg.content, msg.id === ttsState.msgId ? ttsState.lineIndex : undefined)
+																	renderMarkdownText(
+																		msg.content,
+																		msg.id === ttsState.msgId ? ttsState.lineIndex : undefined,
+																		(e, lineText, lineIdx) => {
+																			setLineContextMenu({
+																				x: e.clientX,
+																				y: e.clientY,
+																				msgId: msg.id,
+																				lineText,
+																				lineIndex: lineIdx,
+																				voice: modelVoice,
+																			});
+																		}
+																	)
 																)}
 															</div>
 															<div className='flex items-center justify-between gap-4 mt-2.5 pt-1'>
@@ -5334,6 +5433,30 @@ export default function AlpacaWebPage() {
 							<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
 						</svg>
 						Delete
+					</button>
+				</div>
+			)}
+
+			{/* Line Context Menu */}
+			{lineContextMenu && (
+				<div
+					className='fixed z-[9999] bg-[#28282b] text-white border border-[#3e3e42] rounded-2xl p-1.5 shadow-2xl min-w-[140px] animate-in fade-in zoom-in-95 duration-150 select-none'
+					style={{ left: `${lineContextMenu.x}px`, top: `${lineContextMenu.y}px` }}
+					onClick={(e) => e.stopPropagation()}
+				>
+					<button
+						type='button'
+						onClick={() => {
+							const { msgId, lineText, lineIndex, voice } = lineContextMenu;
+							setLineContextMenu(null);
+							handlePlayTTSLine(msgId, lineText, lineIndex, voice);
+						}}
+						className='w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] hover:text-[#7678ed] flex items-center gap-2 transition-colors cursor-pointer'
+					>
+						<svg width='14' height='14' viewBox='0 0 24 24' fill='currentColor'>
+							<polygon points='5 3 19 12 5 21 5 3' />
+						</svg>
+						Play
 					</button>
 				</div>
 			)}
