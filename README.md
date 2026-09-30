@@ -36,7 +36,7 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 - [x] Multiple concurrent conversations
 - [x] LLM Response background handler when browser is refreshed of closed.
 - [ ] System notifications
-- [ ] Import chats
+- [x] Import chats
 - [x] Export chats
 - [ ] YouTube video recognition (transcript queries)
 - [ ] Website recognition (web scraping via URL)

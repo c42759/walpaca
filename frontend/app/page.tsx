@@ -913,6 +913,273 @@ export default function AlpacaWebPage() {
   const [draggedChatId, setDraggedChatId] = useState<string | null>(null);
   const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
 
+  // Import Chat State & Handlers
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [importStatusMessage, setImportStatusMessage] = useState<string>("");
+  const [isDraggingImport, setIsDraggingImport] = useState<boolean>(false);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+
+  const parseImportContent = (fileName: string, text: string): any[] => {
+    const cleanFileName = fileName.replace(/\.[^/.]+$/, "");
+    const trimmed = text.trim();
+
+    // 1. JSON Parsing
+    if (fileName.endsWith(".json") || trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(text);
+        const results: any[] = [];
+
+        const processJsonObject = (obj: any): any | null => {
+          if (!obj || typeof obj !== "object") return null;
+
+          // ChatGPT export format (mapping object)
+          if (obj.mapping && typeof obj.mapping === "object") {
+            const title = obj.title || cleanFileName;
+            const msgs: any[] = [];
+            Object.values(obj.mapping).forEach((node: any) => {
+              const msg = node?.message;
+              if (msg && msg.content && Array.isArray(msg.content.parts)) {
+                const textParts = msg.content.parts.filter((p: any) => typeof p === "string").join("\n");
+                if (textParts.trim()) {
+                  const authorRole = msg.author?.role;
+                  const role = authorRole === "user" ? "user" : "assistant";
+                  msgs.push({
+                    role,
+                    content: textParts,
+                    model: msg.metadata?.model_slug,
+                    date_time: msg.create_time ? new Date(msg.create_time * 1000).toISOString() : undefined,
+                  });
+                }
+              }
+            });
+            return msgs.length > 0 ? { title, messages: msgs } : null;
+          }
+
+          // Claude export format (chat_messages array)
+          if (Array.isArray(obj.chat_messages)) {
+            const title = obj.name || obj.title || cleanFileName;
+            const msgs: any[] = obj.chat_messages
+              .map((m: any) => ({
+                role: m.sender === "human" || m.sender === "user" ? "user" : "assistant",
+                content: m.text || m.content || "",
+                date_time: m.created_at,
+              }))
+              .filter((m: any) => m.content.trim());
+            return msgs.length > 0 ? { title, messages: msgs } : null;
+          }
+
+          // Walpaca / Generic export format (messages array)
+          if (Array.isArray(obj.messages)) {
+            const title = obj.title || obj.name || cleanFileName;
+            const msgs: any[] = obj.messages
+              .map((m: any) => ({
+                role: m.role === "user" || m.isSelf ? "user" : "assistant",
+                content: m.content || "",
+                model: m.model,
+                date_time: m.time || m.date_time,
+                attachments: Array.isArray(m.attachments)
+                  ? m.attachments.map((a: any) => ({
+                      name: a.name || "attachment",
+                      type: a.type || "txt",
+                      content: a.content || "",
+                    }))
+                  : undefined,
+              }))
+              .filter((m: any) => m.content.trim() || (m.attachments && m.attachments.length > 0));
+            return msgs.length > 0 ? { title, messages: msgs } : null;
+          }
+
+          return null;
+        };
+
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item) => {
+            const c = processJsonObject(item);
+            if (c) results.push(c);
+          });
+        } else {
+          const c = processJsonObject(parsed);
+          if (c) results.push(c);
+        }
+
+        if (results.length > 0) return results;
+      } catch (e) {
+        console.warn("JSON import parse warning:", e);
+      }
+    }
+
+    // 2. Markdown Parsing (.md / .markdown)
+    if (fileName.endsWith(".md") || fileName.endsWith(".markdown") || text.includes("# ") || text.includes("### ")) {
+      let title = cleanFileName;
+      const titleMatch = text.match(/^#\s+(.+)$/m);
+      if (titleMatch) {
+        title = titleMatch[1].trim();
+      }
+
+      const messages: any[] = [];
+      const sections = text.split(/(?=^###\s+|^----\s*$)/m);
+
+      sections.forEach((sec) => {
+        const headerMatch = sec.match(/^###\s+\*\*?([^*\n|]+)\*\*?(\s*\|\s*(.+))?/m);
+        if (headerMatch) {
+          const senderStr = headerMatch[1].trim();
+          const timeStr = headerMatch[3]?.trim();
+          const isUser = /user|you/i.test(senderStr);
+          const role: "user" | "assistant" = isUser ? "user" : "assistant";
+
+          let body = sec.replace(/^###\s+.+$/m, "").replace(/^----\s*$/m, "").trim();
+          const attachments: any[] = [];
+
+          // HTML details tags
+          body = body.replace(/<details>\s*<summary>.*?([^\/\s>]+)<\/summary>\s*```[\w]*\n([\s\S]*?)```\s*<\/details>/gi, (_, attName, attContent) => {
+            attachments.push({ name: attName.trim(), type: "txt", content: attContent.trim() });
+            return "";
+          });
+
+          // Obsidian callouts (> [!quote]- filename)
+          body = body.replace(/^>\s*\[!(?:quote|info)\]-?\s*(.+)\n((?:>\s*.*\n?)*)/gm, (_, attName, blockContent) => {
+            const cleanContent = blockContent.split("\n").map((l: string) => l.replace(/^>\s?/, "")).join("\n").trim();
+            attachments.push({ name: attName.trim(), type: "txt", content: cleanContent });
+            return "";
+          });
+
+          body = body.trim();
+          if (body || attachments.length > 0) {
+            messages.push({
+              role,
+              content: body,
+              model: !isUser && senderStr !== "Assistant" ? senderStr : undefined,
+              date_time: timeStr,
+              attachments: attachments.length > 0 ? attachments : undefined,
+            });
+          }
+        }
+      });
+
+      if (messages.length > 0) {
+        return [{ title, messages }];
+      }
+    }
+
+    // 3. Plain Text Parsing (.txt or fallback)
+    let title = cleanFileName;
+    const txtTitleMatch = text.match(/^===\s*(.+?)\s*===$/m);
+    if (txtTitleMatch) {
+      title = txtTitleMatch[1].trim();
+    }
+
+    const textLines = text.split("\n");
+    const messages: any[] = [];
+    let currentSender = "";
+    let currentTime = "";
+    let currentLines: string[] = [];
+
+    const flushMessage = () => {
+      if (currentSender && currentLines.length > 0) {
+        const isUser = /you|user/i.test(currentSender);
+        const content = currentLines.join("\n").trim();
+        if (content) {
+          messages.push({
+            role: isUser ? "user" : "assistant",
+            content,
+            model: !isUser && currentSender !== "Assistant" ? currentSender : undefined,
+            date_time: currentTime || undefined,
+          });
+        }
+      }
+      currentLines = [];
+    };
+
+    textLines.forEach((line) => {
+      const msgHeaderMatch = line.match(/^\[([^\]]+)\]\s*([^:\n]+):$/);
+      if (msgHeaderMatch) {
+        flushMessage();
+        currentTime = msgHeaderMatch[1].trim();
+        currentSender = msgHeaderMatch[2].trim();
+      } else if (line.trim() === "----------------------------------------") {
+        flushMessage();
+        currentSender = "";
+      } else if (!line.startsWith("===") && !line.startsWith("Generated from AlpacaWeb")) {
+        currentLines.push(line);
+      }
+    });
+    flushMessage();
+
+    if (messages.length > 0) {
+      return [{ title, messages }];
+    }
+
+    return [
+      {
+        title: cleanFileName,
+        messages: [{ role: "user", content: trimmed }],
+      },
+    ];
+  };
+
+  const handleImportFiles = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+    setIsImporting(true);
+    setImportStatusMessage(`Reading ${files.length} file(s)...`);
+
+    try {
+      const allParsedChats: any[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setImportStatusMessage(`Parsing ${file.name}...`);
+        const text = await file.text();
+        const parsed = parseImportContent(file.name, text);
+        allParsedChats.push(...parsed);
+      }
+
+      if (allParsedChats.length === 0) {
+        setImportStatusMessage("No valid chat messages found in selected file(s).");
+        setIsImporting(false);
+        return;
+      }
+
+      setImportStatusMessage(`Importing ${allParsedChats.length} conversation(s)...`);
+      const res = await fetch(`${API_URL}/chats/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chats: allParsedChats }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to import chats");
+      }
+
+      const newChats = await res.json();
+      setImportStatusMessage(`Successfully imported ${newChats.length} conversation(s)!`);
+
+      const chatsRes = await fetch(`${API_URL}/chats`);
+      if (chatsRes.ok) {
+        const updatedList = await chatsRes.json();
+        setChatItems(
+          updatedList.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            time: c.date_time || "Just now",
+            folder: c.folder,
+          }))
+        );
+      }
+
+      if (newChats.length > 0 && newChats[0].id) {
+        setActiveChatId(newChats[0].id);
+        setTimeout(() => {
+          setCurrentView("chat");
+        }, 800);
+      }
+    } catch (e: any) {
+      console.error("Import error:", e);
+      setImportStatusMessage(`Import failed: ${e.message || "Unknown error"}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const handleDropChatToFolder = async (chatId: string, targetFolderId: string | null) => {
     setDragOverFolderTarget(null);
     setDraggedChatId(null);
@@ -2802,11 +3069,28 @@ export default function AlpacaWebPage() {
 												</div>
 												<div>
 													<h3 className='text-2xl font-bold text-[#202022] tracking-tight'>Import Chat</h3>
-													<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>Import conversation logs, JSON backups, or zip archives from other LLM providers.</p>
+													<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>Import conversation logs, JSON backups, Markdown transcripts, or text exports.</p>
 												</div>
 											</div>
 
-											<div className='border-2 border-dashed border-[#7678ed]/40 hover:border-[#7678ed] rounded-3xl p-10 bg-white hover:bg-[#f3f4fd] transition-all flex flex-col items-center justify-center text-center cursor-pointer group shadow-xs'>
+											<input
+												type='file'
+												ref={importFileInputRef}
+												onChange={(e) => e.target.files && handleImportFiles(e.target.files)}
+												accept='.json,.md,.markdown,.txt'
+												multiple
+												className='hidden'
+											/>
+
+											<div
+												onDragOver={(e) => { e.preventDefault(); setIsDraggingImport(true); }}
+												onDragLeave={(e) => { e.preventDefault(); setIsDraggingImport(false); }}
+												onDrop={(e) => { e.preventDefault(); setIsDraggingImport(false); handleImportFiles(e.dataTransfer.files); }}
+												onClick={() => importFileInputRef.current?.click()}
+												className={`border-2 border-dashed ${
+													isDraggingImport ? 'border-[#7678ed] bg-[#eaecf9]/40' : 'border-[#7678ed]/40 hover:border-[#7678ed]'
+												} rounded-3xl p-10 bg-white hover:bg-[#f3f4fd] transition-all flex flex-col items-center justify-center text-center cursor-pointer group shadow-xs`}
+											>
 												<div className='w-16 h-16 rounded-2xl bg-[#eaecf9] group-hover:bg-[#7678ed] group-hover:text-white text-[#7678ed] flex items-center justify-center mb-4 transition-colors shadow-sm'>
 													<svg width='28' height='28' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
 														<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
@@ -2814,28 +3098,57 @@ export default function AlpacaWebPage() {
 														<line x1='12' y1='3' x2='12' y2='15' />
 													</svg>
 												</div>
-												<h4 className='text-base font-bold text-[#202022] mb-1'>Drop chat export files here</h4>
-												<p className='text-xs text-[#8e90a6] mb-4'>Supports ChatGPT export (.json), Claude export (.json), and Walpaca backup (.zip)</p>
-												<button className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md shadow-[#7678ed]/20 cursor-pointer'>
-													Browse Files
-												</button>
+
+												{isImporting ? (
+													<div className='space-y-2'>
+														<div className='inline-block w-6 h-6 border-2 border-[#7678ed] border-t-transparent rounded-full animate-spin mb-1' />
+														<h4 className='text-base font-bold text-[#202022]'>{importStatusMessage}</h4>
+													</div>
+												) : (
+													<>
+														<h4 className='text-base font-bold text-[#202022] mb-1'>Drop chat export files here</h4>
+														<p className='text-xs text-[#8e90a6] mb-4'>Supports Walpaca JSON (.json), ChatGPT export (.json), Claude export (.json), Markdown (.md), and Plain Text (.txt)</p>
+														<button
+															type='button'
+															onClick={(e) => { e.stopPropagation(); importFileInputRef.current?.click(); }}
+															className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md shadow-[#7678ed]/20 cursor-pointer'
+														>
+															Browse Files
+														</button>
+													</>
+												)}
+
+												{importStatusMessage && !isImporting && (
+													<p className='mt-3 text-xs font-semibold text-[#7678ed] bg-[#eaecf9] px-3 py-1.5 rounded-xl border border-[#7678ed]/20 animate-in fade-in'>
+														{importStatusMessage}
+													</p>
+												)}
 											</div>
 
 											<div className='bg-white border border-[#e8ebf3] rounded-2xl p-6 space-y-4 shadow-xs'>
-												<h5 className='text-base font-bold text-[#202022] pb-3 border-b border-[#e8ebf3]'>Import Preferences</h5>
-												<div className='space-y-3 text-sm text-[#404252]'>
-													<label className='flex items-center gap-3 cursor-pointer p-2.5 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] hover:border-[#7678ed]/40 transition-all'>
-														<input type='checkbox' defaultChecked className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed]' />
-														<span className='text-xs font-semibold text-[#202022]'>Merge imported conversations into existing folders</span>
-													</label>
-													<label className='flex items-center gap-3 cursor-pointer p-2.5 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] hover:border-[#7678ed]/40 transition-all'>
-														<input type='checkbox' defaultChecked className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed]' />
-														<span className='text-xs font-semibold text-[#202022]'>Auto-detect custom model avatars and names</span>
-													</label>
-													<label className='flex items-center gap-3 cursor-pointer p-2.5 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] hover:border-[#7678ed]/40 transition-all'>
-														<input type='checkbox' className='w-4 h-4 rounded text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed]' />
-														<span className='text-xs font-semibold text-[#202022]'>Index imported message text for local semantic search</span>
-													</label>
+												<h5 className='text-base font-bold text-[#202022] pb-3 border-b border-[#e8ebf3]'>Supported Import Formats</h5>
+												<div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-[#404252]'>
+													<div className='p-3.5 rounded-2xl bg-[#f9fafc] border border-[#e8ebf3] flex items-start gap-3'>
+														<div className='w-8 h-8 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-mono font-bold text-xs border border-[#7678ed]/20'>JSON</div>
+														<div>
+															<div className='font-bold text-[#202022] text-sm'>Walpaca / ChatGPT / Claude</div>
+															<div className='text-[#7a7d90] mt-0.5'>Import native Walpaca JSON backups, ChatGPT exported archives, or Claude chat exports.</div>
+														</div>
+													</div>
+													<div className='p-3.5 rounded-2xl bg-[#f9fafc] border border-[#e8ebf3] flex items-start gap-3'>
+														<div className='w-8 h-8 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-mono font-bold text-xs border border-[#7678ed]/20'>MD</div>
+														<div>
+															<div className='font-bold text-[#202022] text-sm'>Markdown &amp; Obsidian</div>
+															<div className='text-[#7a7d90] mt-0.5'>Import standard Markdown headers or Obsidian callout archives.</div>
+														</div>
+													</div>
+													<div className='p-3.5 rounded-2xl bg-[#f9fafc] border border-[#e8ebf3] flex items-start gap-3'>
+														<div className='w-8 h-8 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-mono font-bold text-xs border border-[#7678ed]/20'>TXT</div>
+														<div>
+															<div className='font-bold text-[#202022] text-sm'>Plain Text Transcripts</div>
+															<div className='text-[#7a7d90] mt-0.5'>Import timestamped conversation logs or clean text transcripts.</div>
+														</div>
+													</div>
 												</div>
 											</div>
 										</div>

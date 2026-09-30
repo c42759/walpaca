@@ -178,6 +178,61 @@ def duplicate_chat(chat_id):
     return jsonify(new_chat.to_dict(include_messages=True)), 201
 
 
+@api_bp.route("/chats/import", methods=["POST"])
+def import_chats():
+    data = request.json or {}
+    chats_input = data.get("chats") if isinstance(data, dict) and "chats" in data else ([data] if isinstance(data, dict) else data)
+
+    if not isinstance(chats_input, list):
+        return jsonify({"error": "Invalid payload format, expected array or chat object"}), 400
+
+    imported_chats = []
+    for c_data in chats_input:
+        if not isinstance(c_data, dict):
+            continue
+        chat_id = c_data.get("id") or generate_uuid()
+        chat_name = c_data.get("name") or c_data.get("title") or "Imported Chat"
+        chat = Chat(
+            id=chat_id,
+            name=chat_name,
+            folder=c_data.get("folder"),
+            is_template=1 if c_data.get("is_template") else 0
+        )
+        db.session.add(chat)
+
+        for msg_data in c_data.get("messages", []):
+            if not isinstance(msg_data, dict):
+                continue
+            msg_id = msg_data.get("id") or generate_uuid()
+            role = msg_data.get("role") or ("user" if msg_data.get("isSelf") else "assistant")
+            message = Message(
+                id=msg_id,
+                chat_id=chat_id,
+                role=role,
+                model=msg_data.get("model"),
+                content=msg_data.get("content", ""),
+                date_time=msg_data.get("date_time") or msg_data.get("time") or current_alpaca_timestamp()
+            )
+            db.session.add(message)
+
+            for att_data in msg_data.get("attachments", []):
+                if not isinstance(att_data, dict):
+                    continue
+                att = Attachment(
+                    id=att_data.get("id") or generate_uuid(),
+                    message_id=msg_id,
+                    type=att_data.get("type", "thought"),
+                    name=att_data.get("name"),
+                    content=att_data.get("content")
+                )
+                db.session.add(att)
+
+        imported_chats.append(chat)
+
+    db.session.commit()
+    return jsonify([c.to_dict(include_messages=True) for c in imported_chats]), 201
+
+
 # ----------------- MESSAGES & ATTACHMENTS -----------------
 @api_bp.route("/chats/<chat_id>/messages", methods=["GET"])
 def get_chat_messages(chat_id):
