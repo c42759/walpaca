@@ -10,6 +10,7 @@ from routes.instances import instances_bp, fetch_live_instance_models
 from routes.lorebook import lorebook_bp
 from routes.messages import messages_bp
 from routes.model_preferences import model_preferences_bp
+from routes.personas import personas_bp
 from routes.search import search_bp
 from routes.tts import tts_bp
 
@@ -25,3 +26,4 @@ api_bp.register_blueprint(search_bp)
 api_bp.register_blueprint(tts_bp)
 api_bp.register_blueprint(generate_bp)
 api_bp.register_blueprint(lorebook_bp)
+api_bp.register_blueprint(personas_bp)

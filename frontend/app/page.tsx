@@ -52,6 +52,48 @@ interface LorebookTemplate {
   error?: string;
 }
 
+interface PersonaTemplate {
+  filename: string;
+  name: string;
+  description?: string;
+  personality?: string;
+  scenario?: string;
+  system_prompt?: string;
+  post_history_instructions?: string;
+  first_mes?: string;
+  alternate_greetings?: string[];
+  picture?: string | null;
+  voice?: string | null;
+  num_ctx?: number | null;
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  repeat_penalty?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  character_book?: {
+    name?: string;
+    description?: string;
+    entries?: Array<{
+      name?: string;
+      keys?: string[] | string;
+      content?: string;
+      comment?: string;
+      enabled?: boolean;
+    }>;
+  } | null;
+  generation_settings?: {
+    temperature?: number;
+    top_p?: number;
+    top_k?: number;
+    repeat_penalty?: number;
+    presence_penalty?: number;
+    frequency_penalty?: number;
+  } | null;
+  error?: string;
+  [key: string]: any;
+}
+
 interface ChatItem {
   id: string;
   name: string;
@@ -907,7 +949,7 @@ export default function AlpacaWebPage() {
   const [newChatTitleInput, setNewChatTitleInput] = useState<string>("New Chat");
   const [currentView, setCurrentView] = useState<"chat" | "settings">("chat");
   const [activeSettingsCategory, setActiveSettingsCategory] = useState<
-    "import-chat" | "manage-instances" | "preferences" | "manage-lorebook" | "about-walpaca"
+    "import-chat" | "manage-instances" | "preferences" | "manage-lorebook" | "manage-personas" | "about-walpaca"
   >("import-chat");
 
   // --- Manage Lorebook State & Handlers ---
@@ -946,6 +988,356 @@ export default function AlpacaWebPage() {
       fetchLorebookTemplates();
     }
   }, [currentView, activeSettingsCategory, fetchLorebookTemplates]);
+
+  // --- Manage Personas State & Handlers ---
+  const [personaTemplates, setPersonaTemplates] = useState<PersonaTemplate[]>([]);
+  const [isPersonaLoading, setIsPersonaLoading] = useState<boolean>(false);
+  const [personaSearchQuery, setPersonaSearchQuery] = useState<string>("");
+  const [personaViewMode, setPersonaViewMode] = useState<"list" | "editor">("list");
+  const [editingPersonaTemplate, setEditingPersonaTemplate] = useState<PersonaTemplate | null>(null);
+
+  // Persona Editor Form State
+  const [personaFormName, setPersonaFormName] = useState<string>("");
+  const [personaFormDescription, setPersonaFormDescription] = useState<string>("");
+  const [personaFormScenario, setPersonaFormScenario] = useState<string>("");
+  const [personaFormSystemPrompt, setPersonaFormSystemPrompt] = useState<string>("");
+  const [personaFormPostHistoryInstructions, setPersonaFormPostHistoryInstructions] = useState<string>("");
+  const [personaFormFirstMes, setPersonaFormFirstMes] = useState<string>("");
+  const [personaFormAlternateGreetings, setPersonaFormAlternateGreetings] = useState<string[]>([]);
+  const [personaFormVoice, setPersonaFormVoice] = useState<string>("af_heart");
+  const [personaFormPicture, setPersonaFormPicture] = useState<string>("");
+  const [personaFormNumCtx, setPersonaFormNumCtx] = useState<number>(8192);
+  const [personaFormTemperature, setPersonaFormTemperature] = useState<number>(0.7);
+  const [personaFormTopP, setPersonaFormTopP] = useState<number>(0.9);
+  const [personaFormTopK, setPersonaFormTopK] = useState<number>(40);
+  const [personaFormRepeatPenalty, setPersonaFormRepeatPenalty] = useState<number>(1.1);
+  const [personaFormPresencePenalty, setPersonaFormPresencePenalty] = useState<number>(0.0);
+  const [personaFormFrequencyPenalty, setPersonaFormFrequencyPenalty] = useState<number>(0.0);
+  const [personaFormLorebookEntries, setPersonaFormLorebookEntries] = useState<
+    Array<{ name: string; keys: string; content: string; enabled: boolean }>
+  >([]);
+  const [personaAvatarPreview, setPersonaAvatarPreview] = useState<string>("");
+  const [isUploadingPersonaAvatar, setIsUploadingPersonaAvatar] = useState<boolean>(false);
+
+  const [personaSaving, setPersonaSaving] = useState<boolean>(false);
+  const [deletingPersonaTemplate, setDeletingPersonaTemplate] = useState<PersonaTemplate | null>(null);
+
+  // Apply Persona to Model Modal state
+  const [applyPersonaModalTemplate, setApplyPersonaModalTemplate] = useState<PersonaTemplate | null>(null);
+  const [applyPersonaSelectedModelId, setApplyPersonaSelectedModelId] = useState<string>("");
+  const [isApplyingPersona, setIsApplyingPersona] = useState<boolean>(false);
+
+  const fetchPersonaTemplates = useCallback(async () => {
+    setIsPersonaLoading(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/personas`);
+      if (res.ok) {
+        const data = await res.json();
+        setPersonaTemplates(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error("Failed fetching persona templates:", err);
+    } finally {
+      setIsPersonaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPersonaTemplates();
+  }, [fetchPersonaTemplates]);
+
+  useEffect(() => {
+    if (currentView === "settings" && activeSettingsCategory === "manage-personas") {
+      fetchPersonaTemplates();
+    }
+  }, [currentView, activeSettingsCategory, fetchPersonaTemplates]);
+
+  const handleOpenCreatePersonaEditor = () => {
+    setEditingPersonaTemplate(null);
+    setPersonaFormName("");
+    setPersonaFormDescription("");
+    setPersonaFormScenario("");
+    setPersonaFormSystemPrompt("");
+    setPersonaFormPostHistoryInstructions("");
+    setPersonaFormFirstMes("");
+    setPersonaFormAlternateGreetings([]);
+    setPersonaFormVoice("af_heart");
+    setPersonaFormPicture("");
+    setPersonaAvatarPreview("");
+    setPersonaFormNumCtx(8192);
+    setPersonaFormTemperature(0.7);
+    setPersonaFormTopP(0.9);
+    setPersonaFormTopK(40);
+    setPersonaFormRepeatPenalty(1.1);
+    setPersonaFormPresencePenalty(0.0);
+    setPersonaFormFrequencyPenalty(0.0);
+    setPersonaFormLorebookEntries([]);
+    setPersonaViewMode("editor");
+  };
+
+  const handleOpenEditPersonaEditor = (template: PersonaTemplate) => {
+    setEditingPersonaTemplate(template);
+    setPersonaFormName(template.name || "");
+    setPersonaFormDescription(template.description || template.personality || "");
+    setPersonaFormScenario(template.scenario || "");
+    setPersonaFormSystemPrompt(template.system_prompt || "");
+    setPersonaFormPostHistoryInstructions(template.post_history_instructions || "");
+    setPersonaFormFirstMes(template.first_mes || template.greeting || "");
+    setPersonaFormAlternateGreetings(
+      Array.isArray(template.alternate_greetings) ? [...template.alternate_greetings] : []
+    );
+    setPersonaFormVoice(template.voice || "af_heart");
+    setPersonaFormPicture(template.picture || "");
+    setPersonaAvatarPreview(template.picture || "");
+    setPersonaFormNumCtx(template.num_ctx || 8192);
+    setPersonaFormTemperature(
+      template.generation_settings?.temperature ?? template.temperature ?? 0.7
+    );
+    setPersonaFormTopP(template.generation_settings?.top_p ?? template.top_p ?? 0.9);
+    setPersonaFormTopK(template.generation_settings?.top_k ?? template.top_k ?? 40);
+    setPersonaFormRepeatPenalty(
+      template.generation_settings?.repeat_penalty ?? template.repeat_penalty ?? 1.1
+    );
+    setPersonaFormPresencePenalty(
+      template.generation_settings?.presence_penalty ?? template.presence_penalty ?? 0.0
+    );
+    setPersonaFormFrequencyPenalty(
+      template.generation_settings?.frequency_penalty ?? template.frequency_penalty ?? 0.0
+    );
+
+    const rawEntries = template.character_book?.entries || [];
+    const parsedEntries = rawEntries.map((e) => ({
+      name: e.name || "Entry",
+      keys: Array.isArray(e.keys) ? e.keys.join(", ") : e.keys || "",
+      content: e.content || "",
+      enabled: e.enabled !== false,
+    }));
+    setPersonaFormLorebookEntries(parsedEntries);
+    setPersonaViewMode("editor");
+  };
+
+  const handlePersonaAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Show avatar preview immediately as soon as selected
+    const localBlobUrl = URL.createObjectURL(file);
+    setPersonaAvatarPreview(localBlobUrl);
+    setIsUploadingPersonaAvatar(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch(`${getApiUrl()}/personas/avatar`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.picture) {
+          setPersonaFormPicture(data.picture);
+          setPersonaAvatarPreview(data.picture);
+        }
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed uploading avatar image");
+      }
+    } catch (err: any) {
+      console.error("Error uploading persona avatar:", err);
+      alert(err.message || "Error uploading avatar image");
+    } finally {
+      setIsUploadingPersonaAvatar(false);
+    }
+  };
+
+  const handleAddPersonaGreeting = () => {
+    setPersonaFormAlternateGreetings((prev) => [...prev, ""]);
+  };
+
+  const handleUpdatePersonaGreeting = (idx: number, val: string) => {
+    setPersonaFormAlternateGreetings((prev) => {
+      const next = [...prev];
+      next[idx] = val;
+      return next;
+    });
+  };
+
+  const handleRemovePersonaGreeting = (idx: number) => {
+    setPersonaFormAlternateGreetings((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleAddPersonaLorebookEntry = () => {
+    setPersonaFormLorebookEntries((prev) => [
+      ...prev,
+      { name: "New Entry", keys: "name, keyword", content: "", enabled: true },
+    ]);
+  };
+
+  const handleCopyLorebookTemplateToPersona = (filename: string) => {
+    if (!filename) return;
+    const tmpl = lorebookTemplates.find((l) => l.filename === filename);
+    if (!tmpl) return;
+
+    setPersonaFormLorebookEntries((prev) => [
+      ...prev,
+      {
+        name: tmpl.name || tmpl.filename.replace(".json", ""),
+        keys: Array.isArray(tmpl.keys) ? tmpl.keys.join(", ") : tmpl.keys || "",
+        content: tmpl.content || "",
+        enabled: true,
+      },
+    ]);
+  };
+
+  const handleUpdatePersonaLorebookEntry = (
+    idx: number,
+    field: "name" | "keys" | "content" | "enabled",
+    value: any
+  ) => {
+    setPersonaFormLorebookEntries((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [field]: value };
+      return next;
+    });
+  };
+
+  const handleRemovePersonaLorebookEntry = (idx: number) => {
+    setPersonaFormLorebookEntries((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSavePersonaTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!personaFormName.trim()) return;
+
+    setPersonaSaving(true);
+    try {
+      const payload: any = {
+        name: personaFormName.trim(),
+        description: personaFormDescription.trim(),
+        personality: personaFormDescription.trim(),
+        scenario: personaFormScenario.trim(),
+        system_prompt: personaFormSystemPrompt.trim(),
+        post_history_instructions: personaFormPostHistoryInstructions.trim(),
+        first_mes: personaFormFirstMes.trim(),
+        alternate_greetings: personaFormAlternateGreetings.filter((g) => g.trim().length > 0),
+        voice: personaFormVoice,
+        picture: personaFormPicture || null,
+        num_ctx: Number(personaFormNumCtx) || 8192,
+        generation_settings: {
+          temperature: Number(personaFormTemperature),
+          top_p: Number(personaFormTopP),
+          top_k: Number(personaFormTopK),
+          repeat_penalty: Number(personaFormRepeatPenalty),
+          presence_penalty: Number(personaFormPresencePenalty),
+          frequency_penalty: Number(personaFormFrequencyPenalty),
+        },
+        character_book: {
+          name: `${personaFormName.trim()} Lorebook`,
+          entries: personaFormLorebookEntries.map((e) => ({
+            name: e.name.trim(),
+            keys: e.keys.split(",").map((k) => k.trim()).filter(Boolean),
+            content: e.content,
+            enabled: e.enabled !== false,
+          })),
+        },
+      };
+
+      let url = `${getApiUrl()}/personas`;
+      let method = "POST";
+
+      if (editingPersonaTemplate) {
+        url = `${getApiUrl()}/personas/${encodeURIComponent(editingPersonaTemplate.filename)}`;
+        method = "PUT";
+      }
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setPersonaViewMode("list");
+        fetchPersonaTemplates();
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed saving persona template");
+      }
+    } catch (err: any) {
+      console.error("Error saving persona template:", err);
+      alert(err.message || "Error saving template");
+    } finally {
+      setPersonaSaving(false);
+    }
+  };
+
+  const handleConfirmDeletePersonaTemplate = async () => {
+    if (!deletingPersonaTemplate) return;
+
+    try {
+      const filename = deletingPersonaTemplate.filename;
+      const res = await fetch(`${getApiUrl()}/personas/${encodeURIComponent(filename)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setDeletingPersonaTemplate(null);
+        fetchPersonaTemplates();
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed deleting persona template");
+      }
+    } catch (err: any) {
+      console.error("Error deleting persona template:", err);
+      alert(err.message || "Error deleting template");
+    }
+  };
+
+  const handleApplyPersonaToModel = async (template: PersonaTemplate, targetModelId: string) => {
+    if (!targetModelId) return;
+    setIsApplyingPersona(true);
+    try {
+      const payload = {
+        id: targetModelId,
+        picture: template.picture || null,
+        voice: template.voice || "af_heart",
+        num_ctx: template.num_ctx ? Number(template.num_ctx) : undefined,
+        character: {
+          name: template.name,
+          description: template.description || "",
+          personality: template.description || "",
+          scenario: template.scenario || "",
+          system_prompt: template.system_prompt || "",
+          post_history_instructions: template.post_history_instructions || "",
+          first_mes: template.first_mes || "",
+          alternate_greetings: template.alternate_greetings || [],
+          character_book: template.character_book || null,
+          generation_settings: template.generation_settings || null,
+        },
+      };
+
+      const res = await fetch(`${getApiUrl()}/model-preferences`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        await fetchModelPreferences();
+        setApplyPersonaModalTemplate(null);
+        alert(`Successfully applied persona '${template.name}' to model '${targetModelId}'!`);
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed applying persona to model");
+      }
+    } catch (err: any) {
+      console.error("Error applying persona to model:", err);
+      alert(err.message || "Error applying persona to model");
+    } finally {
+      setIsApplyingPersona(false);
+    }
+  };
 
   const handleOpenCreateLorebookModal = () => {
     setEditingLorebookTemplate(null);
@@ -3196,6 +3588,25 @@ export default function AlpacaWebPage() {
 												),
 											},
 											{
+												id: 'manage-personas',
+												label: 'Manage Personas',
+												icon: (
+													<svg
+														width='18'
+														height='18'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
+														<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
+														<circle cx='12' cy='7' r='4' />
+													</svg>
+												),
+											},
+											{
 												id: 'manage-instances',
 												label: 'Manage Instances',
 												icon: (
@@ -4804,6 +5215,36 @@ export default function AlpacaWebPage() {
 														onSubmit={handleSaveEditModel}
 														className='space-y-8 bg-white border border-[#e8ebf3] rounded-3xl p-6 shadow-xs'
 													>
+														{/* Quick Load Persona Template */}
+														{personaTemplates.length > 0 && (
+															<div className='p-4 rounded-2xl bg-[#f0f2fb] border border-[#7678ed]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4'>
+																<div>
+																	<h5 className='text-xs font-bold text-[#7678ed] uppercase tracking-wider'>Load Persona Template</h5>
+																	<p className='text-xs text-[#5d6075] mt-0.5'>Instantly populate character name, system instructions, avatar, and TTS voice from a persona template.</p>
+																</div>
+																<select
+																	onChange={(e) => {
+																		const selectedFname = e.target.value;
+																		if (!selectedFname) return;
+																		const tmpl = personaTemplates.find((p) => p.filename === selectedFname);
+																		if (tmpl) {
+																			setEditModelName(tmpl.name);
+																			setEditModelDescription(tmpl.description || tmpl.system_prompt || "");
+																			if (tmpl.voice) setEditModelVoice(tmpl.voice);
+																		}
+																		e.target.value = "";
+																	}}
+																	className='bg-white border border-[#7678ed]/30 rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:border-[#7678ed] transition-all cursor-pointer shrink-0'
+																>
+																	<option value=''>Select Persona Template...</option>
+																	{personaTemplates.map((p) => (
+																		<option key={p.filename} value={p.filename}>
+																			{p.name} ({p.filename})
+																		</option>
+																	))}
+																</select>
+															</div>
+														)}
 														{/* 1. General Information */}
 														<div className='space-y-4'>
 															<div className='pb-2 border-b border-[#e8ebf3]'>
@@ -5334,6 +5775,610 @@ export default function AlpacaWebPage() {
 														</div>
 													);
 												})()
+											)}
+										</div>
+									)}
+
+									{activeSettingsCategory === 'manage-personas' && (
+										<div className='animate-in fade-in duration-200 pb-8'>
+											{personaViewMode === 'editor' ? (
+												<form onSubmit={handleSavePersonaTemplate} className='space-y-6'>
+													{/* Top Header Bar */}
+													<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4'>
+														<div className='flex items-center gap-3'>
+															<button
+																type='button'
+																onClick={() => setPersonaViewMode('list')}
+																className='p-2 rounded-xl bg-[#f0f2fb] hover:bg-[#eaecf9] text-[#7678ed] transition-all cursor-pointer'
+																title='Back to Personas List'
+															>
+																<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+																	<polyline points='15 18 9 12 15 6' />
+																</svg>
+															</button>
+															<div>
+																<h3 className='text-xl font-bold text-[#202022] tracking-tight'>
+																	{editingPersonaTemplate ? `Edit Persona: ${editingPersonaTemplate.name}` : 'Create Persona Template'}
+																</h3>
+																<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>
+																	Configure identity, audio, context size, system prompts, greetings, sampler settings, and lorebook characters.
+																</p>
+															</div>
+														</div>
+
+														<div className='flex items-center gap-3 shrink-0'>
+															<button
+																type='button'
+																onClick={() => setPersonaViewMode('list')}
+																className='px-4 py-2.5 rounded-xl border border-[#e8ebf3] text-sm font-semibold text-[#5d6075] hover:bg-[#f9fafc] transition-all cursor-pointer'
+															>
+																Cancel
+															</button>
+															<button
+																type='submit'
+																disabled={personaSaving || !personaFormName.trim()}
+																className='px-5 py-2.5 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white font-semibold text-sm transition-all shadow-md shadow-[#7678ed]/20 cursor-pointer'
+															>
+																{personaSaving ? 'Saving...' : 'Save Persona'}
+															</button>
+														</div>
+													</div>
+
+													{/* 1. Identity & Audio Card */}
+													<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+														<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2'>
+															1. Identity & Audio Settings
+														</h4>
+														<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+															<div>
+																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Persona / Character Name *</label>
+																<input
+																	type='text'
+																	value={personaFormName}
+																	onChange={(e) => setPersonaFormName(e.target.value)}
+																	placeholder='e.g. Sora Assistant'
+																	required
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all'
+																/>
+															</div>
+															<div>
+																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Default TTS Voice</label>
+																<select
+																	value={personaFormVoice}
+																	onChange={(e) => setPersonaFormVoice(e.target.value)}
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all cursor-pointer'
+																>
+																	<option value='af_heart'>af_heart (Female Warm)</option>
+																	<option value='af_bella'>af_bella (Female Expressive)</option>
+																	<option value='af_sky'>af_sky (Female Soft)</option>
+																	<option value='am_adam'>am_adam (Male Deep)</option>
+																	<option value='am_michael'>am_michael (Male Smooth)</option>
+																</select>
+															</div>
+														</div>
+
+														<div className='space-y-4'>
+															<label className='block text-xs font-bold text-[#5d6075] mb-1'>Persona Avatar Image</label>
+															<div className='flex items-center gap-4 bg-[#f9fafc] p-4 rounded-xl border border-[#e8ebf3]'>
+																<div className='w-16 h-16 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/30 overflow-hidden flex items-center justify-center shrink-0 shadow-sm relative group'>
+																	{(personaAvatarPreview || personaFormPicture) ? (
+																		<img
+																			src={personaAvatarPreview || personaFormPicture || ''}
+																			alt='Avatar Preview'
+																			className='w-full h-full object-cover'
+																		/>
+																	) : (
+																		<span className='text-2xl'>🎭</span>
+																	)}
+																	{isUploadingPersonaAvatar && (
+																		<div className='absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold'>
+																			Converting...
+																		</div>
+																	)}
+																</div>
+
+																<div className='flex-1 space-y-1.5'>
+																	<label className='inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold cursor-pointer transition-all shadow-xs'>
+																		<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																			<rect x='3' y='3' width='18' height='18' rx='2' ry='2' />
+																			<circle cx='8.5' cy='8.5' r='1.5' />
+																			<polyline points='21 15 16 10 5 21' />
+																		</svg>
+																		<span>{isUploadingPersonaAvatar ? 'Uploading & Converting...' : 'Choose Image File...'}</span>
+																		<input
+																			type='file'
+																			accept='image/*'
+																			onChange={handlePersonaAvatarFileChange}
+																			className='hidden'
+																		/>
+																	</label>
+																	<p className='text-[11px] text-[#7a7d90]'>
+																		Select a image file (.png, .jpg, .webp). Backend converts to base64 automatically and displays immediately.
+																	</p>
+																</div>
+															</div>
+														</div>
+
+														<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+															<div>
+																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Avatar Image Data URI / URL</label>
+																<input
+																	type='text'
+																	value={personaFormPicture}
+																	onChange={(e) => {
+																		setPersonaFormPicture(e.target.value);
+																		setPersonaAvatarPreview(e.target.value);
+																	}}
+																	placeholder='data:image/... or https://...'
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-xs font-mono outline-none focus:bg-white focus:border-[#7678ed] transition-all'
+																/>
+															</div>
+															<div>
+																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Context Window Size (tokens)</label>
+																<input
+																	type='number'
+																	value={personaFormNumCtx}
+																	onChange={(e) => setPersonaFormNumCtx(Number(e.target.value) || 8192)}
+																	placeholder='8192'
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all'
+																/>
+															</div>
+														</div>
+													</div>
+
+													{/* 2. Prompts & Personality Card */}
+													<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+														<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2'>
+															2. Personality & System Prompts
+														</h4>
+														<div>
+															<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Description / Personality Bio</label>
+															<textarea
+																rows={3}
+																value={personaFormDescription}
+																onChange={(e) => setPersonaFormDescription(e.target.value)}
+																placeholder='Brief backstory, role, personality traits, and overall character tone...'
+																className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[#7678ed] transition-all resize-y'
+															/>
+														</div>
+
+														<div>
+															<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Scenario / Context</label>
+															<textarea
+																rows={2}
+																value={personaFormScenario}
+																onChange={(e) => setPersonaFormScenario(e.target.value)}
+																placeholder='Current setting or environment (e.g. Modern office, futuristic space station...)'
+																className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[#7678ed] transition-all resize-y'
+															/>
+														</div>
+
+														<div>
+															<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>System Instructions / Main System Prompt</label>
+															<textarea
+																rows={4}
+																value={personaFormSystemPrompt}
+																onChange={(e) => setPersonaFormSystemPrompt(e.target.value)}
+																placeholder='Core system prompt directing AI behavior, output constraints, formatting, etc.'
+																className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm font-mono outline-none focus:bg-white focus:border-[#7678ed] transition-all resize-y'
+															/>
+														</div>
+
+														<div>
+															<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Post-History Instructions (Suffix)</label>
+															<textarea
+																rows={2}
+																value={personaFormPostHistoryInstructions}
+																onChange={(e) => setPersonaFormPostHistoryInstructions(e.target.value)}
+																placeholder='Instructions injected at the very end of chat history...'
+																className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[#7678ed] transition-all resize-y'
+															/>
+														</div>
+													</div>
+
+													{/* 3. Greetings Card */}
+													<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+														<div className='flex items-center justify-between border-b border-[#e8ebf3] pb-2'>
+															<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider'>
+																3. Greetings & Opening Messages
+															</h4>
+															<button
+																type='button'
+																onClick={handleAddPersonaGreeting}
+																className='px-3 py-1.5 rounded-xl bg-[#eaecf9] text-[#7678ed] text-xs font-bold hover:bg-[#e0e3f5] transition-all cursor-pointer'
+															>
+																+ Add Alt Greeting
+															</button>
+														</div>
+
+														<div>
+															<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>First Message (Primary Greeting)</label>
+															<textarea
+																rows={2}
+																value={personaFormFirstMes}
+																onChange={(e) => setPersonaFormFirstMes(e.target.value)}
+																placeholder='First message spoken by character when starting a chat session...'
+																className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[#7678ed] transition-all resize-y'
+															/>
+														</div>
+
+														{personaFormAlternateGreetings.length > 0 && (
+															<div className='space-y-2.5 pt-2'>
+																<label className='block text-xs font-bold text-[#5d6075]'>Alternative Greetings</label>
+																{personaFormAlternateGreetings.map((greeting, idx) => (
+																	<div key={idx} className='flex items-center gap-2'>
+																		<input
+																			type='text'
+																			value={greeting}
+																			onChange={(e) => handleUpdatePersonaGreeting(idx, e.target.value)}
+																			placeholder={`Alt Greeting #${idx + 1}...`}
+																			className='flex-1 bg-white border border-[#e8ebf3] text-[#202022] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#7678ed]'
+																		/>
+																		<button
+																			type='button'
+																			onClick={() => handleRemovePersonaGreeting(idx)}
+																			className='p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all cursor-pointer'
+																			title='Remove'
+																		>
+																			<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																				<line x1='18' y1='6' x2='6' y2='18' />
+																				<line x1='6' y1='6' x2='18' y2='18' />
+																			</svg>
+																		</button>
+																	</div>
+																))}
+															</div>
+														)}
+													</div>
+
+													{/* 4. Generation Settings / Samplers Card */}
+													<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+														<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2'>
+															4. Generation Settings & Samplers
+														</h4>
+
+														<div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3'>
+															<div>
+																<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Temperature</label>
+																<input
+																	type='number'
+																	step='0.05'
+																	value={personaFormTemperature}
+																	onChange={(e) => setPersonaFormTemperature(parseFloat(e.target.value) || 0.7)}
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+																/>
+															</div>
+															<div>
+																<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Top P</label>
+																<input
+																	type='number'
+																	step='0.05'
+																	value={personaFormTopP}
+																	onChange={(e) => setPersonaFormTopP(parseFloat(e.target.value) || 0.9)}
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+																/>
+															</div>
+															<div>
+																<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Top K</label>
+																<input
+																	type='number'
+																	value={personaFormTopK}
+																	onChange={(e) => setPersonaFormTopK(parseInt(e.target.value, 10) || 40)}
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+																/>
+															</div>
+															<div>
+																<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Rep. Penalty</label>
+																<input
+																	type='number'
+																	step='0.05'
+																	value={personaFormRepeatPenalty}
+																	onChange={(e) => setPersonaFormRepeatPenalty(parseFloat(e.target.value) || 1.1)}
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+																/>
+															</div>
+															<div>
+																<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Pres. Penalty</label>
+																<input
+																	type='number'
+																	step='0.1'
+																	value={personaFormPresencePenalty}
+																	onChange={(e) => setPersonaFormPresencePenalty(parseFloat(e.target.value) || 0.0)}
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+																/>
+															</div>
+															<div>
+																<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Freq. Penalty</label>
+																<input
+																	type='number'
+																	step='0.1'
+																	value={personaFormFrequencyPenalty}
+																	onChange={(e) => setPersonaFormFrequencyPenalty(parseFloat(e.target.value) || 0.0)}
+																	className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+																/>
+															</div>
+														</div>
+													</div>
+
+													{/* 5. Character Lorebook & Copying Section */}
+													<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+														<div className='flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#e8ebf3] pb-3'>
+															<div>
+																<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider'>
+																	5. Embedded Character Lorebook & World Info
+																</h4>
+																<p className='text-xs text-[#7a7d90] mt-0.5'>
+																	Manage lorebook entries for this persona or copy entries from your saved Lorebook templates.
+																</p>
+															</div>
+															<div className='flex items-center gap-2 shrink-0'>
+																{lorebookTemplates.length > 0 && (
+																	<select
+																		onChange={(e) => {
+																			if (e.target.value) {
+																				handleCopyLorebookTemplateToPersona(e.target.value);
+																				e.target.value = '';
+																			}
+																		}}
+																		className='bg-[#eaecf9] text-[#7678ed] border border-[#7678ed]/20 rounded-xl px-3 py-1.5 text-xs font-bold outline-none cursor-pointer'
+																	>
+																		<option value=''>+ Copy from Lorebook...</option>
+																		{lorebookTemplates.map((l) => (
+																			<option key={l.filename} value={l.filename}>
+																				{l.name} ({l.filename})
+																			</option>
+																		))}
+																	</select>
+																)}
+																<button
+																	type='button'
+																	onClick={handleAddPersonaLorebookEntry}
+																	className='px-3 py-1.5 rounded-xl bg-[#7678ed] text-white text-xs font-bold hover:bg-[#6869d9] transition-all cursor-pointer'
+																>
+																	+ Add Entry
+																</button>
+															</div>
+														</div>
+
+														{personaFormLorebookEntries.length === 0 ? (
+															<div className='p-6 text-center text-[#8e90a6] text-xs italic bg-[#f9fafc] rounded-xl border border-dashed border-[#e8ebf3]'>
+																No lorebook entries in this persona. Click "+ Add Entry" or select a Lorebook template above to copy entries.
+															</div>
+														) : (
+															<div className='space-y-4'>
+																{personaFormLorebookEntries.map((entry, idx) => (
+																	<div key={idx} className='p-4 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] space-y-3 relative group'>
+																		<div className='flex items-center justify-between gap-3'>
+																			<div className='flex items-center gap-2 flex-1'>
+																				<input
+																					type='text'
+																					value={entry.name}
+																					onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'name', e.target.value)}
+																					placeholder='Entry Title / Character Name...'
+																					className='font-bold text-xs text-[#202022] bg-white border border-[#e8ebf3] rounded-lg px-3 py-1.5 outline-none focus:border-[#7678ed]'
+																				/>
+																				<label className='flex items-center gap-1.5 text-xs text-[#5d6075] cursor-pointer shrink-0'>
+																					<input
+																						type='checkbox'
+																						checked={entry.enabled}
+																						onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'enabled', e.target.checked)}
+																						className='accent-[#7678ed]'
+																					/>
+																					<span>Active</span>
+																				</label>
+																			</div>
+																			<button
+																				type='button'
+																				onClick={() => handleRemovePersonaLorebookEntry(idx)}
+																				className='p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg transition-all cursor-pointer'
+																				title='Delete Entry'
+																			>
+																				<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																					<polyline points='3 6 5 6 21 6' />
+																					<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																				</svg>
+																			</button>
+																		</div>
+
+																		<div>
+																			<label className='block text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mb-1'>Trigger Keywords (comma separated)</label>
+																			<input
+																				type='text'
+																				value={entry.keys}
+																				onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'keys', e.target.value)}
+																				placeholder='name, car, city, lore...'
+																				className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-lg px-3 py-1.5 text-xs font-mono outline-none focus:border-[#7678ed]'
+																			/>
+																		</div>
+
+																		<div>
+																			<label className='block text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mb-1'>Content / Lore Information</label>
+																			<textarea
+																				rows={2}
+																				value={entry.content}
+																				onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'content', e.target.value)}
+																				placeholder='Detailed lore, background story, or memory entries triggered by keywords...'
+																				className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#7678ed] resize-y'
+																			/>
+																		</div>
+																	</div>
+																))}
+															</div>
+														)}
+													</div>
+												</form>
+											) : (
+												<div className='space-y-6'>
+													<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4'>
+														<div>
+															<h3 className='text-xl font-bold text-[#202022] tracking-tight'>Manage Persona Templates</h3>
+															<p className='text-sm text-[#7a7d90] mt-1 font-medium'>
+																Create, view, and edit reusable AI character personas stored as JSON files in the <code className='bg-[#eaecf9] px-1.5 py-0.5 rounded text-[#7678ed] font-mono border border-[#7678ed]/20'>personas</code> folder.
+															</p>
+														</div>
+														<button
+															onClick={handleOpenCreatePersonaEditor}
+															className='px-4 py-2.5 rounded-2xl bg-[#7678ed] hover:bg-[#6869d9] text-white font-semibold text-sm transition-all shadow-md shadow-[#7678ed]/20 flex items-center gap-2 shrink-0 cursor-pointer'
+														>
+															<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+																<line x1='12' y1='5' x2='12' y2='19' />
+																<line x1='5' y1='12' x2='19' y2='12' />
+															</svg>
+															<span>Add Persona Template</span>
+														</button>
+													</div>
+
+													{/* Search Bar */}
+													<div className='relative'>
+														<input
+															type='text'
+															value={personaSearchQuery}
+															onChange={(e) => setPersonaSearchQuery(e.target.value)}
+															placeholder='Search persona templates by name, description, or system prompt...'
+															className='w-full bg-white border border-[#e8ebf3] rounded-2xl pl-11 pr-4 py-3 text-sm text-[#202022] placeholder-[#a0a3b5] outline-none focus:border-[#7678ed] transition-all shadow-xs'
+														/>
+														<svg className='absolute left-4 top-3.5 text-[#a0a3b5]' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+															<circle cx='11' cy='11' r='8' />
+															<line x1='21' y1='21' x2='16.65' y2='16.65' />
+														</svg>
+													</div>
+
+													{/* Cards Grid */}
+													{isPersonaLoading ? (
+														<div className='p-12 text-center text-[#7a7d90] font-medium animate-pulse bg-white rounded-2xl border border-[#e8ebf3]'>
+															Loading persona templates...
+														</div>
+													) : (() => {
+														const filtered = personaTemplates.filter((p) => {
+															const q = personaSearchQuery.toLowerCase().trim();
+															if (!q) return true;
+															const nameMatch = p.name.toLowerCase().includes(q);
+															const fileMatch = p.filename.toLowerCase().includes(q);
+															const descMatch = (p.description || '').toLowerCase().includes(q);
+															const sysMatch = (p.system_prompt || '').toLowerCase().includes(q);
+															return nameMatch || fileMatch || descMatch || sysMatch;
+														});
+
+														if (filtered.length === 0) {
+															return (
+																<div className='p-12 text-center bg-white rounded-2xl border border-[#e8ebf3] space-y-3'>
+																	<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center mx-auto'>
+																		<svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																			<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
+																			<circle cx='12' cy='7' r='4' />
+																		</svg>
+																	</div>
+																	<h4 className='font-bold text-[#202022] text-base'>No persona templates found</h4>
+																	<p className='text-xs text-[#7a7d90] max-w-sm mx-auto'>
+																		{personaSearchQuery ? 'No templates match your search filter.' : 'No persona JSON files exist in the personas directory. Click below to create your first template.'}
+																	</p>
+																	{!personaSearchQuery && (
+																		<button
+																			onClick={handleOpenCreatePersonaEditor}
+																			className='mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7678ed] text-white text-xs font-semibold hover:bg-[#6869d9] transition-all cursor-pointer'
+																		>
+																			Create Persona Template
+																		</button>
+																	)}
+																</div>
+															);
+														}
+
+														return (
+															<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+																{filtered.map((tmpl) => (
+																	<div key={tmpl.filename} className='p-5 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs flex flex-col justify-between space-y-4 hover:border-[#7678ed]/40 transition-all'>
+																		<div className='space-y-3'>
+																			<div className='flex items-start gap-3.5'>
+																				<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 overflow-hidden flex items-center justify-center shrink-0 shadow-xs'>
+																					{tmpl.picture ? (
+																						<img src={tmpl.picture} alt={tmpl.name} className='w-full h-full object-cover' />
+																					) : (
+																						<span className='text-xl'>🎭</span>
+																					)}
+																				</div>
+																				<div className='flex-1 min-w-0'>
+																					<h4 className='font-bold text-[#202022] text-base leading-snug truncate'>{tmpl.name}</h4>
+																					<span className='text-[11px] font-mono text-[#a0a3b5] block mt-0.5'>{tmpl.filename}</span>
+																				</div>
+																			</div>
+
+																			{tmpl.description && (
+																				<p className='text-xs text-[#404252] font-medium leading-relaxed line-clamp-2'>
+																					{tmpl.description}
+																				</p>
+																			)}
+
+																			{tmpl.system_prompt && (
+																				<div>
+																					<span className='text-[11px] font-bold text-[#a0a3b5] uppercase tracking-wider block mb-1'>System Instructions</span>
+																					<p className='text-xs text-[#404252] bg-[#f9fafc] p-2.5 rounded-xl border border-[#e8ebf3] line-clamp-3 font-mono leading-relaxed whitespace-pre-wrap'>
+																						{tmpl.system_prompt}
+																					</p>
+																				</div>
+																			)}
+
+																			<div className='flex flex-wrap items-center gap-2 pt-1 text-xs text-[#7a7d90] font-medium'>
+																				<span className='px-2.5 py-0.5 rounded-lg bg-[#f0f2fb] text-[#7678ed] text-xs font-semibold border border-[#7678ed]/15'>
+																					Voice: {tmpl.voice || 'af_heart'}
+																				</span>
+																				{tmpl.num_ctx && (
+																					<span className='px-2.5 py-0.5 rounded-lg bg-[#f0f2fb] text-[#7678ed] text-xs font-semibold border border-[#7678ed]/15'>
+																						{tmpl.num_ctx} tokens
+																					</span>
+																				)}
+																				{tmpl.character_book?.entries && tmpl.character_book.entries.length > 0 && (
+																					<span className='px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200'>
+																						📚 {tmpl.character_book.entries.length} Lorebook entries
+																					</span>
+																				)}
+																			</div>
+																		</div>
+
+																		{/* Footer Actions */}
+																		<div className='pt-3 border-t border-[#e8ebf3] flex items-center justify-between gap-2'>
+																			<button
+																				onClick={() => {
+																					setApplyPersonaModalTemplate(tmpl);
+																					setApplyPersonaSelectedModelId('');
+																				}}
+																				className='px-3 py-1.5 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm'
+																			>
+																				<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																					<polyline points='20 6 9 17 4 12' />
+																				</svg>
+																				<span>Apply to Model</span>
+																			</button>
+
+																			<div className='flex items-center gap-2'>
+																				<button
+																					onClick={() => handleOpenEditPersonaEditor(tmpl)}
+																					className='px-3 py-1.5 rounded-xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5'
+																				>
+																					<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																						<path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' />
+																						<path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' />
+																					</svg>
+																					<span>Edit</span>
+																				</button>
+																				<button
+																					onClick={() => setDeletingPersonaTemplate(tmpl)}
+																					className='px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5'
+																				>
+																					<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																						<polyline points='3 6 5 6 21 6' />
+																						<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																					</svg>
+																					<span>Delete</span>
+																				</button>
+																			</div>
+																		</div>
+																	</div>
+																))}
+															</div>
+														);
+													})()}
+												</div>
 											)}
 										</div>
 									)}
@@ -8203,13 +9248,82 @@ export default function AlpacaWebPage() {
 					</div>
 				</div>
 			)}
-			{/* Delete Lorebook Template Confirmation Modal */}
-			{deletingLorebookTemplate && (
+
+
+			{/* Apply Persona to Model Modal */}
+			{applyPersonaModalTemplate && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-4 pb-3 border-b border-white/10'>
+							<h3 className='text-lg font-bold text-white'>Apply Persona to Model</h3>
+							<button onClick={() => setApplyPersonaModalTemplate(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+
+						<div className='space-y-4'>
+							<div className='p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3'>
+								<div className='w-10 h-10 rounded-xl bg-[#eaecf9] text-[#7678ed] overflow-hidden flex items-center justify-center shrink-0'>
+									{applyPersonaModalTemplate.picture ? (
+										<img src={applyPersonaModalTemplate.picture} alt={applyPersonaModalTemplate.name} className='w-full h-full object-cover' />
+									) : (
+										<span>🎭</span>
+									)}
+								</div>
+								<div>
+									<h4 className='font-bold text-sm text-white'>{applyPersonaModalTemplate.name}</h4>
+									<span className='text-[11px] font-mono text-white/50 block'>{applyPersonaModalTemplate.filename}</span>
+								</div>
+							</div>
+
+							<div>
+								<label className='block text-xs font-semibold text-white/80 mb-1.5'>Select Target Model</label>
+								<select
+									value={applyPersonaSelectedModelId}
+									onChange={(e) => setApplyPersonaSelectedModelId(e.target.value)}
+									className='w-full bg-white/10 border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-[#7678ed] transition-all cursor-pointer'
+								>
+									<option value='' className='bg-[#202022] text-white'>Select a model...</option>
+									{instanceModelsList.map((mod) => (
+										<option key={mod.id} value={mod.id} className='bg-[#202022] text-white'>
+											{mod.name || mod.id} ({mod.provider || 'AI'})
+										</option>
+									))}
+								</select>
+							</div>
+
+							<div className='flex items-center justify-end gap-3 pt-3 border-t border-white/10'>
+								<button
+									type='button'
+									onClick={() => setApplyPersonaModalTemplate(null)}
+									className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+								>
+									Cancel
+								</button>
+								<button
+									type='button'
+									disabled={isApplyingPersona || !applyPersonaSelectedModelId}
+									onClick={() => handleApplyPersonaToModel(applyPersonaModalTemplate, applyPersonaSelectedModelId)}
+									className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer'
+								>
+									{isApplyingPersona ? 'Applying...' : 'Apply Persona'}
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Delete Persona Template Confirmation Modal */}
+			{deletingPersonaTemplate && (
 				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
 					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
 						<div className='flex items-center justify-between mb-2'>
-							<h3 className='text-lg font-bold text-rose-400'>Delete Template?</h3>
-							<button onClick={() => setDeletingLorebookTemplate(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+							<h3 className='text-lg font-bold text-rose-400'>Delete Persona?</h3>
+							<button onClick={() => setDeletingPersonaTemplate(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
 								<svg
 									width='18'
 									height='18'
@@ -8226,22 +9340,22 @@ export default function AlpacaWebPage() {
 							</button>
 						</div>
 						<p className='text-sm text-white/70 leading-relaxed mb-6'>
-							Are you sure you want to delete character template <strong className='text-white'>"{deletingLorebookTemplate.name}"</strong> (<span className='font-mono text-xs text-white/50'>{deletingLorebookTemplate.filename}</span>)? This action cannot be undone.
+							Are you sure you want to delete persona template <strong className='text-white'>"{deletingPersonaTemplate.name}"</strong> (<span className='font-mono text-xs text-white/50'>{deletingPersonaTemplate.filename}</span>)? This action cannot be undone.
 						</p>
 						<div className='flex items-center justify-end gap-3'>
 							<button
 								type='button'
-								onClick={() => setDeletingLorebookTemplate(null)}
+								onClick={() => setDeletingPersonaTemplate(null)}
 								className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
 							>
 								Cancel
 							</button>
 							<button
 								type='button'
-								onClick={handleConfirmDeleteLorebookTemplate}
+								onClick={handleConfirmDeletePersonaTemplate}
 								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-all shadow-md shadow-rose-600/30 cursor-pointer'
 							>
-								Delete Template
+								Delete Persona
 							</button>
 						</div>
 					</div>
