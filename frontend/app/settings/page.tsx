@@ -550,7 +550,7 @@ export default function SettingsPage() {
 	return (
 		<>
 			{/* Inner Settings Area matching App Layout */}
-			<div className='flex-1 flex overflow-hidden bg-[#f9fafc] rounded-l-[32px] select-text'>
+			<div className='flex-1 flex overflow-hidden bg-white rounded-l-[32px] select-text'>
 				{/* 1. SETTINGS CATEGORIES SIDEBAR matching ChatListPanel Layout */}
 				<SettingsSidebar
 					activeSettingsCategory={activeSettingsCategory}
@@ -559,7 +559,7 @@ export default function SettingsPage() {
 				/>
 
 				{/* 2. MIDDLE SETTINGS CONTENT AREA */}
-				<main className='flex-1 bg-[#f9fafc] p-8 overflow-y-auto'>
+				<main className='flex-1 p-8 overflow-y-auto'>
 					<div className='max-w-3xl mx-auto space-y-8'>
 						{/* View: Import Chat */}
 						{activeSettingsCategory === 'import-chat' && (

@@ -31,7 +31,9 @@ import {
 	ChatIcon,
 	FolderIcon,
 	AttachmentIcon,
+	ServerIcon,
 } from '@/components/icons/Icons';
+import { WidgetSimple, WidgetToggle, WidgetWithCustomHeader } from '@/components/ui/Widget';
 
 // --- Types ---
 interface ChatFolder {
@@ -2854,8 +2856,6 @@ export default function ChatPage() {
 		fetchFolders();
 		fetchModelPreferences();
 		fetchInstances();
-
-
 	}, []);
 
 	useEffect(() => {
@@ -3338,188 +3338,177 @@ export default function ChatPage() {
 		<>
 			{/* Inner App Container with Rounded Right / Light Theme Area */}
 			<div className='flex-1 flex overflow-hidden bg-[#f9fafc] rounded-l-[32px]'>
-							{/* ========================================================= */}
-							{/* 2. CHAT LIST PANEL (#f9fafc) */}
-							{/* ========================================================= */}
-							<ChatListPanel
-								searchQuery={searchQuery}
-								setSearchQuery={setSearchQuery}
-								handleOpenNewChatModal={handleOpenNewChatModal}
-								chatItems={chatItems}
-								activeTab={activeTab}
-								activeChatId={activeChatId}
-								setActiveChatId={setActiveChatId}
-								draggedChatId={draggedChatId}
-								setDraggedChatId={setDraggedChatId}
-								setDragOverFolderTarget={setDragOverFolderTarget}
-								getAvatarColor={getAvatarColor}
+				{/* ========================================================= */}
+				{/* 2. CHAT LIST PANEL (#f9fafc) */}
+				{/* ========================================================= */}
+				<ChatListPanel
+					searchQuery={searchQuery}
+					setSearchQuery={setSearchQuery}
+					handleOpenNewChatModal={handleOpenNewChatModal}
+					chatItems={chatItems}
+					activeTab={activeTab}
+					activeChatId={activeChatId}
+					setActiveChatId={setActiveChatId}
+					draggedChatId={draggedChatId}
+					setDraggedChatId={setDraggedChatId}
+					setDragOverFolderTarget={setDragOverFolderTarget}
+					getAvatarColor={getAvatarColor}
+				/>
+
+				{/* ========================================================= */}
+				{/* 3. MAIN CHAT AREA (WHITE) */}
+				{/* ========================================================= */}
+				{(() => {
+					const activeChatObj = chatItems.find((c) => c.id === activeChatId) || activeChat;
+					if (!activeChatId || !activeChatObj) {
+						return <ChatEmptyState />;
+					}
+
+					return (
+						<section className='flex-1 flex flex-col bg-white overflow-hidden'>
+							{/* Header */}
+							<ChatHeader
+								title={activeChatObj.name}
+								onOpenRename={handleOpenRenameModal}
+								onOpenDuplicate={handleOpenDuplicateModal}
+								onOpenExport={handleOpenExportModal}
+								onOpenDelete={handleOpenDeleteModal}
 							/>
 
-							{/* ========================================================= */}
-							{/* 3. MAIN CHAT AREA (WHITE) */}
-							{/* ========================================================= */}
-							{(() => {
-								const activeChatObj = chatItems.find((c) => c.id === activeChatId) || activeChat;
-								if (!activeChatId || !activeChatObj) {
-									return <ChatEmptyState />;
+							{/* Conversation Messages */}
+							<ChatMessageList
+								messages={messages}
+								selectedChatModelId={selectedChatModelId}
+								modelPreferences={modelPreferences}
+								handleUseCharacterFirstMes={handleUseCharacterFirstMes}
+								editingMsgId={editingMsgId}
+								editingMsgContent={editingMsgContent}
+								setEditingMsgContent={setEditingMsgContent}
+								setEditingMsgId={setEditingMsgId}
+								autoResizeTextarea={autoResizeTextarea}
+								handleSaveInlineEdit={handleSaveInlineEdit}
+								handleStartInlineEdit={handleStartInlineEdit}
+								handleOpenForkModal={handleOpenForkModal}
+								handleOpenDeleteMessageModal={handleOpenDeleteMessageModal}
+								setActiveImageModal={setActiveImageModal}
+								setActiveAttachmentModal={setActiveAttachmentModal}
+								setLineContextMenu={setLineContextMenu}
+								ttsState={ttsState}
+								handlePlayTTS={handlePlayTTS}
+								handlePauseTTS={handlePauseTTS}
+								handleResumeTTS={handleResumeTTS}
+								handleStopTTS={handleStopTTS}
+								renderMarkdownText={renderMarkdownText}
+								highlightCodeTokens={highlightCodeTokens}
+								handleCallForAnswer={handleCallForAnswer}
+								messagesEndRef={messagesEndRef}
+							/>
+
+							{/* Input Composer */}
+							<ChatInput
+								inputText={inputText}
+								setInputText={setInputText}
+								handleSendMessage={handleSendMessage}
+								selectedAttachments={selectedAttachments}
+								handleAttachmentSelect={handleAttachmentSelect}
+								handleRemoveSelectedAttachment={handleRemoveSelectedAttachment}
+								isThinkingEnabled={isThinkingEnabled}
+								setIsThinkingEnabled={setIsThinkingEnabled}
+								setIsSelectModelModalOpen={setIsSelectModelModalOpen}
+								selectedChatInstanceId={selectedChatInstanceId}
+								selectedChatModelId={selectedChatModelId}
+								instances={instances}
+								modelPreferences={modelPreferences}
+								instanceModelsList={instanceModelsList}
+								getCharacterName={getCharacterName}
+								promptTextareaRef={promptTextareaRef}
+								autoResizeTextarea={autoResizeTextarea}
+							/>
+						</section>
+					);
+				})()}
+
+				{/* ========================================================= */}
+				{/* 4. RIGHT INFO DRAWER (#f9fafc) */}
+				{/* ========================================================= */}
+				{activeChatId && (chatItems.some((c) => c.id === activeChatId) || activeChat?.id === activeChatId) ? (
+					<aside className='w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0'>
+						{/* Context Card */}
+						{(() => {
+							const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
+							const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
+							const selectedPref =
+								modelPreferences[selectedChatModelId] ||
+								modelPreferences[selectedPrefKey] ||
+								Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+
+							const props = selectedInst?.properties as any;
+							const rawNumCtx = props?.num_ctx || props?.context_size || props?.numCtx || props?.context || selectedPref?.num_ctx || 4096;
+
+							const totalTokens = Number(rawNumCtx) || 4096;
+
+							let consumedTokens = 0;
+							const assistantMsgs = [...messages].reverse().filter((m) => !m.isSelf);
+
+							for (const msg of assistantMsgs) {
+								const metaAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === 'metadata' || a.type?.toLowerCase() === 'data');
+								if (metaAtt && metaAtt.content) {
+									const promptMatch = metaAtt.content.match(/Prompt Eval Count\s*\|\s*(\d+)/i);
+									const evalMatch = metaAtt.content.match(/Eval Count\s*\|\s*(\d+)/i);
+									const promptCount = promptMatch ? parseInt(promptMatch[1], 10) : 0;
+									const evalCount = evalMatch ? parseInt(evalMatch[1], 10) : 0;
+									const totalMsgTokens = promptCount + evalCount;
+									if (totalMsgTokens > 0) {
+										consumedTokens = totalMsgTokens;
+										break;
+									}
 								}
+							}
 
-								return (
-									<section className='flex-1 flex flex-col bg-white overflow-hidden'>
-										{/* Header */}
-										<ChatHeader
-											title={activeChatObj.name}
-											onOpenRename={handleOpenRenameModal}
-											onOpenDuplicate={handleOpenDuplicateModal}
-											onOpenExport={handleOpenExportModal}
-											onOpenDelete={handleOpenDeleteModal}
-										/>
+							const rawPercentage = (consumedTokens / totalTokens) * 100;
+							const percentage = Math.min(Math.round(rawPercentage), 100);
+							const isOverconsumed = consumedTokens >= totalTokens;
 
-										{/* Conversation Messages */}
-										<ChatMessageList
-											messages={messages}
-											selectedChatModelId={selectedChatModelId}
-											modelPreferences={modelPreferences}
-											handleUseCharacterFirstMes={handleUseCharacterFirstMes}
-											editingMsgId={editingMsgId}
-											editingMsgContent={editingMsgContent}
-											setEditingMsgContent={setEditingMsgContent}
-											setEditingMsgId={setEditingMsgId}
-											autoResizeTextarea={autoResizeTextarea}
-											handleSaveInlineEdit={handleSaveInlineEdit}
-											handleStartInlineEdit={handleStartInlineEdit}
-											handleOpenForkModal={handleOpenForkModal}
-											handleOpenDeleteMessageModal={handleOpenDeleteMessageModal}
-											setActiveImageModal={setActiveImageModal}
-											setActiveAttachmentModal={setActiveAttachmentModal}
-											setLineContextMenu={setLineContextMenu}
-											ttsState={ttsState}
-											handlePlayTTS={handlePlayTTS}
-											handlePauseTTS={handlePauseTTS}
-											handleResumeTTS={handleResumeTTS}
-											handleStopTTS={handleStopTTS}
-											renderMarkdownText={renderMarkdownText}
-											highlightCodeTokens={highlightCodeTokens}
-											handleCallForAnswer={handleCallForAnswer}
-											messagesEndRef={messagesEndRef}
-										/>
+							let cardBg = 'bg-white border-[#edf0f7] text-[#202022]';
+							let iconColor = '#7678ed';
+							let titleColor = 'text-[#202022]';
+							let textColor = 'text-[#5d6075] font-medium';
+							let trackBg = 'bg-[#f0f2f9] border-[#e8ebf3]';
+							let barColor = 'bg-emerald-500';
+							let badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
-										{/* Input Composer */}
-										<ChatInput
-											inputText={inputText}
-											setInputText={setInputText}
-											handleSendMessage={handleSendMessage}
-											selectedAttachments={selectedAttachments}
-											handleAttachmentSelect={handleAttachmentSelect}
-											handleRemoveSelectedAttachment={handleRemoveSelectedAttachment}
-											isThinkingEnabled={isThinkingEnabled}
-											setIsThinkingEnabled={setIsThinkingEnabled}
-											setIsSelectModelModalOpen={setIsSelectModelModalOpen}
-											selectedChatInstanceId={selectedChatInstanceId}
-											selectedChatModelId={selectedChatModelId}
-											instances={instances}
-											modelPreferences={modelPreferences}
-											instanceModelsList={instanceModelsList}
-											getCharacterName={getCharacterName}
-											promptTextareaRef={promptTextareaRef}
-											autoResizeTextarea={autoResizeTextarea}
-										/>
-									</section>
-								);
-							})()}
+							if (isOverconsumed) {
+								cardBg = 'bg-rose-50/90 border-rose-200 text-rose-950 shadow-sm';
+								iconColor = '#e11d48';
+								titleColor = 'text-rose-900';
+								textColor = 'text-rose-800 font-semibold';
+								trackBg = 'bg-rose-100 border-rose-200';
+								barColor = 'bg-rose-600';
+								badgeBg = 'bg-rose-600 text-white border-rose-600 font-extrabold shadow-xs';
+							} else if (rawPercentage >= 90) {
+								barColor = 'bg-rose-500';
+								badgeBg = 'bg-rose-50 text-rose-700 border-rose-200';
+							} else if (rawPercentage >= 65) {
+								barColor = 'bg-amber-500';
+								badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
+							}
 
-							{/* ========================================================= */}
-							{/* 4. RIGHT INFO DRAWER (#f9fafc) */}
-							{/* ========================================================= */}
-							{activeChatId && (chatItems.some((c) => c.id === activeChatId) || activeChat?.id === activeChatId) ? (
-								<aside className='w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0'>
-									{/* Context Card */}
-									{(() => {
-										const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
-										const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
-										const selectedPref =
-											modelPreferences[selectedChatModelId] ||
-											modelPreferences[selectedPrefKey] ||
-											Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
-
-										const props = selectedInst?.properties as any;
-										const rawNumCtx =
-											props?.num_ctx || props?.context_size || props?.numCtx || props?.context || selectedPref?.num_ctx || 4096;
-
-										const totalTokens = Number(rawNumCtx) || 4096;
-
-										let consumedTokens = 0;
-										const assistantMsgs = [...messages].reverse().filter((m) => !m.isSelf);
-
-										for (const msg of assistantMsgs) {
-											const metaAtt = msg.attachments?.find(
-												(a) => a.type?.toLowerCase() === 'metadata' || a.type?.toLowerCase() === 'data',
-											);
-											if (metaAtt && metaAtt.content) {
-												const promptMatch = metaAtt.content.match(/Prompt Eval Count\s*\|\s*(\d+)/i);
-												const evalMatch = metaAtt.content.match(/Eval Count\s*\|\s*(\d+)/i);
-												const promptCount = promptMatch ? parseInt(promptMatch[1], 10) : 0;
-												const evalCount = evalMatch ? parseInt(evalMatch[1], 10) : 0;
-												const totalMsgTokens = promptCount + evalCount;
-												if (totalMsgTokens > 0) {
-													consumedTokens = totalMsgTokens;
-													break;
-												}
-											}
-										}
-
-										const rawPercentage = (consumedTokens / totalTokens) * 100;
-										const percentage = Math.min(Math.round(rawPercentage), 100);
-										const isOverconsumed = consumedTokens >= totalTokens;
-
-										let cardBg = 'bg-white border-[#edf0f7] text-[#202022]';
-										let iconColor = '#7678ed';
-										let titleColor = 'text-[#202022]';
-										let textColor = 'text-[#5d6075] font-medium';
-										let trackBg = 'bg-[#f0f2f9] border-[#e8ebf3]';
-										let barColor = 'bg-emerald-500';
-										let badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-
-										if (isOverconsumed) {
-											cardBg = 'bg-rose-50/90 border-rose-200 text-rose-950 shadow-sm';
-											iconColor = '#e11d48';
-											titleColor = 'text-rose-900';
-											textColor = 'text-rose-800 font-semibold';
-											trackBg = 'bg-rose-100 border-rose-200';
-											barColor = 'bg-rose-600';
-											badgeBg = 'bg-rose-600 text-white border-rose-600 font-extrabold shadow-xs';
-										} else if (rawPercentage >= 90) {
-											barColor = 'bg-rose-500';
-											badgeBg = 'bg-rose-50 text-rose-700 border-rose-200';
-										} else if (rawPercentage >= 65) {
-											barColor = 'bg-amber-500';
-											badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
-										}
-
-										return (
-											<div className={`rounded-3xl p-5 shadow-xs border flex flex-col gap-3 transition-all duration-300 ${cardBg}`}>
+							return (
+								<>
+									<WidgetWithCustomHeader
+										header={
+											<>
 												<div className='flex items-center justify-between'>
 													<div className='flex items-center gap-2'>
-														<svg
-															width='20'
-															height='20'
-															viewBox='0 0 24 24'
-															fill='none'
-															stroke={iconColor}
-															strokeWidth='2.2'
-															strokeLinecap='round'
-															strokeLinejoin='round'
-														>
-															<rect x='2' y='2' width='20' height='8' rx='2' ry='2' />
-															<rect x='2' y='14' width='20' height='8' rx='2' ry='2' />
-															<line x1='6' y1='6' x2='6.01' y2='6' />
-															<line x1='6' y1='18' x2='6.01' y2='18' />
-														</svg>
+														<ServerIcon color={iconColor} />
 														<h3 className={`font-bold text-xl ${titleColor}`}>Context</h3>
 													</div>
 													<span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeBg}`}>{percentage}%</span>
 												</div>
-
+											</>
+										}
+										content={
+											<>
 												<p className={`text-sm ${textColor}`}>
 													Consumed {consumedTokens.toLocaleString()} from {totalTokens.toLocaleString()} tokens.
 												</p>
@@ -3530,177 +3519,161 @@ export default function ChatPage() {
 														style={{ width: `${percentage}%` }}
 													/>
 												</div>
+											</>
+										}
+									/>
+								</>
+							);
+						})()}
+
+						{/* 1. Members Card (Middle) */}
+						{(() => {
+							const participants = getConversationParticipants();
+
+							{
+								/* Members List */
+							}
+							return (
+								<>
+									<WidgetSimple
+										title={`${participants.length} members`}
+										content={
+											<div className='space-y-3.5 max-h-[300px] overflow-y-auto pr-1'>
+												{participants.map((p) => (
+													<div key={p.id} className='flex items-center gap-3'>
+														{p.id === 'user' ? (
+															<div className='w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs'>
+																<svg
+																	width='20'
+																	height='20'
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='currentColor'
+																	strokeWidth='2.2'
+																	strokeLinecap='round'
+																	strokeLinejoin='round'
+																>
+																	<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
+																	<circle cx='12' cy='7' r='4' />
+																</svg>
+															</div>
+														) : (
+															<img
+																src={p.avatar}
+																alt={p.name}
+																className='w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0'
+															/>
+														)}
+														<div className='flex-1 min-w-0'>
+															<h5 className='font-semibold text-base text-[#202022] truncate'>{p.name}</h5>
+															<span className='text-sm font-medium text-[#7678ed]'>{p.role}</span>
+														</div>
+													</div>
+												))}
 											</div>
-										);
-									})()}
+										}
+									/>
+								</>
+							);
+						})()}
 
-									{/* 1. Members Card (Middle) */}
-									{(() => {
-										const participants = getConversationParticipants();
-										return (
-											<div className='bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]'>
-												<div className='flex items-center justify-between mb-4'>
-													<h3 className='font-bold text-xl text-[#202022]'>{participants.length} members</h3>
-												</div>
+						{/* 2. Attachments Card (Bottom - Collapsed by default) */}
+						{(() => {
+							const atts = getConversationAttachments();
+							const totalCount = atts.photos.length + atts.otherFiles.length;
 
-												{/* Members List */}
-												<div className='space-y-3.5 max-h-[300px] overflow-y-auto pr-1'>
-													{participants.map((p) => (
-														<div key={p.id} className='flex items-center gap-3'>
-															{p.id === 'user' ? (
-																<div className='w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs'>
-																	<svg
-																		width='20'
-																		height='20'
-																		viewBox='0 0 24 24'
-																		fill='none'
-																		stroke='currentColor'
-																		strokeWidth='2.2'
-																		strokeLinecap='round'
-																		strokeLinejoin='round'
-																	>
-																		<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
-																		<circle cx='12' cy='7' r='4' />
-																	</svg>
-																</div>
-															) : (
-																<img
-																	src={p.avatar}
-																	alt={p.name}
-																	className='w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0'
-																/>
-															)}
-															<div className='flex-1 min-w-0'>
-																<h5 className='font-semibold text-base text-[#202022] truncate'>{p.name}</h5>
-																<span className='text-sm font-medium text-[#7678ed]'>{p.role}</span>
+							return (
+								<>
+									<WidgetToggle
+										header={
+											<>
+												<h3 className='font-bold text-xl text-[#202022]'>Attachments</h3>
+												<span className='text-sm font-semibold text-white bg-[#7678ed] px-2.5 py-0.5 rounded-full'>{totalCount}</span>
+											</>
+										}
+										content={
+											totalCount === 0 ? (
+												<p className='text-sm text-[#8e90a6] italic'>No attachments in this conversation.</p>
+											) : (
+												<>
+													{/* Photos / Images */}
+													{atts.photos.length > 0 && (
+														<div>
+															<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
+																<svg
+																	width='15'
+																	height='15'
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='currentColor'
+																	strokeWidth='2'
+																>
+																	<rect x='3' y='3' width='18' height='18' rx='2' ry='2' />
+																	<circle cx='8.5' cy='8.5' r='1.5' />
+																	<polyline points='21 15 16 10 5 21' />
+																</svg>
+																Photos ({atts.photos.length})
+															</p>
+															<div className='grid grid-cols-2 gap-2'>
+																{atts.photos.map((src, idx) => (
+																	<img
+																		key={idx}
+																		src={src}
+																		alt={`Photo ${idx + 1}`}
+																		className='w-full h-20 object-cover rounded-xl shadow-xs cursor-pointer hover:opacity-90 transition-opacity border border-[#edf0f7]'
+																		onClick={() => setActiveImageModal({ src, title: `Photo ${idx + 1}` })}
+																	/>
+																))}
 															</div>
 														</div>
-													))}
-												</div>
-											</div>
-										);
-									})()}
+													)}
 
-									{/* 2. Attachments Card (Bottom - Collapsed by default) */}
-									{(() => {
-										const atts = getConversationAttachments();
-										const totalCount = atts.photos.length + atts.otherFiles.length;
-
-										return (
-											<div className='bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]'>
-												{/* Card Header with Collapse Toggle */}
-												<button
-													onClick={() => setIsAttachmentsExpanded(!isAttachmentsExpanded)}
-													className='w-full flex items-center justify-between cursor-pointer select-none'
-												>
-													<div className='flex items-center gap-2'>
-														<h3 className='font-bold text-xl text-[#202022]'>Attachments</h3>
-														<span className='text-sm font-semibold text-white bg-[#7678ed] px-2.5 py-0.5 rounded-full'>
-															{totalCount}
-														</span>
-													</div>
-													<div className='p-1 text-[#8e90a6] hover:text-[#202022] transition-colors'>
-														<svg
-															width='18'
-															height='18'
-															viewBox='0 0 24 24'
-															fill='none'
-															stroke='currentColor'
-															strokeWidth='2.2'
-															strokeLinecap='round'
-															strokeLinejoin='round'
-															className={`transition-transform duration-200 ${isAttachmentsExpanded ? 'rotate-180' : ''}`}
-														>
-															<polyline points='6 9 12 15 18 9' />
-														</svg>
-													</div>
-												</button>
-
-												{/* Collapsible Content */}
-												{isAttachmentsExpanded && (
-													<div className='mt-4 pt-3 border-t border-[#edf0f7] space-y-4'>
-														{totalCount === 0 ? (
-															<p className='text-sm text-[#8e90a6] italic'>No attachments in this conversation.</p>
-														) : (
-															<>
-																{/* Photos / Images */}
-																{atts.photos.length > 0 && (
-																	<div>
-																		<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
-																			<svg
-																				width='15'
-																				height='15'
-																				viewBox='0 0 24 24'
-																				fill='none'
-																				stroke='currentColor'
-																				strokeWidth='2'
-																			>
-																				<rect x='3' y='3' width='18' height='18' rx='2' ry='2' />
-																				<circle cx='8.5' cy='8.5' r='1.5' />
-																				<polyline points='21 15 16 10 5 21' />
-																			</svg>
-																			Photos ({atts.photos.length})
-																		</p>
-																		<div className='grid grid-cols-2 gap-2'>
-																			{atts.photos.map((src, idx) => (
-																				<img
-																					key={idx}
-																					src={src}
-																					alt={`Photo ${idx + 1}`}
-																					className='w-full h-20 object-cover rounded-xl shadow-xs cursor-pointer hover:opacity-90 transition-opacity border border-[#edf0f7]'
-																					onClick={() => setActiveImageModal({ src, title: `Photo ${idx + 1}` })}
-																				/>
-																			))}
-																		</div>
-																	</div>
-																)}
-
-																{/* Other Files */}
-																{atts.otherFiles.length > 0 && (
-																	<div>
-																		<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
-																			<svg
-																				width='15'
-																				height='15'
-																				viewBox='0 0 24 24'
-																				fill='none'
-																				stroke='currentColor'
-																				strokeWidth='2'
-																			>
-																				<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' />
-																				<polyline points='14 2 14 8 20 8' />
-																			</svg>
-																			Files ({atts.otherFiles.length})
-																		</p>
-																		<div className='space-y-1.5'>
-																			{atts.otherFiles.map((item, idx) => (
-																				<button
-																					key={idx}
-																					onClick={() =>
-																						setActiveAttachmentModal({
-																							title: item.name || 'Attachment',
-																							type: item.type || 'file',
-																							content: item.content,
-																						})
-																					}
-																					className='w-full text-left px-3 py-2 rounded-xl bg-[#f8f9fe] hover:bg-[#7678ed] hover:text-white text-[#202022] transition-colors text-sm font-medium flex items-center justify-between border border-[#e8ebf3] group cursor-pointer'
-																				>
-																					<span className='truncate'>{item.name || `File ${idx + 1}`}</span>
-																				</button>
-																			))}
-																		</div>
-																	</div>
-																)}
-															</>
-														)}
-													</div>
-												)}
-											</div>
-										);
-									})()}
-								</aside>
-							) : null}
-				</div>
+													{/* Other Files */}
+													{atts.otherFiles.length > 0 && (
+														<div>
+															<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
+																<svg
+																	width='15'
+																	height='15'
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='currentColor'
+																	strokeWidth='2'
+																>
+																	<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' />
+																	<polyline points='14 2 14 8 20 8' />
+																</svg>
+																Files ({atts.otherFiles.length})
+															</p>
+															<div className='space-y-1.5'>
+																{atts.otherFiles.map((item, idx) => (
+																	<button
+																		key={idx}
+																		onClick={() =>
+																			setActiveAttachmentModal({
+																				title: item.name || 'Attachment',
+																				type: item.type || 'file',
+																				content: item.content,
+																			})
+																		}
+																		className='w-full text-left px-3 py-2 rounded-xl bg-[#f8f9fe] hover:bg-[#7678ed] hover:text-white text-[#202022] transition-colors text-sm font-medium flex items-center justify-between border border-[#e8ebf3] group cursor-pointer'
+																	>
+																		<span className='truncate'>{item.name || `File ${idx + 1}`}</span>
+																	</button>
+																))}
+															</div>
+														</div>
+													)}
+												</>
+											)
+										}
+									/>
+								</>
+							);
+						})()}
+					</aside>
+				) : null}
+			</div>
 			{/* Create Folder Modal */}
 			{isCreatingFolder && (
 				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4'>
@@ -4864,7 +4837,6 @@ export default function ChatPage() {
 					</div>
 				</div>
 			)}
-
 		</>
 	);
 }
