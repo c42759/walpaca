@@ -1,3386 +1,3449 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useAppStore } from "../store/useAppStore";
-import { getApiUrl } from "../lib/api";
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useAppStore } from '../store/useAppStore';
+import { getApiUrl } from '../lib/api';
 
-import { Sidebar } from "@/components/layout/Sidebar";
-import { Header } from "@/components/layout/Header";
-import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
-import { ManagePersonasPanel } from "@/components/settings/ManagePersonasPanel";
-import { ManageLorebookPanel } from "@/components/settings/ManageLorebookPanel";
-import { ManageInstancesPanel } from "@/components/settings/ManageInstancesPanel";
-import { ChatMessageList } from "@/components/chat/ChatMessageList";
-import { ChatInput } from "@/components/chat/ChatInput";
-import { Button } from "@/components/ui/Button";
-import { Modal } from "@/components/ui/Modal";
-import { Badge } from "@/components/ui/Badge";
-import { Input, Textarea } from "@/components/ui/Input";
-import { ListItem, List } from "@/components/ui/List";
+import { Sidebar } from '@/components/layout/Sidebar';
+import { Header } from '@/components/layout/Header';
+import { SettingsSidebar } from '@/components/settings/SettingsSidebar';
+import { ManagePersonasPanel } from '@/components/settings/ManagePersonasPanel';
+import { ManageLorebookPanel } from '@/components/settings/ManageLorebookPanel';
+import { ManageInstancesPanel } from '@/components/settings/ManageInstancesPanel';
+import { ChatMessageList } from '@/components/chat/ChatMessageList';
+import { ChatInput } from '@/components/chat/ChatInput';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { Badge } from '@/components/ui/Badge';
+import { Input, Textarea } from '@/components/ui/Input';
+import { ListItem, List } from '@/components/ui/List';
 import {
-  BrainIcon,
-  MetadataIcon,
-  SearchIcon,
-  PlusIcon,
-  EditIcon,
-  TrashIcon,
-  CheckIcon,
-  ChevronIcon,
-  CloseIcon,
-  SettingsIcon,
-  ChatIcon,
-  FolderIcon,
-  AttachmentIcon,
-} from "@/components/icons/Icons";
+	BrainIcon,
+	MetadataIcon,
+	SearchIcon,
+	PlusIcon,
+	EditIcon,
+	TrashIcon,
+	CheckIcon,
+	ChevronIcon,
+	CloseIcon,
+	SettingsIcon,
+	ChatIcon,
+	FolderIcon,
+	AttachmentIcon,
+} from '@/components/icons/Icons';
 
 // --- Types ---
 interface ChatFolder {
-  id: string;
-  name: string;
-  color?: string;
-  parent?: string | null;
+	id: string;
+	name: string;
+	color?: string;
+	parent?: string | null;
 }
 
 interface MessageAttachment {
-  id?: string;
-  type: string;
-  name?: string;
-  content: string;
+	id?: string;
+	type: string;
+	name?: string;
+	content: string;
 }
 
 interface SelectedAttachment {
-  id: string;
-  name: string;
-  type: "image" | "plain_text" | "code";
-  content: string;
-  size?: number;
-  extension?: string;
+	id: string;
+	name: string;
+	type: 'image' | 'plain_text' | 'code';
+	content: string;
+	size?: number;
+	extension?: string;
 }
 
 interface Message {
-  id: string;
-  senderName: string;
-  senderAvatar?: string;
-  senderRole?: string;
-  instanceId?: string;
-  model?: string;
-  isSelf: boolean;
-  content: string;
-  time: string;
-  views?: number;
-  reactions?: { emoji: string; count: number }[];
-  image?: string;
-  attachments?: MessageAttachment[];
+	id: string;
+	senderName: string;
+	senderAvatar?: string;
+	senderRole?: string;
+	instanceId?: string;
+	model?: string;
+	isSelf: boolean;
+	content: string;
+	time: string;
+	views?: number;
+	reactions?: { emoji: string; count: number }[];
+	image?: string;
+	attachments?: MessageAttachment[];
 }
 
 interface LorebookTemplate {
-  filename: string;
-  name: string;
-  keys: string[];
-  content: string;
-  error?: string;
+	filename: string;
+	name: string;
+	keys: string[];
+	content: string;
+	error?: string;
 }
 
 interface PersonaTemplate {
-  filename: string;
-  name: string;
-  description?: string;
-  personality?: string;
-  scenario?: string;
-  system_prompt?: string;
-  post_history_instructions?: string;
-  first_mes?: string;
-  alternate_greetings?: string[];
-  picture?: string | null;
-  voice?: string | null;
-  num_ctx?: number | null;
-  temperature?: number;
-  top_p?: number;
-  top_k?: number;
-  repeat_penalty?: number;
-  presence_penalty?: number;
-  frequency_penalty?: number;
-  character_book?: {
-    name?: string;
-    description?: string;
-    entries?: Array<{
-      name?: string;
-      keys?: string[] | string;
-      content?: string;
-      comment?: string;
-      enabled?: boolean;
-    }>;
-  } | null;
-  generation_settings?: {
-    temperature?: number;
-    top_p?: number;
-    top_k?: number;
-    repeat_penalty?: number;
-    presence_penalty?: number;
-    frequency_penalty?: number;
-  } | null;
-  error?: string;
-  [key: string]: any;
+	filename: string;
+	name: string;
+	description?: string;
+	personality?: string;
+	scenario?: string;
+	system_prompt?: string;
+	post_history_instructions?: string;
+	first_mes?: string;
+	alternate_greetings?: string[];
+	picture?: string | null;
+	voice?: string | null;
+	num_ctx?: number | null;
+	temperature?: number;
+	top_p?: number;
+	top_k?: number;
+	repeat_penalty?: number;
+	presence_penalty?: number;
+	frequency_penalty?: number;
+	character_book?: {
+		name?: string;
+		description?: string;
+		entries?: Array<{
+			name?: string;
+			keys?: string[] | string;
+			content?: string;
+			comment?: string;
+			enabled?: boolean;
+		}>;
+	} | null;
+	generation_settings?: {
+		temperature?: number;
+		top_p?: number;
+		top_k?: number;
+		repeat_penalty?: number;
+		presence_penalty?: number;
+		frequency_penalty?: number;
+	} | null;
+	error?: string;
+	[key: string]: any;
 }
 
 interface ChatItem {
-  id: string;
-  name: string;
-  avatarText?: string;
-  avatarImg?: string;
-  lastMessage: string;
-  time: string;
-  unreadCount?: number;
-  isPinned?: boolean;
-  isDelivered?: boolean;
-  folder?: string;
+	id: string;
+	name: string;
+	avatarText?: string;
+	avatarImg?: string;
+	lastMessage: string;
+	time: string;
+	unreadCount?: number;
+	isPinned?: boolean;
+	isDelivered?: boolean;
+	folder?: string;
 }
 
 interface BackendMessage {
-  id: string;
-  chat_id: string;
-  role: string;
-  model?: string;
-  date_time: string;
-  content: string;
-  attachments?: any[];
+	id: string;
+	chat_id: string;
+	role: string;
+	model?: string;
+	date_time: string;
+	content: string;
+	attachments?: any[];
 }
 
 interface ModelPreference {
-  id: string;
-  name?: string;
-  description?: string;
-  first_message?: string;
-  alternate_greetings?: string[];
-  picture?: string | null;
-  voice?: string | null;
-  num_ctx?: number | null;
-  character?: any;
+	id: string;
+	name?: string;
+	description?: string;
+	first_message?: string;
+	alternate_greetings?: string[];
+	picture?: string | null;
+	voice?: string | null;
+	num_ctx?: number | null;
+	character?: any;
 }
 
 interface InstanceProperties {
-  name: string;
-  url: string;
-  api?: string;
-  default_model?: string | null;
-  keep_alive?: number;
-  num_ctx?: number;
-  override_parameters?: boolean;
-  seed?: number;
-  share_name?: number;
-  show_response_metadata?: boolean;
-  temperature?: number;
-  think?: boolean;
-  title_model?: string | null;
-  allow_self_signed_ssl?: boolean;
+	name: string;
+	url: string;
+	api?: string;
+	default_model?: string | null;
+	keep_alive?: number;
+	num_ctx?: number;
+	override_parameters?: boolean;
+	seed?: number;
+	share_name?: number;
+	show_response_metadata?: boolean;
+	temperature?: number;
+	think?: boolean;
+	title_model?: string | null;
+	allow_self_signed_ssl?: boolean;
 }
 
 interface InstanceItem {
-  id: string;
-  pinned?: boolean;
-  type: string;
-  properties: InstanceProperties;
+	id: string;
+	pinned?: boolean;
+	type: string;
+	properties: InstanceProperties;
 }
 
 interface BackendChat {
-  id: string;
-  name: string;
-  folder?: string | null;
-  is_template?: boolean;
-  latest_message_time?: string | null;
-  messages?: BackendMessage[];
+	id: string;
+	name: string;
+	folder?: string | null;
+	is_template?: boolean;
+	latest_message_time?: string | null;
+	messages?: BackendMessage[];
 }
 
 const initialMockChatList: ChatItem[] = [];
 
 const mapBackendChatToChatItem = (c: BackendChat): ChatItem => {
-  const words = c.name.replace(/[^a-zA-Z0-9\s]/g, "").trim().split(/\s+/).filter(Boolean);
-  let initials = "CH";
-  if (words.length >= 2) {
-    initials = `${words[0][0]}${words[1][0]}`.toUpperCase();
-  } else if (words.length === 1 && words[0].length >= 2) {
-    initials = words[0].slice(0, 2).toUpperCase();
-  } else if (c.name.trim().length >= 2) {
-    initials = c.name.trim().slice(0, 2).toUpperCase();
-  }
+	const words = c.name
+		.replace(/[^a-zA-Z0-9\s]/g, '')
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean);
+	let initials = 'CH';
+	if (words.length >= 2) {
+		initials = `${words[0][0]}${words[1][0]}`.toUpperCase();
+	} else if (words.length === 1 && words[0].length >= 2) {
+		initials = words[0].slice(0, 2).toUpperCase();
+	} else if (c.name.trim().length >= 2) {
+		initials = c.name.trim().slice(0, 2).toUpperCase();
+	}
 
-  let timeStr = "now";
-  if (c.latest_message_time) {
-    const parts = c.latest_message_time.split(" ");
-    timeStr = parts[1] ? parts[1].slice(0, 5) : parts[0] || "now";
-  }
+	let timeStr = 'now';
+	if (c.latest_message_time) {
+		const parts = c.latest_message_time.split(' ');
+		timeStr = parts[1] ? parts[1].slice(0, 5) : parts[0] || 'now';
+	}
 
-  return {
-    id: c.id,
-    name: c.name,
-    avatarText: initials,
-    lastMessage: c.latest_message_time ? `Last msg ${timeStr}` : "No messages yet",
-    time: timeStr,
-    folder: c.folder || undefined,
-  };
+	return {
+		id: c.id,
+		name: c.name,
+		avatarText: initials,
+		lastMessage: c.latest_message_time ? `Last msg ${timeStr}` : 'No messages yet',
+		time: timeStr,
+		folder: c.folder || undefined,
+	};
 };
 
 const getCharacterName = (char?: any): string | undefined => {
-  if (!char) return undefined;
-  if (char.data && char.data.name && String(char.data.name).trim()) {
-    return String(char.data.name).trim();
-  }
-  if (char.name && String(char.name).trim()) {
-    return String(char.name).trim();
-  }
-  return undefined;
+	if (!char) return undefined;
+	if (char.data && char.data.name && String(char.data.name).trim()) {
+		return String(char.data.name).trim();
+	}
+	if (char.name && String(char.name).trim()) {
+		return String(char.name).trim();
+	}
+	return undefined;
 };
 
 const isCharEnabled = (char?: any) => {
-  if (!char) return false;
-  if (typeof char.enabled === "boolean") return char.enabled;
-  if (typeof char.enable === "boolean") return char.enable;
-  if (typeof char.data?.enabled === "boolean") return char.data.enabled;
-  if (typeof char.data?.enable === "boolean") return char.data.enable;
-  return Boolean(getCharacterName(char));
+	if (!char) return false;
+	if (typeof char.enabled === 'boolean') return char.enabled;
+	if (typeof char.enable === 'boolean') return char.enable;
+	if (typeof char.data?.enabled === 'boolean') return char.data.enabled;
+	if (typeof char.data?.enable === 'boolean') return char.data.enable;
+	return Boolean(getCharacterName(char));
 };
 
 const formatAvatarPicture = (picture?: string | null): string | undefined => {
-  if (!picture) return undefined;
-  if (picture.startsWith("data:") || picture.startsWith("http://") || picture.startsWith("https://") || picture.startsWith("/")) {
-    return picture;
-  }
-  return `data:image/png;base64,${picture}`;
+	if (!picture) return undefined;
+	if (picture.startsWith('data:') || picture.startsWith('http://') || picture.startsWith('https://') || picture.startsWith('/')) {
+		return picture;
+	}
+	return `data:image/png;base64,${picture}`;
 };
 
 const getAvatarColor = (name: string): string => {
-  if (!name) return "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)";
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
+	if (!name) return 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)';
+	let hash = 0;
+	for (let i = 0; i < name.length; i++) {
+		hash = name.charCodeAt(i) + ((hash << 5) - hash);
+	}
 
-  const gradients = [
-    "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)", // Indigo
-    "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)", // Violet
-    "linear-gradient(135deg, #ec4899 0%, #db2777 100%)", // Pink
-    "linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)", // Rose
-    "linear-gradient(135deg, #f97316 0%, #ea580c 100%)", // Orange
-    "linear-gradient(135deg, #10b981 0%, #059669 100%)", // Emerald
-    "linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)", // Teal
-    "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)", // Cyan
-    "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)", // Blue
-    "linear-gradient(135deg, #a855f7 0%, #9333ea 100%)", // Purple
-    "linear-gradient(135deg, #059669 0%, #047857 100%)", // Green
-    "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", // Indigo-Violet
-  ];
+	const gradients = [
+		'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', // Indigo
+		'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', // Violet
+		'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', // Pink
+		'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)', // Rose
+		'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', // Orange
+		'linear-gradient(135deg, #10b981 0%, #059669 100%)', // Emerald
+		'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', // Teal
+		'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', // Cyan
+		'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', // Blue
+		'linear-gradient(135deg, #a855f7 0%, #9333ea 100%)', // Purple
+		'linear-gradient(135deg, #059669 0%, #047857 100%)', // Green
+		'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', // Indigo-Violet
+	];
 
-  const idx = Math.abs(hash) % gradients.length;
-  return gradients[idx];
+	const idx = Math.abs(hash) % gradients.length;
+	return gradients[idx];
 };
 
-
 const autoResizeTextarea = (el: HTMLTextAreaElement | null) => {
-  if (!el) return;
-  el.style.height = "auto";
-  const maxHeight = typeof window !== "undefined" ? window.innerHeight * 0.3 : 240;
-  if (el.scrollHeight > maxHeight) {
-    el.style.height = `${maxHeight}px`;
-    el.style.overflowY = "auto";
-  } else {
-    el.style.height = `${el.scrollHeight}px`;
-    el.style.overflowY = "hidden";
-  }
+	if (!el) return;
+	el.style.height = 'auto';
+	const maxHeight = typeof window !== 'undefined' ? window.innerHeight * 0.3 : 240;
+	if (el.scrollHeight > maxHeight) {
+		el.style.height = `${maxHeight}px`;
+		el.style.overflowY = 'auto';
+	} else {
+		el.style.height = `${el.scrollHeight}px`;
+		el.style.overflowY = 'hidden';
+	}
 };
 
 const playNotificationSound = () => {
-  if (typeof window === "undefined") return;
-  try {
-    const audio = new Audio("/universfield-new-notification-036-485897.mp3");
-    audio.volume = 0.6;
-    audio.play().catch((err) => {
-      console.warn("Notification sound playback prevented or failed:", err);
-    });
-  } catch (err) {
-    console.warn("Notification sound playback error:", err);
-  }
+	if (typeof window === 'undefined') return;
+	try {
+		const audio = new Audio('/universfield-new-notification-036-485897.mp3');
+		audio.volume = 0.6;
+		audio.play().catch((err) => {
+			console.warn('Notification sound playback prevented or failed:', err);
+		});
+	} catch (err) {
+		console.warn('Notification sound playback error:', err);
+	}
 };
 
-
-const DEFAULT_MODEL_AVATAR = "/icon-app.svg";
+const DEFAULT_MODEL_AVATAR = '/icon-app.svg';
 
 const getModelAvatarPicture = (pref?: ModelPreference | null, mod?: any): string => {
-  const rawPic =
-    pref?.picture ||
-    pref?.character?.data?.avatar ||
-    pref?.character?.avatar ||
-    mod?.picture ||
-    mod?.avatar ||
-    mod?.senderAvatar;
-  return formatAvatarPicture(rawPic) || DEFAULT_MODEL_AVATAR;
+	const rawPic = pref?.picture || pref?.character?.data?.avatar || pref?.character?.avatar || mod?.picture || mod?.avatar || mod?.senderAvatar;
+	return formatAvatarPicture(rawPic) || DEFAULT_MODEL_AVATAR;
 };
 
 const isImageAttachment = (att: MessageAttachment | any): boolean => {
-  if (!att) return false;
-  const typeStr = (att.type || "").toLowerCase();
-  if (typeStr.includes("image") || typeStr.includes("photo") || typeStr.includes("png") || typeStr.includes("jpg") || typeStr.includes("jpeg")) {
-    return true;
-  }
-  const contentStr = typeof att.content === "string" ? att.content.trim() : "";
-  if (
-    contentStr.startsWith("data:image/") ||
-    contentStr.startsWith("iVBOR") ||
-    contentStr.startsWith("/9j/") ||
-    contentStr.startsWith("R0lGOD") ||
-    contentStr.startsWith("UklGR")
-  ) {
-    return true;
-  }
-  return false;
+	if (!att) return false;
+	const typeStr = (att.type || '').toLowerCase();
+	if (typeStr.includes('image') || typeStr.includes('photo') || typeStr.includes('png') || typeStr.includes('jpg') || typeStr.includes('jpeg')) {
+		return true;
+	}
+	const contentStr = typeof att.content === 'string' ? att.content.trim() : '';
+	if (
+		contentStr.startsWith('data:image/') ||
+		contentStr.startsWith('iVBOR') ||
+		contentStr.startsWith('/9j/') ||
+		contentStr.startsWith('R0lGOD') ||
+		contentStr.startsWith('UklGR')
+	) {
+		return true;
+	}
+	return false;
 };
 
 const getImageSrc = (att: MessageAttachment | any): string => {
-  const contentStr = typeof att.content === "string" ? att.content.trim() : "";
-  if (contentStr.startsWith("data:") || contentStr.startsWith("http://") || contentStr.startsWith("https://") || contentStr.startsWith("/")) {
-    return contentStr;
-  }
-  return `data:image/png;base64,${contentStr}`;
+	const contentStr = typeof att.content === 'string' ? att.content.trim() : '';
+	if (contentStr.startsWith('data:') || contentStr.startsWith('http://') || contentStr.startsWith('https://') || contentStr.startsWith('/')) {
+		return contentStr;
+	}
+	return `data:image/png;base64,${contentStr}`;
 };
 
-
-
-
 const mapBackendMsgToMessage = (m: BackendMessage, prefMap?: Record<string, ModelPreference>): Message => {
-  const isSelf = m.role === "user";
-  let timeStr = m.date_time || "";
-  if (timeStr.includes(" ")) {
-    timeStr = timeStr.split(" ")[1].slice(0, 5);
-  }
+	const isSelf = m.role === 'user';
+	let timeStr = m.date_time || '';
+	if (timeStr.includes(' ')) {
+		timeStr = timeStr.split(' ')[1].slice(0, 5);
+	}
 
-  const modelKey = m.model ? m.model.toLowerCase() : "";
-  const pref = prefMap && modelKey ? (prefMap[modelKey] || prefMap[m.model!]) : undefined;
-  const avatarFromPref = formatAvatarPicture(pref?.picture);
-  const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
-  const displayName = charName || getCharacterName(pref?.character) || m.model || "Assistant";
+	const modelKey = m.model ? m.model.toLowerCase() : '';
+	const pref = prefMap && modelKey ? prefMap[modelKey] || prefMap[m.model!] : undefined;
+	const avatarFromPref = formatAvatarPicture(pref?.picture);
+	const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
+	const displayName = charName || getCharacterName(pref?.character) || m.model || 'Assistant';
 
-  return {
-    id: m.id,
-    senderName: isSelf ? "You" : displayName,
-    senderAvatar: isSelf ? undefined : avatarFromPref,
-    isSelf,
-    content: m.content,
-    time: timeStr || "now",
-    attachments: m.attachments || [],
-  };
+	return {
+		id: m.id,
+		senderName: isSelf ? 'You' : displayName,
+		senderAvatar: isSelf ? undefined : avatarFromPref,
+		isSelf,
+		content: m.content,
+		time: timeStr || 'now',
+		attachments: m.attachments || [],
+	};
 };
 
 const parseFormatting = (str: string): React.ReactNode[] => {
-  const parts: React.ReactNode[] = [];
-  const regex = /(\*\*(.*?)\*\*|__(.*?)__|~~(.*?)~~|\*(.*?)\*|_(.*?)_|`(.*?)`|\[(.*?)\]\((.*?)\))/g;
-  let lastIdx = 0;
-  let m: RegExpExecArray | null;
+	const parts: React.ReactNode[] = [];
+	const regex = /(\*\*(.*?)\*\*|__(.*?)__|~~(.*?)~~|\*(.*?)\*|_(.*?)_|`(.*?)`|\[(.*?)\]\((.*?)\))/g;
+	let lastIdx = 0;
+	let m: RegExpExecArray | null;
 
-  while ((m = regex.exec(str)) !== null) {
-    if (m.index > lastIdx) {
-      parts.push(str.slice(lastIdx, m.index));
-    }
-    if (m[2] !== undefined) {
-      parts.push(<strong key={m.index} className="font-bold text-inherit">{m[2]}</strong>);
-    } else if (m[3] !== undefined) {
-      parts.push(<strong key={m.index} className="font-bold text-inherit">{m[3]}</strong>);
-    } else if (m[4] !== undefined) {
-      parts.push(<del key={m.index} className="line-through opacity-80">{m[4]}</del>);
-    } else if (m[5] !== undefined) {
-      parts.push(<em key={m.index} className="italic text-inherit">{m[5]}</em>);
-    } else if (m[6] !== undefined) {
-      parts.push(<em key={m.index} className="italic text-inherit">{m[6]}</em>);
-    } else if (m[7] !== undefined) {
-      parts.push(<code key={m.index} className="bg-black/10 dark:bg-white/10 rounded px-1.5 py-0.5 font-mono text-sm border border-black/5 dark:border-white/5">{m[7]}</code>);
-    } else if (m[8] !== undefined && m[9] !== undefined) {
-      parts.push(
-        <a key={m.index} href={m[9]} target="_blank" rel="noreferrer" className="underline font-medium text-[#7678ed] hover:opacity-80 transition-opacity">
-          {m[8]}
-        </a>
-      );
-    }
-    lastIdx = regex.lastIndex;
-  }
-  if (lastIdx < str.length) {
-    parts.push(str.slice(lastIdx));
-  }
+	while ((m = regex.exec(str)) !== null) {
+		if (m.index > lastIdx) {
+			parts.push(str.slice(lastIdx, m.index));
+		}
+		if (m[2] !== undefined) {
+			parts.push(
+				<strong key={m.index} className='font-bold text-inherit'>
+					{m[2]}
+				</strong>,
+			);
+		} else if (m[3] !== undefined) {
+			parts.push(
+				<strong key={m.index} className='font-bold text-inherit'>
+					{m[3]}
+				</strong>,
+			);
+		} else if (m[4] !== undefined) {
+			parts.push(
+				<del key={m.index} className='line-through opacity-80'>
+					{m[4]}
+				</del>,
+			);
+		} else if (m[5] !== undefined) {
+			parts.push(
+				<em key={m.index} className='italic text-inherit'>
+					{m[5]}
+				</em>,
+			);
+		} else if (m[6] !== undefined) {
+			parts.push(
+				<em key={m.index} className='italic text-inherit'>
+					{m[6]}
+				</em>,
+			);
+		} else if (m[7] !== undefined) {
+			parts.push(
+				<code key={m.index} className='bg-black/10 dark:bg-white/10 rounded px-1.5 py-0.5 font-mono text-sm border border-black/5 dark:border-white/5'>
+					{m[7]}
+				</code>,
+			);
+		} else if (m[8] !== undefined && m[9] !== undefined) {
+			parts.push(
+				<a
+					key={m.index}
+					href={m[9]}
+					target='_blank'
+					rel='noreferrer'
+					className='underline font-medium text-[#7678ed] hover:opacity-80 transition-opacity'
+				>
+					{m[8]}
+				</a>,
+			);
+		}
+		lastIdx = regex.lastIndex;
+	}
+	if (lastIdx < str.length) {
+		parts.push(str.slice(lastIdx));
+	}
 
-  return parts;
+	return parts;
 };
 
 const renderInlineMarkdown = (
-  text: string,
-  keyPrefix: string,
-  activeLineIndex?: number,
-  onLineContextMenu?: (e: React.MouseEvent, lineText: string, lineIndex: number) => void
+	text: string,
+	keyPrefix: string,
+	activeLineIndex?: number,
+	onLineContextMenu?: (e: React.MouseEvent, lineText: string, lineIndex: number) => void,
 ) => {
-  const lines = text.split("\n");
-  const elements: React.ReactNode[] = [];
-  let inUnorderedList = false;
-  let currentUlItems: React.ReactNode[] = [];
-  let inOrderedList = false;
-  let currentOlItems: React.ReactNode[] = [];
-  let inTable = false;
-  let currentTableLines: string[] = [];
+	const lines = text.split('\n');
+	const elements: React.ReactNode[] = [];
+	let inUnorderedList = false;
+	let currentUlItems: React.ReactNode[] = [];
+	let inOrderedList = false;
+	let currentOlItems: React.ReactNode[] = [];
+	let inTable = false;
+	let currentTableLines: string[] = [];
 
-  const parseTableCells = (line: string): string[] => {
-    let raw = line.trim();
-    if (raw.startsWith("|")) raw = raw.slice(1);
-    if (raw.endsWith("|")) raw = raw.slice(0, -1);
-    return raw.split("|").map((cell) => cell.trim());
-  };
+	const parseTableCells = (line: string): string[] => {
+		let raw = line.trim();
+		if (raw.startsWith('|')) raw = raw.slice(1);
+		if (raw.endsWith('|')) raw = raw.slice(0, -1);
+		return raw.split('|').map((cell) => cell.trim());
+	};
 
-  const isTableDivider = (line: string): boolean => {
-    const cells = parseTableCells(line);
-    return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c.replace(/\s+/g, "")));
-  };
+	const isTableDivider = (line: string): boolean => {
+		const cells = parseTableCells(line);
+		return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c.replace(/\s+/g, '')));
+	};
 
-  const flushListsAndTable = () => {
-    if (inUnorderedList && currentUlItems.length > 0) {
-      elements.push(
-        <ul key={`ul-${elements.length}`} className="list-disc list-inside space-y-1 my-2 pl-2">
-          {currentUlItems}
-        </ul>
-      );
-      currentUlItems = [];
-      inUnorderedList = false;
-    }
-    if (inOrderedList && currentOlItems.length > 0) {
-      elements.push(
-        <ol key={`ol-${elements.length}`} className="list-decimal list-inside space-y-1 my-2 pl-2">
-          {currentOlItems}
-        </ol>
-      );
-      currentOlItems = [];
-      inOrderedList = false;
-    }
-    if (inTable && currentTableLines.length > 0) {
-      let headerCells: string[] = [];
-      let rowLines: string[] = [];
+	const flushListsAndTable = () => {
+		if (inUnorderedList && currentUlItems.length > 0) {
+			elements.push(
+				<ul key={`ul-${elements.length}`} className='list-disc list-inside space-y-1 my-2 pl-2'>
+					{currentUlItems}
+				</ul>,
+			);
+			currentUlItems = [];
+			inUnorderedList = false;
+		}
+		if (inOrderedList && currentOlItems.length > 0) {
+			elements.push(
+				<ol key={`ol-${elements.length}`} className='list-decimal list-inside space-y-1 my-2 pl-2'>
+					{currentOlItems}
+				</ol>,
+			);
+			currentOlItems = [];
+			inOrderedList = false;
+		}
+		if (inTable && currentTableLines.length > 0) {
+			let headerCells: string[] = [];
+			let rowLines: string[] = [];
 
-      if (currentTableLines.length >= 2 && isTableDivider(currentTableLines[1])) {
-        headerCells = parseTableCells(currentTableLines[0]);
-        rowLines = currentTableLines.slice(2);
-      } else if (currentTableLines.length >= 1) {
-        headerCells = parseTableCells(currentTableLines[0]);
-        rowLines = currentTableLines.slice(1);
-      }
+			if (currentTableLines.length >= 2 && isTableDivider(currentTableLines[1])) {
+				headerCells = parseTableCells(currentTableLines[0]);
+				rowLines = currentTableLines.slice(2);
+			} else if (currentTableLines.length >= 1) {
+				headerCells = parseTableCells(currentTableLines[0]);
+				rowLines = currentTableLines.slice(1);
+			}
 
-      elements.push(
-        <div key={`table-${elements.length}`} className="overflow-x-auto my-3 border border-[#e8ebf3] rounded-2xl shadow-xs select-text">
-          <table className="w-full text-left text-base border-collapse">
-            {headerCells.length > 0 && (
-              <thead className="bg-[#f0f2f9] border-b border-[#e8ebf3] text-[#202022]">
-                <tr>
-                  {headerCells.map((h, i) => (
-                    <th key={i} className="px-4 py-3 font-bold border-r border-[#e8ebf3] last:border-r-0">
-                      {parseFormatting(h)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-            )}
-            <tbody className="divide-y divide-[#e8ebf3] text-[#202022]">
-              {rowLines.map((rLine, rIdx) => {
-                const cells = parseTableCells(rLine);
-                return (
-                  <tr key={rIdx} className="hover:bg-[#f9fafc] transition-colors">
-                    {cells.map((cell, cIdx) => (
-                      <td key={cIdx} className="px-4 py-2.5 font-normal border-r border-[#e8ebf3] last:border-r-0">
-                        {parseFormatting(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      );
-      currentTableLines = [];
-      inTable = false;
-    }
-  };
+			elements.push(
+				<div key={`table-${elements.length}`} className='overflow-x-auto my-3 border border-[#e8ebf3] rounded-2xl shadow-xs select-text'>
+					<table className='w-full text-left text-base border-collapse'>
+						{headerCells.length > 0 && (
+							<thead className='bg-[#f0f2f9] border-b border-[#e8ebf3] text-[#202022]'>
+								<tr>
+									{headerCells.map((h, i) => (
+										<th key={i} className='px-4 py-3 font-bold border-r border-[#e8ebf3] last:border-r-0'>
+											{parseFormatting(h)}
+										</th>
+									))}
+								</tr>
+							</thead>
+						)}
+						<tbody className='divide-y divide-[#e8ebf3] text-[#202022]'>
+							{rowLines.map((rLine, rIdx) => {
+								const cells = parseTableCells(rLine);
+								return (
+									<tr key={rIdx} className='hover:bg-[#f9fafc] transition-colors'>
+										{cells.map((cell, cIdx) => (
+											<td key={cIdx} className='px-4 py-2.5 font-normal border-r border-[#e8ebf3] last:border-r-0'>
+												{parseFormatting(cell)}
+											</td>
+										))}
+									</tr>
+								);
+							})}
+						</tbody>
+					</table>
+				</div>,
+			);
+			currentTableLines = [];
+			inTable = false;
+		}
+	};
 
-  lines.forEach((line, idx) => {
-    const trimmed = line.trim();
-    const isHl = activeLineIndex === idx;
-    const hlClass = isHl ? " bg-[#7678ed]/20 border-l-4 border-[#7678ed] pl-2.5 py-0.5 rounded-r-xl transition-all duration-300 font-medium text-[#111] shadow-xs" : "";
-    const getMenuProps = () => {
-      if (!onLineContextMenu) return {};
-      return {
-        onContextMenu: (e: React.MouseEvent) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onLineContextMenu(e, line, idx);
-        },
-      };
-    };
+	lines.forEach((line, idx) => {
+		const trimmed = line.trim();
+		const isHl = activeLineIndex === idx;
+		const hlClass = isHl
+			? ' bg-[#7678ed]/20 border-l-4 border-[#7678ed] pl-2.5 py-0.5 rounded-r-xl transition-all duration-300 font-medium text-[#111] shadow-xs'
+			: '';
+		const getMenuProps = () => {
+			if (!onLineContextMenu) return {};
+			return {
+				onContextMenu: (e: React.MouseEvent) => {
+					e.preventDefault();
+					e.stopPropagation();
+					onLineContextMenu(e, line, idx);
+				},
+			};
+		};
 
-    // Check table line
-    if (trimmed.startsWith("|") && (trimmed.endsWith("|") || trimmed.includes("|"))) {
-      if (inUnorderedList || inOrderedList) flushListsAndTable();
-      inTable = true;
-      currentTableLines.push(trimmed);
-      return;
-    }
+		// Check table line
+		if (trimmed.startsWith('|') && (trimmed.endsWith('|') || trimmed.includes('|'))) {
+			if (inUnorderedList || inOrderedList) flushListsAndTable();
+			inTable = true;
+			currentTableLines.push(trimmed);
+			return;
+		}
 
-    if (inTable) {
-      flushListsAndTable();
-    }
+		if (inTable) {
+			flushListsAndTable();
+		}
 
-    // Headers
-    if (trimmed.startsWith("# ")) {
-      flushListsAndTable();
-      elements.push(<h1 key={idx} {...getMenuProps()} className={`text-2xl font-extrabold text-[#202022] my-2${hlClass}`}>{parseFormatting(trimmed.slice(2))}</h1>);
-      return;
-    }
-    if (trimmed.startsWith("## ")) {
-      flushListsAndTable();
-      elements.push(<h2 key={idx} {...getMenuProps()} className={`text-xl font-bold text-[#202022] my-2${hlClass}`}>{parseFormatting(trimmed.slice(3))}</h2>);
-      return;
-    }
-    if (trimmed.startsWith("### ")) {
-      flushListsAndTable();
-      elements.push(<h3 key={idx} {...getMenuProps()} className={`text-lg font-bold text-[#202022] my-1.5${hlClass}`}>{parseFormatting(trimmed.slice(4))}</h3>);
-      return;
-    }
-    if (trimmed.startsWith("#### ")) {
-      flushListsAndTable();
-      elements.push(<h4 key={idx} {...getMenuProps()} className={`text-base font-bold text-[#202022] my-1${hlClass}`}>{parseFormatting(trimmed.slice(5))}</h4>);
-      return;
-    }
-    if (trimmed.startsWith("##### ") || trimmed.startsWith("###### ")) {
-      flushListsAndTable();
-      elements.push(<h5 key={idx} {...getMenuProps()} className={`text-sm font-bold uppercase tracking-wider text-[#8e90a6] my-1${hlClass}`}>{parseFormatting(trimmed.replace(/^#+\s*/, ""))}</h5>);
-      return;
-    }
+		// Headers
+		if (trimmed.startsWith('# ')) {
+			flushListsAndTable();
+			elements.push(
+				<h1 key={idx} {...getMenuProps()} className={`text-2xl font-extrabold text-[#202022] my-2${hlClass}`}>
+					{parseFormatting(trimmed.slice(2))}
+				</h1>,
+			);
+			return;
+		}
+		if (trimmed.startsWith('## ')) {
+			flushListsAndTable();
+			elements.push(
+				<h2 key={idx} {...getMenuProps()} className={`text-xl font-bold text-[#202022] my-2${hlClass}`}>
+					{parseFormatting(trimmed.slice(3))}
+				</h2>,
+			);
+			return;
+		}
+		if (trimmed.startsWith('### ')) {
+			flushListsAndTable();
+			elements.push(
+				<h3 key={idx} {...getMenuProps()} className={`text-lg font-bold text-[#202022] my-1.5${hlClass}`}>
+					{parseFormatting(trimmed.slice(4))}
+				</h3>,
+			);
+			return;
+		}
+		if (trimmed.startsWith('#### ')) {
+			flushListsAndTable();
+			elements.push(
+				<h4 key={idx} {...getMenuProps()} className={`text-base font-bold text-[#202022] my-1${hlClass}`}>
+					{parseFormatting(trimmed.slice(5))}
+				</h4>,
+			);
+			return;
+		}
+		if (trimmed.startsWith('##### ') || trimmed.startsWith('###### ')) {
+			flushListsAndTable();
+			elements.push(
+				<h5 key={idx} {...getMenuProps()} className={`text-sm font-bold uppercase tracking-wider text-[#8e90a6] my-1${hlClass}`}>
+					{parseFormatting(trimmed.replace(/^#+\s*/, ''))}
+				</h5>,
+			);
+			return;
+		}
 
-    // Horizontal rule
-    if (trimmed === "---" || trimmed === "***" || trimmed === "___") {
-      flushListsAndTable();
-      elements.push(<hr key={idx} className="my-3 border-t border-[#e8ebf3]" />);
-      return;
-    }
+		// Horizontal rule
+		if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+			flushListsAndTable();
+			elements.push(<hr key={idx} className='my-3 border-t border-[#e8ebf3]' />);
+			return;
+		}
 
-    // Blockquote
-    if (trimmed.startsWith("> ")) {
-      flushListsAndTable();
-      elements.push(
-        <blockquote key={idx} {...getMenuProps()} className={`border-l-4 border-[#7678ed] pl-3 py-1 my-2 text-[#4a4d63] italic bg-[#f0f2f9]/50 rounded-r-xl${hlClass}`}>
-          {parseFormatting(trimmed.slice(2))}
-        </blockquote>
-      );
-      return;
-    }
+		// Blockquote
+		if (trimmed.startsWith('> ')) {
+			flushListsAndTable();
+			elements.push(
+				<blockquote
+					key={idx}
+					{...getMenuProps()}
+					className={`border-l-4 border-[#7678ed] pl-3 py-1 my-2 text-[#4a4d63] italic bg-[#f0f2f9]/50 rounded-r-xl${hlClass}`}
+				>
+					{parseFormatting(trimmed.slice(2))}
+				</blockquote>,
+			);
+			return;
+		}
 
-    // Unordered List (- or * or +)
-    const ulMatch = line.match(/^\s*[-*+]\s+(.*)$/);
-    if (ulMatch) {
-      if (inOrderedList) flushListsAndTable();
-      inUnorderedList = true;
-      currentUlItems.push(<li key={idx} {...getMenuProps()} className={`leading-relaxed${hlClass}`}>{parseFormatting(ulMatch[1])}</li>);
-      return;
-    }
+		// Unordered List (- or * or +)
+		const ulMatch = line.match(/^\s*[-*+]\s+(.*)$/);
+		if (ulMatch) {
+			if (inOrderedList) flushListsAndTable();
+			inUnorderedList = true;
+			currentUlItems.push(
+				<li key={idx} {...getMenuProps()} className={`leading-relaxed${hlClass}`}>
+					{parseFormatting(ulMatch[1])}
+				</li>,
+			);
+			return;
+		}
 
-    // Ordered List (1. 2.)
-    const olMatch = line.match(/^\s*\d+\.\s+(.*)$/);
-    if (olMatch) {
-      if (inUnorderedList) flushListsAndTable();
-      inOrderedList = true;
-      currentOlItems.push(<li key={idx} {...getMenuProps()} className={`leading-relaxed${hlClass}`}>{parseFormatting(olMatch[1])}</li>);
-      return;
-    }
+		// Ordered List (1. 2.)
+		const olMatch = line.match(/^\s*\d+\.\s+(.*)$/);
+		if (olMatch) {
+			if (inUnorderedList) flushListsAndTable();
+			inOrderedList = true;
+			currentOlItems.push(
+				<li key={idx} {...getMenuProps()} className={`leading-relaxed${hlClass}`}>
+					{parseFormatting(olMatch[1])}
+				</li>,
+			);
+			return;
+		}
 
-    // Empty line
-    if (!trimmed) {
-      flushListsAndTable();
-      elements.push(<div key={idx} className="h-1.5" />);
-      return;
-    }
+		// Empty line
+		if (!trimmed) {
+			flushListsAndTable();
+			elements.push(<div key={idx} className='h-1.5' />);
+			return;
+		}
 
-    // Regular paragraph
-    flushListsAndTable();
-    elements.push(<p key={idx} {...getMenuProps()} className={`leading-relaxed my-1${hlClass}`}>{parseFormatting(line)}</p>);
-  });
+		// Regular paragraph
+		flushListsAndTable();
+		elements.push(
+			<p key={idx} {...getMenuProps()} className={`leading-relaxed my-1${hlClass}`}>
+				{parseFormatting(line)}
+			</p>,
+		);
+	});
 
-  flushListsAndTable();
-  return <div key={keyPrefix} className="space-y-1">{elements}</div>;
+	flushListsAndTable();
+	return (
+		<div key={keyPrefix} className='space-y-1'>
+			{elements}
+		</div>
+	);
 };
 
 const highlightCodeTokens = (code: string, lang?: string): React.ReactNode => {
-  if (!code) return null;
-  const language = (lang || "").toLowerCase();
+	if (!code) return null;
+	const language = (lang || '').toLowerCase();
 
-  const tokenRegex = new RegExp(
-    [
-      '(?:\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/|#[^\\n]*)',
-      '(?:"(?:\\\\.|[^"\\\\\\n])*"|\'(?:\\\\.|[^\'\\\\\\n])*\'|`(?:\\\\.|[^`\\\\])*`)',
-      '\\b(?:0x[0-9a-fA-F]+|\\d+\\.\\d+|\\d+)\\b',
-      '\\b(?:const|let|var|function|def|fn|class|extends|interface|type|struct|enum|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|delete|import|export|from|as|default|async|await|yield|this|super|self|public|private|protected|static|readonly|abstract|implements|namespace|using|package|include|require|typeof|instanceof|void|null|undefined|true|false|True|False|None|and|or|not|is|in|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|LEFT|RIGHT|INNER|GROUP|BY|ORDER|HAVING|LIMIT|CREATE|TABLE|DROP|ALTER|ADD|INDEX)\\b',
-      '\\b(?:string|number|boolean|any|unknown|never|object|symbol|bigint|int|float|double|char|bool|void|Array|Map|Set|Promise|Record|List|Dict|Tuple|React|useState|useEffect|useRef|useMemo|useCallback|useContext|useReducer|Component|HTML|Element|String|Number|Boolean|Object|Function|Math|JSON|Console|process|window|document)\\b',
-      '\\b[a-zA-Z_]\\w*\\b',
-      '[=\\+\\-\\*/%&\\|\\^!<>~\\?:;\\,\\.\\{\\}\\[\\]\\(\\)]',
-    ].join('|'),
-    'g'
-  );
+	const tokenRegex = new RegExp(
+		[
+			'(?:\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/|#[^\\n]*)',
+			'(?:"(?:\\\\.|[^"\\\\\\n])*"|\'(?:\\\\.|[^\'\\\\\\n])*\'|`(?:\\\\.|[^`\\\\])*`)',
+			'\\b(?:0x[0-9a-fA-F]+|\\d+\\.\\d+|\\d+)\\b',
+			'\\b(?:const|let|var|function|def|fn|class|extends|interface|type|struct|enum|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|delete|import|export|from|as|default|async|await|yield|this|super|self|public|private|protected|static|readonly|abstract|implements|namespace|using|package|include|require|typeof|instanceof|void|null|undefined|true|false|True|False|None|and|or|not|is|in|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|LEFT|RIGHT|INNER|GROUP|BY|ORDER|HAVING|LIMIT|CREATE|TABLE|DROP|ALTER|ADD|INDEX)\\b',
+			'\\b(?:string|number|boolean|any|unknown|never|object|symbol|bigint|int|float|double|char|bool|void|Array|Map|Set|Promise|Record|List|Dict|Tuple|React|useState|useEffect|useRef|useMemo|useCallback|useContext|useReducer|Component|HTML|Element|String|Number|Boolean|Object|Function|Math|JSON|Console|process|window|document)\\b',
+			'\\b[a-zA-Z_]\\w*\\b',
+			'[=\\+\\-\\*/%&\\|\\^!<>~\\?:;\\,\\.\\{\\}\\[\\]\\(\\)]',
+		].join('|'),
+		'g',
+	);
 
-  const elements: React.ReactNode[] = [];
-  let lastIndex = 0;
+	const elements: React.ReactNode[] = [];
+	let lastIndex = 0;
 
-  code.replace(tokenRegex, (match, offset) => {
-    if (offset > lastIndex) {
-      elements.push(code.slice(lastIndex, offset));
-    }
-    lastIndex = offset + match.length;
+	code.replace(tokenRegex, (match, offset) => {
+		if (offset > lastIndex) {
+			elements.push(code.slice(lastIndex, offset));
+		}
+		lastIndex = offset + match.length;
 
-    let colorClass = 'text-[#f8f8f2]';
-    if (/^\/\//.test(match) || /^\/\*/.test(match) || (language !== 'css' && /^#[^\n]*/.test(match))) {
-      colorClass = 'text-[#75715e] italic';
-    } else if (/^["'`]/.test(match)) {
-      colorClass = 'text-[#e6db74]';
-    } else if (/^\d/.test(match) || /^0x/.test(match)) {
-      colorClass = 'text-[#ae81ff]';
-    } else if (/^(const|let|var|function|def|fn|class|extends|interface|type|struct|enum|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|delete|import|export|from|as|default|async|await|yield|this|super|self|public|private|protected|static|readonly|abstract|implements|namespace|using|package|include|require|typeof|instanceof|void|null|undefined|true|false|True|False|None|and|or|not|is|in|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|LEFT|RIGHT|INNER|GROUP|BY|ORDER|HAVING|LIMIT|CREATE|TABLE|DROP|ALTER|ADD|INDEX)$/i.test(match)) {
-      colorClass = 'text-[#ff79c6] font-semibold';
-    } else if (/^(string|number|boolean|any|unknown|never|object|symbol|bigint|int|float|double|char|bool|void|Array|Map|Set|Promise|Record|List|Dict|Tuple|React|useState|useEffect|useRef|useMemo|useCallback|useContext|useReducer|Component|HTML|Element|String|Number|Boolean|Object|Function|Math|JSON|Console|process|window|document)$/.test(match)) {
-      colorClass = 'text-[#8be9fd] font-semibold';
-    } else if (/^[a-zA-Z_]\w*$/.test(match) && code.slice(offset + match.length).trim().startsWith('(')) {
-      colorClass = 'text-[#50fa7b]';
-    } else if (/^[=\+\-\*/%&\|^\!<>~\?:;\,\.\{\}\[\]\(\)]$/.test(match)) {
-      colorClass = 'text-[#ff79c6]';
-    }
+		let colorClass = 'text-[#f8f8f2]';
+		if (/^\/\//.test(match) || /^\/\*/.test(match) || (language !== 'css' && /^#[^\n]*/.test(match))) {
+			colorClass = 'text-[#75715e] italic';
+		} else if (/^["'`]/.test(match)) {
+			colorClass = 'text-[#e6db74]';
+		} else if (/^\d/.test(match) || /^0x/.test(match)) {
+			colorClass = 'text-[#ae81ff]';
+		} else if (
+			/^(const|let|var|function|def|fn|class|extends|interface|type|struct|enum|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|delete|import|export|from|as|default|async|await|yield|this|super|self|public|private|protected|static|readonly|abstract|implements|namespace|using|package|include|require|typeof|instanceof|void|null|undefined|true|false|True|False|None|and|or|not|is|in|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|JOIN|LEFT|RIGHT|INNER|GROUP|BY|ORDER|HAVING|LIMIT|CREATE|TABLE|DROP|ALTER|ADD|INDEX)$/i.test(
+				match,
+			)
+		) {
+			colorClass = 'text-[#ff79c6] font-semibold';
+		} else if (
+			/^(string|number|boolean|any|unknown|never|object|symbol|bigint|int|float|double|char|bool|void|Array|Map|Set|Promise|Record|List|Dict|Tuple|React|useState|useEffect|useRef|useMemo|useCallback|useContext|useReducer|Component|HTML|Element|String|Number|Boolean|Object|Function|Math|JSON|Console|process|window|document)$/.test(
+				match,
+			)
+		) {
+			colorClass = 'text-[#8be9fd] font-semibold';
+		} else if (
+			/^[a-zA-Z_]\w*$/.test(match) &&
+			code
+				.slice(offset + match.length)
+				.trim()
+				.startsWith('(')
+		) {
+			colorClass = 'text-[#50fa7b]';
+		} else if (/^[=\+\-\*/%&\|^\!<>~\?:;\,\.\{\}\[\]\(\)]$/.test(match)) {
+			colorClass = 'text-[#ff79c6]';
+		}
 
-    elements.push(
-      <span key={offset} className={colorClass}>
-        {match}
-      </span>
-    );
+		elements.push(
+			<span key={offset} className={colorClass}>
+				{match}
+			</span>,
+		);
 
-    return match;
-  });
+		return match;
+	});
 
-  if (lastIndex < code.length) {
-    elements.push(code.slice(lastIndex));
-  }
+	if (lastIndex < code.length) {
+		elements.push(code.slice(lastIndex));
+	}
 
-  return <>{elements}</>;
+	return <>{elements}</>;
 };
 
 const CodeBlock = ({ code, language }: { code: string; language?: string }) => {
-  const [copied, setCopied] = useState(false);
+	const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+	const handleCopy = () => {
+		navigator.clipboard.writeText(code);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	};
 
-  const lineCount = code ? code.split('\n').length : 0;
+	const lineCount = code ? code.split('\n').length : 0;
 
-  return (
-    <div className="my-3 rounded-2xl bg-[#1e1e24] text-[#f8f8f2] overflow-hidden shadow-md border border-white/10 select-text">
-      <div className="flex items-center justify-between px-4 py-2 bg-[#18181c] border-b border-white/10 text-xs font-sans">
-        <div className="flex items-center gap-2 font-semibold text-white/70 uppercase tracking-wider">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] inline-block" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] inline-block" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#27c93f] inline-block mr-1.5" />
-          <span>{language || 'code'}</span>
-          <span className="text-white/40 text-[10px] font-normal lowercase">({lineCount} lines)</span>
-        </div>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-all cursor-pointer font-medium"
-        >
-          {copied ? (
-            <>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              <span>Copied!</span>
-            </>
-          ) : (
-            <>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              <span>Copy code</span>
-            </>
-          )}
-        </button>
-      </div>
+	return (
+		<div className='my-3 rounded-2xl bg-[#1e1e24] text-[#f8f8f2] overflow-hidden shadow-md border border-white/10 select-text'>
+			<div className='flex items-center justify-between px-4 py-2 bg-[#18181c] border-b border-white/10 text-xs font-sans'>
+				<div className='flex items-center gap-2 font-semibold text-white/70 uppercase tracking-wider'>
+					<span className='w-2.5 h-2.5 rounded-full bg-[#ff5f56] inline-block' />
+					<span className='w-2.5 h-2.5 rounded-full bg-[#ffbd2e] inline-block' />
+					<span className='w-2.5 h-2.5 rounded-full bg-[#27c93f] inline-block mr-1.5' />
+					<span>{language || 'code'}</span>
+					<span className='text-white/40 text-[10px] font-normal lowercase'>({lineCount} lines)</span>
+				</div>
+				<button
+					type='button'
+					onClick={handleCopy}
+					className='flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-all cursor-pointer font-medium'
+				>
+					{copied ? (
+						<>
+							<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5'>
+								<polyline points='20 6 9 17 4 12' />
+							</svg>
+							<span>Copied!</span>
+						</>
+					) : (
+						<>
+							<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2'>
+								<rect x='9' y='9' width='13' height='13' rx='2' ry='2' />
+								<path d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' />
+							</svg>
+							<span>Copy code</span>
+						</>
+					)}
+				</button>
+			</div>
 
-      <div className="p-4 overflow-x-auto text-sm font-mono leading-relaxed whitespace-pre-wrap">
-        {highlightCodeTokens(code, language)}
-      </div>
-    </div>
-  );
+			<div className='p-4 overflow-x-auto text-sm font-mono leading-relaxed whitespace-pre-wrap'>{highlightCodeTokens(code, language)}</div>
+		</div>
+	);
 };
 
-const renderMarkdownText = (
-  text: string,
-  activeLineIndex?: number,
-  onLineContextMenu?: (e: React.MouseEvent, lineText: string, lineIndex: number) => void
-) => {
-  if (!text) return null;
+const renderMarkdownText = (text: string, activeLineIndex?: number, onLineContextMenu?: (e: React.MouseEvent, lineText: string, lineIndex: number) => void) => {
+	if (!text) return null;
 
-  const codeBlockRegex = /```(\w+)?\s*\n?([\s\S]*?)```/g;
-  let lastIndex = 0;
-  const elements: React.ReactNode[] = [];
-  let match: RegExpExecArray | null;
+	const codeBlockRegex = /```(\w+)?\s*\n?([\s\S]*?)```/g;
+	let lastIndex = 0;
+	const elements: React.ReactNode[] = [];
+	let match: RegExpExecArray | null;
 
-  while ((match = codeBlockRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      elements.push(renderInlineMarkdown(text.slice(lastIndex, match.index), `text-${lastIndex}`, activeLineIndex, onLineContextMenu));
-    }
-    const lang = match[1] || "";
-    const codeContent = match[2]?.trim() || "";
-    elements.push(
-      <CodeBlock key={`code-${match.index}`} code={codeContent} language={lang} />
-    );
-    lastIndex = codeBlockRegex.lastIndex;
-  }
+	while ((match = codeBlockRegex.exec(text)) !== null) {
+		if (match.index > lastIndex) {
+			elements.push(renderInlineMarkdown(text.slice(lastIndex, match.index), `text-${lastIndex}`, activeLineIndex, onLineContextMenu));
+		}
+		const lang = match[1] || '';
+		const codeContent = match[2]?.trim() || '';
+		elements.push(<CodeBlock key={`code-${match.index}`} code={codeContent} language={lang} />);
+		lastIndex = codeBlockRegex.lastIndex;
+	}
 
-  if (lastIndex < text.length) {
-    elements.push(renderInlineMarkdown(text.slice(lastIndex), `text-${lastIndex}`, activeLineIndex, onLineContextMenu));
-  }
+	if (lastIndex < text.length) {
+		elements.push(renderInlineMarkdown(text.slice(lastIndex), `text-${lastIndex}`, activeLineIndex, onLineContextMenu));
+	}
 
-  return <>{elements}</>;
+	return <>{elements}</>;
 };
 
-const getAttachmentType = (fileName: string, mimeType: string): "image" | "plain_text" | "code" => {
-  if (mimeType.startsWith("image/")) return "image";
-  const ext = fileName.split(".").pop()?.toLowerCase() || "";
-  const codeExts = [
-    "c", "h", "css", "html", "js", "ts", "jsx", "tsx", "py", "java", "json", "xml", "asm", "nasm",
-    "cs", "cpp", "cxx", "hpp", "csv", "lsp", "lisp", "dockerfile", "glsl", "lua", "php", "rb", "ru", "rs",
-    "sql", "sh", "yaml", "yml", "p8", "go", "env"
-  ];
-  const imageExts = ["png", "jpeg", "jpg", "webp", "gif", "svg", "bmp"];
-  if (imageExts.includes(ext)) return "image";
-  if (codeExts.includes(ext)) return "code";
-  return "plain_text";
+const getAttachmentType = (fileName: string, mimeType: string): 'image' | 'plain_text' | 'code' => {
+	if (mimeType.startsWith('image/')) return 'image';
+	const ext = fileName.split('.').pop()?.toLowerCase() || '';
+	const codeExts = [
+		'c',
+		'h',
+		'css',
+		'html',
+		'js',
+		'ts',
+		'jsx',
+		'tsx',
+		'py',
+		'java',
+		'json',
+		'xml',
+		'asm',
+		'nasm',
+		'cs',
+		'cpp',
+		'cxx',
+		'hpp',
+		'csv',
+		'lsp',
+		'lisp',
+		'dockerfile',
+		'glsl',
+		'lua',
+		'php',
+		'rb',
+		'ru',
+		'rs',
+		'sql',
+		'sh',
+		'yaml',
+		'yml',
+		'p8',
+		'go',
+		'env',
+	];
+	const imageExts = ['png', 'jpeg', 'jpg', 'webp', 'gif', 'svg', 'bmp'];
+	if (imageExts.includes(ext)) return 'image';
+	if (codeExts.includes(ext)) return 'code';
+	return 'plain_text';
 };
 
 const DocumentAttachmentCard = ({ attachment, extension, isSelf }: { attachment: MessageAttachment | any; extension: string; isSelf?: boolean }) => {
-  const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+	const [expanded, setExpanded] = useState(false);
+	const [copied, setCopied] = useState(false);
 
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(attachment.content || "");
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+	const handleCopy = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		navigator.clipboard.writeText(attachment.content || '');
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	};
 
-  const name = attachment.name || `file.${extension}`;
-  const lines = attachment.content ? attachment.content.split("\n").length : 0;
-  const sizeKb = attachment.content ? (new Blob([attachment.content]).size / 1024).toFixed(1) : "0";
+	const name = attachment.name || `file.${extension}`;
+	const lines = attachment.content ? attachment.content.split('\n').length : 0;
+	const sizeKb = attachment.content ? (new Blob([attachment.content]).size / 1024).toFixed(1) : '0';
 
-  return (
-    <div className={`rounded-xl border transition-all overflow-hidden my-1 w-full max-w-full ${
-      isSelf 
-        ? 'bg-white/10 border-white/25 text-white shadow-xs' 
-        : 'bg-white border-[#e2e5f1] text-[#2d3142] shadow-xs'
-    }`}>
-      <div className="flex items-center justify-between px-3.5 py-2.5 gap-3">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs uppercase shrink-0 ${
-            isSelf ? 'bg-white/20 text-white' : 'bg-[#7678ed]/15 text-[#7678ed]'
-          }`}>
-            {extension}
-          </div>
-          <div className="flex flex-col min-w-0 flex-1">
-            <span className="text-sm font-semibold truncate" title={name}>{name}</span>
-            <span className={`text-[11px] ${isSelf ? 'text-white/75' : 'text-[#8e90a6]'}`}>
-              {sizeKb} KB • {lines} line{lines !== 1 ? 's' : ''}
-            </span>
-          </div>
-        </div>
+	return (
+		<div
+			className={`rounded-xl border transition-all overflow-hidden my-1 w-full max-w-full ${
+				isSelf ? 'bg-white/10 border-white/25 text-white shadow-xs' : 'bg-white border-[#e2e5f1] text-[#2d3142] shadow-xs'
+			}`}
+		>
+			<div className='flex items-center justify-between px-3.5 py-2.5 gap-3'>
+				<div className='flex items-center gap-2.5 min-w-0 flex-1'>
+					<div
+						className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs uppercase shrink-0 ${
+							isSelf ? 'bg-white/20 text-white' : 'bg-[#7678ed]/15 text-[#7678ed]'
+						}`}
+					>
+						{extension}
+					</div>
+					<div className='flex flex-col min-w-0 flex-1'>
+						<span className='text-sm font-semibold truncate' title={name}>
+							{name}
+						</span>
+						<span className={`text-[11px] ${isSelf ? 'text-white/75' : 'text-[#8e90a6]'}`}>
+							{sizeKb} KB • {lines} line{lines !== 1 ? 's' : ''}
+						</span>
+					</div>
+				</div>
 
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={handleCopy}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
-              isSelf 
-                ? 'bg-white/20 hover:bg-white/30 text-white' 
-                : 'bg-[#f4f6fc] hover:bg-[#eef0f6] text-[#7678ed] border border-[#e2e5f1]'
-            }`}
-            title="Copy content"
-          >
-            {copied ? (
-              <>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                <span>Copied</span>
-              </>
-            ) : (
-              <>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                <span>Copy</span>
-              </>
-            )}
-          </button>
-          
-          <button
-            type="button"
-            onClick={() => setExpanded(!expanded)}
-            className={`p-1.5 rounded-lg text-xs transition-all cursor-pointer ${
-              isSelf 
-                ? 'bg-white/20 hover:bg-white/30 text-white' 
-                : 'bg-[#f4f6fc] hover:bg-[#eef0f6] text-[#5d6075] border border-[#e2e5f1]'
-            }`}
-            title={expanded ? 'Collapse preview' : 'View content'}
-          >
-            <svg 
-              width="14" 
-              height="14" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-            >
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </button>
-        </div>
-      </div>
+				<div className='flex items-center gap-1 shrink-0'>
+					<button
+						type='button'
+						onClick={handleCopy}
+						className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+							isSelf ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-[#f4f6fc] hover:bg-[#eef0f6] text-[#7678ed] border border-[#e2e5f1]'
+						}`}
+						title='Copy content'
+					>
+						{copied ? (
+							<>
+								<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5'>
+									<polyline points='20 6 9 17 4 12' />
+								</svg>
+								<span>Copied</span>
+							</>
+						) : (
+							<>
+								<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2'>
+									<rect x='9' y='9' width='13' height='13' rx='2' ry='2' />
+									<path d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' />
+								</svg>
+								<span>Copy</span>
+							</>
+						)}
+					</button>
 
-      {expanded && (
-        <div className={`p-3 border-t text-xs font-mono overflow-x-auto max-h-60 leading-relaxed whitespace-pre-wrap select-text ${
-          isSelf 
-            ? 'bg-black/30 border-white/15 text-white/90' 
-            : 'bg-[#1e1e24] border-[#e2e5f1] text-[#f8f8f2]'
-        }`}>
-          {highlightCodeTokens(attachment.content || '', extension)}
-        </div>
-      )}
-    </div>
-  );
+					<button
+						type='button'
+						onClick={() => setExpanded(!expanded)}
+						className={`p-1.5 rounded-lg text-xs transition-all cursor-pointer ${
+							isSelf ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-[#f4f6fc] hover:bg-[#eef0f6] text-[#5d6075] border border-[#e2e5f1]'
+						}`}
+						title={expanded ? 'Collapse preview' : 'View content'}
+					>
+						<svg
+							width='14'
+							height='14'
+							viewBox='0 0 24 24'
+							fill='none'
+							stroke='currentColor'
+							strokeWidth='2'
+							className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+						>
+							<polyline points='6 9 12 15 18 9' />
+						</svg>
+					</button>
+				</div>
+			</div>
+
+			{expanded && (
+				<div
+					className={`p-3 border-t text-xs font-mono overflow-x-auto max-h-60 leading-relaxed whitespace-pre-wrap select-text ${
+						isSelf ? 'bg-black/30 border-white/15 text-white/90' : 'bg-[#1e1e24] border-[#e2e5f1] text-[#f8f8f2]'
+					}`}
+				>
+					{highlightCodeTokens(attachment.content || '', extension)}
+				</div>
+			)}
+		</div>
+	);
 };
 
 export default function AlpacaWebPage() {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedAttachments, setSelectedAttachments] = useState<SelectedAttachment[]>([]);
-
-  const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const currentCount = selectedAttachments.length;
-    const maxAllowed = 4;
-    const remaining = maxAllowed - currentCount;
-
-    if (remaining <= 0) {
-      alert("Maximum limit of 4 attachments (images or document files) reached.");
-      if (e.target) e.target.value = "";
-      return;
-    }
-
-    const selectedFiles = Array.from(files).slice(0, remaining);
-    if (files.length > remaining) {
-      alert(`Only ${remaining} more attachment(s) allowed (limit is 4 total).`);
-    }
-
-    const readPromises = selectedFiles.map((file) => {
-      return new Promise<SelectedAttachment>((resolve, reject) => {
-        const reader = new FileReader();
-        const attType = getAttachmentType(file.name, file.type);
-        const ext = file.name.split(".").pop()?.toLowerCase() || "txt";
-
-        reader.onload = () => {
-          if (typeof reader.result === "string") {
-            resolve({
-              id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-              name: file.name,
-              type: attType,
-              content: reader.result,
-              size: file.size,
-              extension: ext,
-            });
-          } else {
-            reject(new Error("Failed to read file"));
-          }
-        };
-        reader.onerror = () => reject(reader.error);
-
-        if (attType === "image") {
-          reader.readAsDataURL(file);
-        } else {
-          reader.readAsText(file);
-        }
-      });
-    });
-
-    Promise.all(readPromises)
-      .then((newAtts) => {
-        setSelectedAttachments((prev) => [...prev, ...newAtts].slice(0, maxAllowed));
-      })
-      .catch((err) => {
-        console.error("Error reading attached files:", err);
-      });
-
-    if (e.target) e.target.value = "";
-  };
-
-  const handleRemoveSelectedAttachment = (indexToRemove: number) => {
-    setSelectedAttachments((prev) => prev.filter((_, idx) => idx !== indexToRemove));
-  };
-
-  const [folders, setFolders] = useState<ChatFolder[]>([]);
-
-  // Zustand Store Integration for long-lived data caching
-  const {
-    instances,
-    modelPreferences,
-    fetchInstances,
-    fetchModelPreferences,
-    fetchInstanceModels,
-    setInstances: setStoreInstances,
-    setModelPreference: setStoreModelPreference,
-    removeModelPreference: storeRemoveModelPreference,
-  } = useAppStore();
-
-  const [activeAttachmentModal, setActiveAttachmentModal] = useState<{ title: string; type: string; content: string } | null>(null);
-  const [activeImageModal, setActiveImageModal] = useState<{ src: string; title?: string } | null>(null);
-  const [isChatContextMenuOpen, setIsChatContextMenuOpen] = useState<boolean>(false);
-  const [isRenameModalOpen, setIsRenameModalOpen] = useState<boolean>(false);
-  const [renameInputVal, setRenameInputVal] = useState<string>("");
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
-  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState<boolean>(false);
-  const [isForkModalOpen, setIsForkModalOpen] = useState<boolean>(false);
-  const [forkTargetMsg, setForkTargetMsg] = useState<Message | null>(null);
-  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
-  const [exportFormat, setExportFormat] = useState<"md" | "obsidian" | "json" | "txt">("md");
-  const [editingModel, setEditingModel] = useState<any | null>(null);
-  const [editModelVoice, setEditModelVoice] = useState<string>("af_heart");
-  const [editModelNumCtx, setEditModelNumCtx] = useState<number>(8192);
-  const [editModelName, setEditModelName] = useState<string>("");
-  const [editModelDescription, setEditModelDescription] = useState<string>("");
-  const [editModelFirstMessage, setEditModelFirstMessage] = useState<string>("");
-  const [editModelAlternateGreetings, setEditModelAlternateGreetings] = useState<string[]>([]);
-  const [editModelCharacterBook, setEditModelCharacterBook] = useState<
-    Array<{ name: string; description: string; tags: string }>
-  >([]);
-  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
-  const [newChatTitleInput, setNewChatTitleInput] = useState<string>("New Chat");
-  const [currentView, setCurrentView] = useState<"chat" | "settings">("chat");
-  const [activeSettingsCategory, setActiveSettingsCategory] = useState<
-    "import-chat" | "manage-instances" | "preferences" | "manage-lorebook" | "manage-personas" | "about-walpaca"
-  >("import-chat");
-
-  // --- Manage Lorebook State & Handlers ---
-  const [lorebookTemplates, setLorebookTemplates] = useState<LorebookTemplate[]>([]);
-  const [isLorebookLoading, setIsLorebookLoading] = useState<boolean>(false);
-  const [lorebookSearchQuery, setLorebookSearchQuery] = useState<string>("");
-  const [isLorebookModalOpen, setIsLorebookModalOpen] = useState<boolean>(false);
-  const [editingLorebookTemplate, setEditingLorebookTemplate] = useState<LorebookTemplate | null>(null);
-  const [lorebookFormName, setLorebookFormName] = useState<string>("");
-  const [lorebookFormKeys, setLorebookFormKeys] = useState<string>("");
-  const [lorebookFormContent, setLorebookFormContent] = useState<string>("");
-  const [lorebookFormFilename, setLorebookFormFilename] = useState<string>("");
-  const [lorebookSaving, setLorebookSaving] = useState<boolean>(false);
-
-  const fetchLorebookTemplates = useCallback(async () => {
-    setIsLorebookLoading(true);
-    try {
-      const res = await fetch(`${getApiUrl()}/lorebook`);
-      if (res.ok) {
-        const data = await res.json();
-        setLorebookTemplates(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      console.error("Failed fetching lorebook templates:", err);
-    } finally {
-      setIsLorebookLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchLorebookTemplates();
-  }, [fetchLorebookTemplates]);
-
-  useEffect(() => {
-    if (currentView === "settings" && activeSettingsCategory === "manage-lorebook") {
-      fetchLorebookTemplates();
-    }
-  }, [currentView, activeSettingsCategory, fetchLorebookTemplates]);
-
-  // --- Manage Personas State & Handlers ---
-  const [personaTemplates, setPersonaTemplates] = useState<PersonaTemplate[]>([]);
-  const [isPersonaLoading, setIsPersonaLoading] = useState<boolean>(false);
-  const [personaSearchQuery, setPersonaSearchQuery] = useState<string>("");
-  const [personaViewMode, setPersonaViewMode] = useState<"list" | "editor">("list");
-  const [editingPersonaTemplate, setEditingPersonaTemplate] = useState<PersonaTemplate | null>(null);
-
-  // Persona Editor Form State
-  const [personaFormName, setPersonaFormName] = useState<string>("");
-  const [personaFormDescription, setPersonaFormDescription] = useState<string>("");
-  const [personaFormScenario, setPersonaFormScenario] = useState<string>("");
-  const [personaFormSystemPrompt, setPersonaFormSystemPrompt] = useState<string>("");
-  const [personaFormPostHistoryInstructions, setPersonaFormPostHistoryInstructions] = useState<string>("");
-  const [personaFormFirstMes, setPersonaFormFirstMes] = useState<string>("");
-  const [personaFormAlternateGreetings, setPersonaFormAlternateGreetings] = useState<string[]>([]);
-  const [personaFormVoice, setPersonaFormVoice] = useState<string>("af_heart");
-  const [personaFormPicture, setPersonaFormPicture] = useState<string>("");
-  const [personaFormNumCtx, setPersonaFormNumCtx] = useState<number>(8192);
-  const [personaFormTemperature, setPersonaFormTemperature] = useState<number>(0.7);
-  const [personaFormTopP, setPersonaFormTopP] = useState<number>(0.9);
-  const [personaFormTopK, setPersonaFormTopK] = useState<number>(40);
-  const [personaFormRepeatPenalty, setPersonaFormRepeatPenalty] = useState<number>(1.1);
-  const [personaFormPresencePenalty, setPersonaFormPresencePenalty] = useState<number>(0.0);
-  const [personaFormFrequencyPenalty, setPersonaFormFrequencyPenalty] = useState<number>(0.0);
-  const [personaFormLorebookEntries, setPersonaFormLorebookEntries] = useState<
-    Array<{ name: string; keys: string; content: string; enabled: boolean }>
-  >([]);
-  const [personaAvatarPreview, setPersonaAvatarPreview] = useState<string>("");
-  const [isUploadingPersonaAvatar, setIsUploadingPersonaAvatar] = useState<boolean>(false);
-
-  const [personaSaving, setPersonaSaving] = useState<boolean>(false);
-  const [deletingPersonaTemplate, setDeletingPersonaTemplate] = useState<PersonaTemplate | null>(null);
-
-  // Apply Persona to Model Modal state
-  const [applyPersonaModalTemplate, setApplyPersonaModalTemplate] = useState<PersonaTemplate | null>(null);
-  const [applyPersonaSelectedModelId, setApplyPersonaSelectedModelId] = useState<string>("");
-  const [isApplyingPersona, setIsApplyingPersona] = useState<boolean>(false);
-
-  const fetchPersonaTemplates = useCallback(async () => {
-    setIsPersonaLoading(true);
-    try {
-      const res = await fetch(`${getApiUrl()}/personas`);
-      if (res.ok) {
-        const data = await res.json();
-        setPersonaTemplates(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      console.error("Failed fetching persona templates:", err);
-    } finally {
-      setIsPersonaLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPersonaTemplates();
-  }, [fetchPersonaTemplates]);
-
-  useEffect(() => {
-    if (currentView === "settings" && activeSettingsCategory === "manage-personas") {
-      fetchPersonaTemplates();
-    }
-  }, [currentView, activeSettingsCategory, fetchPersonaTemplates]);
-
-  const handleOpenCreatePersonaEditor = () => {
-    setEditingPersonaTemplate(null);
-    setPersonaFormName("");
-    setPersonaFormDescription("");
-    setPersonaFormScenario("");
-    setPersonaFormSystemPrompt("");
-    setPersonaFormPostHistoryInstructions("");
-    setPersonaFormFirstMes("");
-    setPersonaFormAlternateGreetings([]);
-    setPersonaFormVoice("af_heart");
-    setPersonaFormPicture("");
-    setPersonaAvatarPreview("");
-    setPersonaFormNumCtx(8192);
-    setPersonaFormTemperature(0.7);
-    setPersonaFormTopP(0.9);
-    setPersonaFormTopK(40);
-    setPersonaFormRepeatPenalty(1.1);
-    setPersonaFormPresencePenalty(0.0);
-    setPersonaFormFrequencyPenalty(0.0);
-    setPersonaFormLorebookEntries([]);
-    setPersonaViewMode("editor");
-  };
-
-  const handleOpenEditPersonaEditor = (template: PersonaTemplate) => {
-    setEditingPersonaTemplate(template);
-    setPersonaFormName(template.name || "");
-    setPersonaFormDescription(template.description || template.personality || "");
-    setPersonaFormScenario(template.scenario || "");
-    setPersonaFormSystemPrompt(template.system_prompt || "");
-    setPersonaFormPostHistoryInstructions(template.post_history_instructions || "");
-    setPersonaFormFirstMes(template.first_mes || template.greeting || "");
-    setPersonaFormAlternateGreetings(
-      Array.isArray(template.alternate_greetings) ? [...template.alternate_greetings] : []
-    );
-    setPersonaFormVoice(template.voice || "af_heart");
-    setPersonaFormPicture(template.picture || "");
-    setPersonaAvatarPreview(template.picture || "");
-    setPersonaFormNumCtx(template.num_ctx || 8192);
-    setPersonaFormTemperature(
-      template.generation_settings?.temperature ?? template.temperature ?? 0.7
-    );
-    setPersonaFormTopP(template.generation_settings?.top_p ?? template.top_p ?? 0.9);
-    setPersonaFormTopK(template.generation_settings?.top_k ?? template.top_k ?? 40);
-    setPersonaFormRepeatPenalty(
-      template.generation_settings?.repeat_penalty ?? template.repeat_penalty ?? 1.1
-    );
-    setPersonaFormPresencePenalty(
-      template.generation_settings?.presence_penalty ?? template.presence_penalty ?? 0.0
-    );
-    setPersonaFormFrequencyPenalty(
-      template.generation_settings?.frequency_penalty ?? template.frequency_penalty ?? 0.0
-    );
-
-    const rawEntries = template.character_book?.entries || [];
-    const parsedEntries = rawEntries.map((e) => ({
-      name: e.name || "Entry",
-      keys: Array.isArray(e.keys) ? e.keys.join(", ") : e.keys || "",
-      content: e.content || "",
-      enabled: e.enabled !== false,
-    }));
-    setPersonaFormLorebookEntries(parsedEntries);
-    setPersonaViewMode("editor");
-  };
-
-  const handlePersonaAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Show avatar preview immediately as soon as selected
-    const localBlobUrl = URL.createObjectURL(file);
-    setPersonaAvatarPreview(localBlobUrl);
-    setIsUploadingPersonaAvatar(true);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch(`${getApiUrl()}/personas/avatar`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.picture) {
-          setPersonaFormPicture(data.picture);
-          setPersonaAvatarPreview(data.picture);
-        }
-      } else {
-        const errData = await res.json();
-        alert(errData.error || "Failed uploading avatar image");
-      }
-    } catch (err: any) {
-      console.error("Error uploading persona avatar:", err);
-      alert(err.message || "Error uploading avatar image");
-    } finally {
-      setIsUploadingPersonaAvatar(false);
-    }
-  };
-
-  const handleAddPersonaGreeting = () => {
-    setPersonaFormAlternateGreetings((prev) => [...prev, ""]);
-  };
-
-  const handleUpdatePersonaGreeting = (idx: number, val: string) => {
-    setPersonaFormAlternateGreetings((prev) => {
-      const next = [...prev];
-      next[idx] = val;
-      return next;
-    });
-  };
-
-  const handleRemovePersonaGreeting = (idx: number) => {
-    setPersonaFormAlternateGreetings((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleAddPersonaLorebookEntry = () => {
-    setPersonaFormLorebookEntries((prev) => [
-      ...prev,
-      { name: "New Entry", keys: "name, keyword", content: "", enabled: true },
-    ]);
-  };
-
-  const handleCopyLorebookTemplateToPersona = (filename: string) => {
-    if (!filename) return;
-    const tmpl = lorebookTemplates.find((l) => l.filename === filename);
-    if (!tmpl) return;
-
-    setPersonaFormLorebookEntries((prev) => [
-      ...prev,
-      {
-        name: tmpl.name || tmpl.filename.replace(".json", ""),
-        keys: Array.isArray(tmpl.keys) ? tmpl.keys.join(", ") : tmpl.keys || "",
-        content: tmpl.content || "",
-        enabled: true,
-      },
-    ]);
-  };
-
-  const handleUpdatePersonaLorebookEntry = (
-    idx: number,
-    field: "name" | "keys" | "content" | "enabled",
-    value: any
-  ) => {
-    setPersonaFormLorebookEntries((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      return next;
-    });
-  };
-
-  const handleRemovePersonaLorebookEntry = (idx: number) => {
-    setPersonaFormLorebookEntries((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleSavePersonaTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!personaFormName.trim()) return;
-
-    setPersonaSaving(true);
-    try {
-      const payload: any = {
-        name: personaFormName.trim(),
-        description: personaFormDescription.trim(),
-        personality: personaFormDescription.trim(),
-        scenario: personaFormScenario.trim(),
-        system_prompt: personaFormSystemPrompt.trim(),
-        post_history_instructions: personaFormPostHistoryInstructions.trim(),
-        first_mes: personaFormFirstMes.trim(),
-        alternate_greetings: personaFormAlternateGreetings.filter((g) => g.trim().length > 0),
-        voice: personaFormVoice,
-        picture: personaFormPicture || null,
-        num_ctx: Number(personaFormNumCtx) || 8192,
-        generation_settings: {
-          temperature: Number(personaFormTemperature),
-          top_p: Number(personaFormTopP),
-          top_k: Number(personaFormTopK),
-          repeat_penalty: Number(personaFormRepeatPenalty),
-          presence_penalty: Number(personaFormPresencePenalty),
-          frequency_penalty: Number(personaFormFrequencyPenalty),
-        },
-        character_book: {
-          name: `${personaFormName.trim()} Lorebook`,
-          entries: personaFormLorebookEntries.map((e) => ({
-            name: e.name.trim(),
-            keys: e.keys.split(",").map((k) => k.trim()).filter(Boolean),
-            content: e.content,
-            enabled: e.enabled !== false,
-          })),
-        },
-      };
-
-      let url = `${getApiUrl()}/personas`;
-      let method = "POST";
-
-      if (editingPersonaTemplate) {
-        url = `${getApiUrl()}/personas/${encodeURIComponent(editingPersonaTemplate.filename)}`;
-        method = "PUT";
-      }
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        setPersonaViewMode("list");
-        fetchPersonaTemplates();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || "Failed saving persona template");
-      }
-    } catch (err: any) {
-      console.error("Error saving persona template:", err);
-      alert(err.message || "Error saving template");
-    } finally {
-      setPersonaSaving(false);
-    }
-  };
-
-  const handleConfirmDeletePersonaTemplate = async () => {
-    if (!deletingPersonaTemplate) return;
-
-    try {
-      const filename = deletingPersonaTemplate.filename;
-      const res = await fetch(`${getApiUrl()}/personas/${encodeURIComponent(filename)}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        setDeletingPersonaTemplate(null);
-        fetchPersonaTemplates();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || "Failed deleting persona template");
-      }
-    } catch (err: any) {
-      console.error("Error deleting persona template:", err);
-      alert(err.message || "Error deleting template");
-    }
-  };
-
-  const handleApplyPersonaToModel = async (template: PersonaTemplate, targetModelId: string) => {
-    if (!targetModelId) return;
-    setIsApplyingPersona(true);
-    try {
-      const payload = {
-        id: targetModelId,
-        picture: template.picture || null,
-        voice: template.voice || "af_heart",
-        num_ctx: template.num_ctx ? Number(template.num_ctx) : undefined,
-        character: {
-          name: template.name,
-          description: template.description || "",
-          personality: template.description || "",
-          scenario: template.scenario || "",
-          system_prompt: template.system_prompt || "",
-          post_history_instructions: template.post_history_instructions || "",
-          first_mes: template.first_mes || "",
-          alternate_greetings: template.alternate_greetings || [],
-          character_book: template.character_book || null,
-          generation_settings: template.generation_settings || null,
-        },
-      };
-
-      const res = await fetch(`${getApiUrl()}/model-preferences`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        await fetchModelPreferences();
-        setApplyPersonaModalTemplate(null);
-        alert(`Successfully applied persona '${template.name}' to model '${targetModelId}'!`);
-      } else {
-        const errData = await res.json();
-        alert(errData.error || "Failed applying persona to model");
-      }
-    } catch (err: any) {
-      console.error("Error applying persona to model:", err);
-      alert(err.message || "Error applying persona to model");
-    } finally {
-      setIsApplyingPersona(false);
-    }
-  };
-
-  const handleOpenCreateLorebookModal = () => {
-    setEditingLorebookTemplate(null);
-    setLorebookFormName("");
-    setLorebookFormKeys("");
-    setLorebookFormContent("");
-    setLorebookFormFilename("");
-    setIsLorebookModalOpen(true);
-  };
-
-  const handleOpenEditLorebookModal = (template: LorebookTemplate) => {
-    setEditingLorebookTemplate(template);
-    setLorebookFormName(template.name);
-    setLorebookFormKeys(Array.isArray(template.keys) ? template.keys.join(", ") : "");
-    setLorebookFormContent(template.content || "");
-    setLorebookFormFilename(template.filename);
-    setIsLorebookModalOpen(true);
-  };
-
-  const handleSaveLorebookTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!lorebookFormName.trim()) return;
-
-    setLorebookSaving(true);
-    try {
-      const keysArray = lorebookFormKeys
-        .split(",")
-        .map((k) => k.trim())
-        .filter(Boolean);
-
-      const payload: any = {
-        name: lorebookFormName.trim(),
-        keys: keysArray,
-        content: lorebookFormContent,
-      };
-
-      let url = `${getApiUrl()}/lorebook`;
-      let method = "POST";
-
-      if (editingLorebookTemplate) {
-        url = `${getApiUrl()}/lorebook/${encodeURIComponent(editingLorebookTemplate.filename)}`;
-        method = "PUT";
-      } else if (lorebookFormFilename.trim()) {
-        payload.filename = lorebookFormFilename.trim();
-      }
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        setIsLorebookModalOpen(false);
-        fetchLorebookTemplates();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || "Failed saving lorebook template");
-      }
-    } catch (err: any) {
-      console.error("Error saving lorebook template:", err);
-      alert(err.message || "Error saving template");
-    } finally {
-      setLorebookSaving(false);
-    }
-  };
-
-  const [deletingLorebookTemplate, setDeletingLorebookTemplate] = useState<LorebookTemplate | null>(null);
-
-  const handleConfirmDeleteLorebookTemplate = async () => {
-    if (!deletingLorebookTemplate) return;
-
-    try {
-      const filename = deletingLorebookTemplate.filename;
-      const res = await fetch(`${getApiUrl()}/lorebook/${encodeURIComponent(filename)}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        setDeletingLorebookTemplate(null);
-        fetchLorebookTemplates();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || "Failed deleting template");
-      }
-    } catch (err: any) {
-      console.error("Error deleting template:", err);
-      alert(err.message || "Error deleting template");
-    }
-  };
-
-  // --- Instances Management State & Handlers ---
-  const [instanceSubView, setInstanceSubView] = useState<"list" | "select-type" | "form" | "instance-models" | "edit-model">("list");
-  const [selectedInstanceForModels, setSelectedInstanceForModels] = useState<InstanceItem | null>(null);
-  const [instanceModelsList, setInstanceModelsList] = useState<any[]>([]);
-  const [selectedInstanceType, setSelectedInstanceType] = useState<string>("Ollama");
-  const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
-
-  // Chat Instance & Model Selector State
-  const [selectedChatInstanceId, setSelectedChatInstanceId] = useState<string>("");
-  const [selectedChatModelId, setSelectedChatModelId] = useState<string>("");
-  const [isThinkingEnabled, setIsThinkingEnabled] = useState<boolean>(false);
-  const [isSelectModelModalOpen, setIsSelectModelModalOpen] = useState<boolean>(false);
-  const [modelModalSearchQuery, setModelModalSearchQuery] = useState<string>("");
-
-  // Chat Drag & Drop to Folders State & Handler
-  const [draggedChatId, setDraggedChatId] = useState<string | null>(null);
-  const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
-
-  // Import Chat State & Handlers
-  const [isImporting, setIsImporting] = useState<boolean>(false);
-  const [importStatusMessage, setImportStatusMessage] = useState<string>("");
-  const [isDraggingImport, setIsDraggingImport] = useState<boolean>(false);
-  const importFileInputRef = useRef<HTMLInputElement>(null);
-
-  const parseImportContent = (fileName: string, text: string): any[] => {
-    const cleanFileName = fileName.replace(/\.[^/.]+$/, "");
-    const trimmed = text.trim();
-
-    // 1. JSON Parsing
-    if (fileName.endsWith(".json") || trimmed.startsWith("{") || trimmed.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(text);
-        const results: any[] = [];
-
-        const processJsonObject = (obj: any): any | null => {
-          if (!obj || typeof obj !== "object") return null;
-
-          // ChatGPT export format (mapping object)
-          if (obj.mapping && typeof obj.mapping === "object") {
-            const title = obj.title || cleanFileName;
-            const msgs: any[] = [];
-            Object.values(obj.mapping).forEach((node: any) => {
-              const msg = node?.message;
-              if (msg && msg.content && Array.isArray(msg.content.parts)) {
-                const textParts = msg.content.parts.filter((p: any) => typeof p === "string").join("\n");
-                if (textParts.trim()) {
-                  const authorRole = msg.author?.role;
-                  const role = authorRole === "user" ? "user" : "assistant";
-                  msgs.push({
-                    role,
-                    content: textParts,
-                    model: msg.metadata?.model_slug,
-                    date_time: msg.create_time ? new Date(msg.create_time * 1000).toISOString() : undefined,
-                  });
-                }
-              }
-            });
-            return msgs.length > 0 ? { title, messages: msgs } : null;
-          }
-
-          // Claude export format (chat_messages array)
-          if (Array.isArray(obj.chat_messages)) {
-            const title = obj.name || obj.title || cleanFileName;
-            const msgs: any[] = obj.chat_messages
-              .map((m: any) => ({
-                role: m.sender === "human" || m.sender === "user" ? "user" : "assistant",
-                content: m.text || m.content || "",
-                date_time: m.created_at,
-              }))
-              .filter((m: any) => m.content.trim());
-            return msgs.length > 0 ? { title, messages: msgs } : null;
-          }
-
-          // Walpaca / Generic export format (messages array)
-          if (Array.isArray(obj.messages)) {
-            const title = obj.title || obj.name || cleanFileName;
-            const msgs: any[] = obj.messages
-              .map((m: any) => ({
-                role: m.role === "user" || m.isSelf ? "user" : "assistant",
-                content: m.content || "",
-                model: m.model,
-                date_time: m.time || m.date_time,
-                attachments: Array.isArray(m.attachments)
-                  ? m.attachments.map((a: any) => ({
-                      name: a.name || "attachment",
-                      type: a.type || "txt",
-                      content: a.content || "",
-                    }))
-                  : undefined,
-              }))
-              .filter((m: any) => m.content.trim() || (m.attachments && m.attachments.length > 0));
-            return msgs.length > 0 ? { title, messages: msgs } : null;
-          }
-
-          return null;
-        };
-
-        if (Array.isArray(parsed)) {
-          parsed.forEach((item) => {
-            const c = processJsonObject(item);
-            if (c) results.push(c);
-          });
-        } else {
-          const c = processJsonObject(parsed);
-          if (c) results.push(c);
-        }
-
-        if (results.length > 0) return results;
-      } catch (e) {
-        console.warn("JSON import parse warning:", e);
-      }
-    }
-
-    // 2. Markdown Parsing (.md / .markdown)
-    if (fileName.endsWith(".md") || fileName.endsWith(".markdown") || text.includes("# ") || text.includes("### ")) {
-      let title = cleanFileName;
-      const titleMatch = text.match(/^#\s+(.+)$/m);
-      if (titleMatch) {
-        title = titleMatch[1].trim();
-      }
-
-      const messages: any[] = [];
-      const sections = text.split(/(?=^###\s+|^----\s*$)/m);
-
-      sections.forEach((sec) => {
-        const headerMatch = sec.match(/^###\s+\*\*?([^*\n|]+)\*\*?(\s*\|\s*(.+))?/m);
-        if (headerMatch) {
-          const senderStr = headerMatch[1].trim();
-          const timeStr = headerMatch[3]?.trim();
-          const isUser = /user|you/i.test(senderStr);
-          const role: "user" | "assistant" = isUser ? "user" : "assistant";
-
-          let body = sec.replace(/^###\s+.+$/m, "").replace(/^----\s*$/m, "").trim();
-          const attachments: any[] = [];
-
-          // HTML details tags
-          body = body.replace(/<details>\s*<summary>.*?([^\/\s>]+)<\/summary>\s*```[\w]*\n([\s\S]*?)```\s*<\/details>/gi, (_, attName, attContent) => {
-            attachments.push({ name: attName.trim(), type: "txt", content: attContent.trim() });
-            return "";
-          });
-
-          // Obsidian callouts (> [!quote]- filename)
-          body = body.replace(/^>\s*\[!(?:quote|info)\]-?\s*(.+)\n((?:>\s*.*\n?)*)/gm, (_, attName, blockContent) => {
-            const cleanContent = blockContent.split("\n").map((l: string) => l.replace(/^>\s?/, "")).join("\n").trim();
-            attachments.push({ name: attName.trim(), type: "txt", content: cleanContent });
-            return "";
-          });
-
-          body = body.trim();
-          if (body || attachments.length > 0) {
-            messages.push({
-              role,
-              content: body,
-              model: !isUser && senderStr !== "Assistant" ? senderStr : undefined,
-              date_time: timeStr,
-              attachments: attachments.length > 0 ? attachments : undefined,
-            });
-          }
-        }
-      });
-
-      if (messages.length > 0) {
-        return [{ title, messages }];
-      }
-    }
-
-    // 3. Plain Text Parsing (.txt or fallback)
-    let title = cleanFileName;
-    const txtTitleMatch = text.match(/^===\s*(.+?)\s*===$/m);
-    if (txtTitleMatch) {
-      title = txtTitleMatch[1].trim();
-    }
-
-    const textLines = text.split("\n");
-    const messages: any[] = [];
-    let currentSender = "";
-    let currentTime = "";
-    let currentLines: string[] = [];
-
-    const flushMessage = () => {
-      if (currentSender && currentLines.length > 0) {
-        const isUser = /you|user/i.test(currentSender);
-        const content = currentLines.join("\n").trim();
-        if (content) {
-          messages.push({
-            role: isUser ? "user" : "assistant",
-            content,
-            model: !isUser && currentSender !== "Assistant" ? currentSender : undefined,
-            date_time: currentTime || undefined,
-          });
-        }
-      }
-      currentLines = [];
-    };
-
-    textLines.forEach((line) => {
-      const msgHeaderMatch = line.match(/^\[([^\]]+)\]\s*([^:\n]+):$/);
-      if (msgHeaderMatch) {
-        flushMessage();
-        currentTime = msgHeaderMatch[1].trim();
-        currentSender = msgHeaderMatch[2].trim();
-      } else if (line.trim() === "----------------------------------------") {
-        flushMessage();
-        currentSender = "";
-      } else if (!line.startsWith("===") && !line.startsWith("Generated from AlpacaWeb")) {
-        currentLines.push(line);
-      }
-    });
-    flushMessage();
-
-    if (messages.length > 0) {
-      return [{ title, messages }];
-    }
-
-    return [
-      {
-        title: cleanFileName,
-        messages: [{ role: "user", content: trimmed }],
-      },
-    ];
-  };
-
-  const handleImportFiles = async (files: FileList | File[]) => {
-    if (!files || files.length === 0) return;
-    setIsImporting(true);
-    setImportStatusMessage(`Reading ${files.length} file(s)...`);
-
-    try {
-      const allParsedChats: any[] = [];
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        setImportStatusMessage(`Parsing ${file.name}...`);
-        const text = await file.text();
-        const parsed = parseImportContent(file.name, text);
-        allParsedChats.push(...parsed);
-      }
-
-      if (allParsedChats.length === 0) {
-        setImportStatusMessage("No valid chat messages found in selected file(s).");
-        setIsImporting(false);
-        return;
-      }
-
-      setImportStatusMessage(`Importing ${allParsedChats.length} conversation(s)...`);
-      const res = await fetch(`${API_URL}/chats/import`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chats: allParsedChats }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to import chats");
-      }
-
-      const newChats = await res.json();
-      setImportStatusMessage(`Successfully imported ${newChats.length} conversation(s)!`);
-
-      const chatsRes = await fetch(`${API_URL}/chats`);
-      if (chatsRes.ok) {
-        const updatedList = await chatsRes.json();
-        setChatItems(updatedList.map(mapBackendChatToChatItem));
-      }
-
-      if (newChats.length > 0 && newChats[0].id) {
-        setActiveChatId(newChats[0].id);
-        setTimeout(() => {
-          setCurrentView("chat");
-        }, 800);
-      }
-    } catch (e: any) {
-      console.error("Import error:", e);
-      setImportStatusMessage(`Import failed: ${e.message || "Unknown error"}`);
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
-  const handleDropChatToFolder = async (chatId: string, targetFolderId: string | null) => {
-    setDragOverFolderTarget(null);
-    setDraggedChatId(null);
-    if (!chatId) return;
-
-    const targetFolderVal = (targetFolderId === "none" || !targetFolderId) ? null : targetFolderId;
-
-    setChatItems((prev) =>
-      prev.map((c) => (c.id === chatId ? { ...c, folder: targetFolderVal || undefined } : c))
-    );
-
-    try {
-      await fetch(`${API_URL}/chats/${chatId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folder: targetFolderVal }),
-      });
-    } catch (err) {
-      console.warn("Could not move chat to folder on backend:", err);
-    }
-  };
-
-  // Folder Context Menu & Action States
-  const [folderContextMenu, setFolderContextMenu] = useState<{
-    x: number;
-    y: number;
-    folderId: string;
-    folderName: string;
-  } | null>(null);
-  const [lineContextMenu, setLineContextMenu] = useState<{
-    x: number;
-    y: number;
-    msgId: string;
-    lineText: string;
-    lineIndex: number;
-    voice?: string;
-    fullContent: string;
-  } | null>(null);
-  const [renamingFolder, setRenamingFolder] = useState<{ id: string; name: string } | null>(null);
-  const [renameFolderNameInput, setRenameFolderNameInput] = useState<string>("");
-  const [deletingFolder, setDeletingFolder] = useState<{ id: string; name: string } | null>(null);
-
-  useEffect(() => {
-    const handleGlobalClick = () => {
-      setFolderContextMenu(null);
-      setLineContextMenu(null);
-    };
-    window.addEventListener("click", handleGlobalClick);
-    return () => window.removeEventListener("click", handleGlobalClick);
-  }, []);
-
-  const handleStartRenameFolder = (folderId: string, folderName: string) => {
-    setFolderContextMenu(null);
-    setRenamingFolder({ id: folderId, name: folderName });
-    setRenameFolderNameInput(folderName);
-  };
-
-  const handleConfirmRenameFolder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!renamingFolder || !renameFolderNameInput.trim()) return;
-    const { id } = renamingFolder;
-    const newName = renameFolderNameInput.trim();
-    setRenamingFolder(null);
-
-    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name: newName } : f)));
-
-    try {
-      await fetch(`${API_URL}/folders/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName }),
-      });
-    } catch (err) {
-      console.warn("Could not rename folder on backend:", err);
-    }
-  };
-
-  const handleStartDeleteFolder = (folderId: string, folderName: string) => {
-    setFolderContextMenu(null);
-    setDeletingFolder({ id: folderId, name: folderName });
-  };
-
-  const handleConfirmDeleteFolder = async () => {
-    if (!deletingFolder) return;
-    const { id } = deletingFolder;
-    setDeletingFolder(null);
-
-    setFolders((prev) => prev.filter((f) => f.id !== id));
-    if (activeTab === id) {
-      setActiveTab("none");
-    }
-
-    try {
-      await fetch(`${API_URL}/folders/${id}`, {
-        method: "DELETE",
-      });
-      fetchChats(activeTab === id ? "none" : activeTab);
-    } catch (err) {
-      console.warn("Could not delete folder on backend:", err);
-    }
-  };
-
-  // Inline Message Editing States & Handlers
-  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
-  const [editingMsgContent, setEditingMsgContent] = useState<string>("");
-  const [deletingMsg, setDeletingMsg] = useState<Message | null>(null);
-
-  const handleOpenForkModal = (msg: Message) => {
-    setForkTargetMsg(msg);
-    setIsForkModalOpen(true);
-  };
-
-  const handleConfirmForkChat = async () => {
-    if (!activeChatId || !forkTargetMsg?.id) {
-      setIsForkModalOpen(false);
-      return;
-    }
-
-    const targetMsgId = forkTargetMsg.id;
-    setIsForkModalOpen(false);
-    setForkTargetMsg(null);
-
-    try {
-      const res = await fetch(`${API_URL}/chats/${activeChatId}/fork`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message_id: targetMsgId }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to fork chat");
-      }
-
-      const newChat = await res.json();
-
-      const chatsRes = await fetch(`${API_URL}/chats`);
-      if (chatsRes.ok) {
-        const updatedList = await chatsRes.json();
-        setChatItems(updatedList.map(mapBackendChatToChatItem));
-      }
-
-      if (newChat && newChat.id) {
-        setActiveChatId(newChat.id);
-      }
-    } catch (e: any) {
-      console.error("Fork Chat Error:", e);
-    }
-  };
-
-  const handleStartInlineEdit = (msg: Message) => {
-    setEditingMsgId(msg.id);
-    setEditingMsgContent(msg.content);
-  };
-
-  const handleSaveInlineEdit = async () => {
-    if (!editingMsgId) return;
-    const updatedContent = editingMsgContent.trim();
-    const msgId = editingMsgId;
-
-    setMessages((prev) =>
-      prev.map((m) => (m.id === msgId ? { ...m, content: updatedContent } : m))
-    );
-    setEditingMsgId(null);
-    setEditingMsgContent("");
-
-    try {
-      await fetch(`${API_URL}/messages/${msgId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: updatedContent }),
-      });
-    } catch (err) {
-      console.warn("Could not update message content on backend:", err);
-    }
-  };
-
-  const handleOpenDeleteMessageModal = (msg: Message) => {
-    setDeletingMsg(msg);
-  };
-
-  const handleConfirmDeleteMessage = async () => {
-    if (!deletingMsg) return;
-    const msgId = deletingMsg.id;
-
-    setMessages((prev) => prev.filter((m) => m.id !== msgId));
-    setDeletingMsg(null);
-
-    try {
-      await fetch(`${API_URL}/messages/${msgId}`, {
-        method: "DELETE",
-      });
-    } catch (err) {
-      console.warn("Could not delete message on backend:", err);
-    }
-  };
-
-  const fetchModelsForInstance = async (instId: string) => {
-    if (!instId) return;
-    const data = await fetchInstanceModels(instId);
-    if (Array.isArray(data) && data.length > 0) {
-      setInstanceModelsList(data);
-      return;
-    }
-    const inst = instances.find((i) => i.id === instId);
-    if (inst) {
-      const instName = inst.properties?.name || inst.type;
-      setInstanceModelsList([
-        { id: `${inst.id}-m1`, name: `${instName} Model 1`, provider: inst.type, voice: "af_heart", context: "8,192 tokens" },
-        { id: `${inst.id}-m2`, name: `${instName} Model 2`, provider: inst.type, voice: "am_adam", context: "16,384 tokens" },
-      ]);
-    }
-  };
-
-  const handleOpenDuplicateModal = () => {
-    setIsChatContextMenuOpen(false);
-    setIsDuplicateModalOpen(true);
-  };
-
-  const handleConfirmDuplicateChat = async () => {
-    setIsDuplicateModalOpen(false);
-    const targetChat = chatItems.find((c) => c.id === activeChatId);
-    if (!targetChat) return;
-
-    const newId = `chat-${Date.now()}`;
-    const duplicateName = `${targetChat.name} (Copy)`;
-    const newChatObj: ChatItem = {
-      ...targetChat,
-      id: newId,
-      name: duplicateName,
-      time: "Just now",
-      unreadCount: undefined,
-    };
-
-    setChatItems((prev) => [newChatObj, ...prev]);
-    setActiveChatId(newId);
-    if (typeof window !== "undefined") {
-      window.history.pushState(null, "", `/?chat=${newId}`);
-    }
-
-    try {
-      await fetch(`${API_URL}/chats`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: newId,
-          name: duplicateName,
-          folder: targetChat.folder || null,
-        }),
-      });
-    } catch (err) {
-      console.warn("Could not duplicate chat on backend API:", err);
-    }
-  };
-
-  const handleOpenEditModelModal = (mod: any) => {
-    setEditingModel(mod);
-    const rawId = String(mod.id || '');
-    const prefKey = rawId.toLowerCase();
-    const pref = modelPreferences[rawId] || modelPreferences[prefKey];
-    setEditModelVoice(pref?.voice || mod.voice || 'af_heart');
-    setEditModelNumCtx(
-      pref?.num_ctx ??
-        (typeof mod.num_ctx === 'number'
-          ? mod.num_ctx
-          : mod.context
-          ? parseInt(String(mod.context).replace(/,/g, ''), 10) || 8192
-          : 8192)
-    );
-
-    const char = pref?.character || {};
-    const charData = char.data || char || {};
-
-    setEditModelName(getCharacterName(char) || (pref as any)?.name || mod.name || mod.id || '');
-    setEditModelDescription(charData.description || pref?.description || '');
-    setEditModelFirstMessage(charData.first_mes || charData.first_message || pref?.first_message || '');
-
-    const greetings = Array.isArray(charData.alternate_greetings)
-      ? charData.alternate_greetings
-      : Array.isArray(pref?.alternate_greetings)
-      ? pref.alternate_greetings
-      : [];
-    setEditModelAlternateGreetings(greetings);
-
-    let cbItems: Array<{ name: string; description: string; tags: string }> = [];
-    if (Array.isArray(charData.character_book?.entries)) {
-      cbItems = charData.character_book.entries.map((e: any) => ({
-        name: e.comment || e.name || '',
-        description: e.content || e.description || '',
-        tags: Array.isArray(e.keys)
-          ? e.keys.join(', ')
-          : Array.isArray(e.tags)
-          ? e.tags.join(', ')
-          : String(e.keys || e.tags || ''),
-      }));
-    } else if (Array.isArray(charData.character_book)) {
-      cbItems = charData.character_book.map((e: any) => ({
-        name: e.name || e.comment || '',
-        description: e.description || e.content || '',
-        tags: Array.isArray(e.tags)
-          ? e.tags.join(', ')
-          : Array.isArray(e.keys)
-          ? e.keys.join(', ')
-          : String(e.tags || e.keys || ''),
-      }));
-    }
-    setEditModelCharacterBook(cbItems);
-    setInstanceSubView("edit-model");
-  };
-
-  const handleAddGreeting = () => {
-    setEditModelAlternateGreetings([...editModelAlternateGreetings, '']);
-  };
-
-  const handleUpdateGreeting = (index: number, val: string) => {
-    setEditModelAlternateGreetings(editModelAlternateGreetings.map((g, i) => (i === index ? val : g)));
-  };
-
-  const handleRemoveGreeting = (index: number) => {
-    setEditModelAlternateGreetings(editModelAlternateGreetings.filter((_, i) => i !== index));
-  };
-
-  const handleAddBookItem = () => {
-    setEditModelCharacterBook([...editModelCharacterBook, { name: '', description: '', tags: '' }]);
-  };
-
-  const handleUpdateBookItem = (index: number, field: 'name' | 'description' | 'tags', val: string) => {
-    setEditModelCharacterBook(
-      editModelCharacterBook.map((item, i) => (i === index ? { ...item, [field]: val } : item))
-    );
-  };
-
-  const handleRemoveBookItem = (index: number) => {
-    setEditModelCharacterBook(editModelCharacterBook.filter((_, i) => i !== index));
-  };
-
-  const handleSaveEditModel = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingModel) return;
-
-    const rawId = String(editingModel.id || '');
-    const prefKey = rawId.toLowerCase();
-
-    const filteredGreetings = editModelAlternateGreetings.map((g) => g.trim()).filter(Boolean);
-    const formattedBookEntries = editModelCharacterBook.map((item) => {
-      const tagsArr = item.tags.split(',').map((t) => t.trim()).filter(Boolean);
-      return {
-        name: item.name.trim(),
-        comment: item.name.trim(),
-        description: item.description.trim(),
-        content: item.description.trim(),
-        keys: tagsArr,
-        tags: tagsArr,
-      };
-    });
-
-    const existingPref = modelPreferences[rawId] || modelPreferences[prefKey] || {};
-    const existingChar = existingPref.character || {};
-    const existingCharData = existingChar.data || {};
-
-    const updatedCharacter = {
-      ...existingChar,
-      data: {
-        ...existingCharData,
-        name: editModelName.trim(),
-        description: editModelDescription.trim(),
-        first_mes: editModelFirstMessage.trim(),
-        alternate_greetings: filteredGreetings,
-        character_book: {
-          ...(existingCharData.character_book || {}),
-          entries: formattedBookEntries,
-        },
-      },
-      name: editModelName.trim(),
-      description: editModelDescription.trim(),
-      first_message: editModelFirstMessage.trim(),
-      alternate_greetings: filteredGreetings,
-      character_book: formattedBookEntries.map((e) => ({
-        name: e.name,
-        description: e.description,
-        tags: e.tags,
-      })),
-    };
-
-    const updatedPref: ModelPreference = {
-      ...(existingPref || { id: rawId }),
-      id: rawId,
-      voice: editModelVoice,
-      num_ctx: editModelNumCtx,
-      character: updatedCharacter,
-    };
-
-    setStoreModelPreference(rawId, updatedPref);
-    setInstanceSubView("instance-models");
-
-    try {
-      await fetch(`${API_URL}/model-preferences`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: rawId,
-          voice: editModelVoice,
-          num_ctx: editModelNumCtx,
-          character: updatedCharacter,
-        }),
-      });
-    } catch (err) {
-      console.warn("Could not save model preference:", err);
-    }
-  };
-
-  const handleManageInstanceModels = async (inst: InstanceItem) => {
-    setSelectedInstanceForModels(inst);
-    setInstanceSubView("instance-models");
-
-    await fetchModelPreferences();
-    const data = await fetchInstanceModels(inst.id);
-    if (Array.isArray(data) && data.length > 0) {
-      setInstanceModelsList(data);
-      return;
-    }
-    const instName = inst.properties?.name || inst.type;
-    setInstanceModelsList([
-      { id: `${inst.id}-m1`, name: `${instName} Model 1`, provider: inst.type, voice: "af_heart", context: "8,192 tokens" },
-      { id: `${inst.id}-m2`, name: `${instName} Model 2`, provider: inst.type, voice: "am_adam", context: "16,384 tokens" },
-    ]);
-  };
-
-  // Instance Form fields matching user specs
-  const [instFormName, setInstFormName] = useState<string>("Instance");
-  const [instFormUrl, setInstFormUrl] = useState<string>("http://0.0.0.0:11434");
-  const [instFormApiKey, setInstFormApiKey] = useState<string>("");
-  const [showApiKeyText, setShowApiKeyText] = useState<boolean>(false);
-  const [instFormThink, setInstFormThink] = useState<boolean>(false);
-  const [instFormShareName, setInstFormShareName] = useState<number>(2); // 2 = Do Not Share
-  const [instFormShowMetadata, setInstFormShowMetadata] = useState<boolean>(false);
-  const [instFormAllowSsl, setInstFormAllowSsl] = useState<boolean>(false);
-  const [instFormOverrideParams, setInstFormOverrideParams] = useState<boolean>(true);
-  const [isOverrideAccordionOpen, setIsOverrideAccordionOpen] = useState<boolean>(true);
-  const [instFormTemp, setInstFormTemp] = useState<number>(0.70);
-  const [instFormSeed, setInstFormSeed] = useState<number>(0);
-  const [instFormNumCtx, setInstFormNumCtx] = useState<number>(16384);
-  const [instFormKeepAlivePreset, setInstFormKeepAlivePreset] = useState<string>("Set Timer");
-  const [instFormKeepAliveMinutes, setInstFormKeepAliveMinutes] = useState<number>(5);
-
-
-
-  const handleOpenAddInstanceModal = () => {
-    setInstanceSubView("select-type");
-  };
-
-  const handleSelectInstanceType = (typeLabel: string) => {
-    setSelectedInstanceType(typeLabel);
-    setEditingInstanceId(null); // Add mode
-
-    // Dynamic default values for new instance based on selected provider type
-    let defaultName = "Instance";
-    let defaultUrl = "http://0.0.0.0:11434";
-    if (typeLabel.includes("Ollama")) {
-      defaultName = "Ollama External";
-      defaultUrl = "http://0.0.0.0:11434";
-    } else if (typeLabel.includes("Ollama (Cloud)")) {
-      defaultName = "Ollama Cloud";
-      defaultUrl = "https://ollama.example.com";
-    } else if (typeLabel.includes("OpenAI")) {
-      defaultName = "OpenAI ChatGPT";
-      defaultUrl = "https://api.openai.com/v1";
-    } else if (typeLabel.includes("Gemini")) {
-      defaultName = "Google Gemini";
-      defaultUrl = "https://generativelanguage.googleapis.com";
-    } else if (typeLabel.includes("Anthropic")) {
-      defaultName = "Anthropic Claude";
-      defaultUrl = "https://api.anthropic.com";
-    } else if (typeLabel.includes("Deepseek")) {
-      defaultName = "Deepseek AI";
-      defaultUrl = "https://api.deepseek.com";
-    } else if (typeLabel.includes("Groq")) {
-      defaultName = "Groq Cloud";
-      defaultUrl = "https://api.groq.com/openai/v1";
-    } else if (typeLabel.includes("Together")) {
-      defaultName = "Together AI";
-      defaultUrl = "https://api.together.xyz/v1";
-    } else if (typeLabel.includes("Venice")) {
-      defaultName = "Venice AI";
-      defaultUrl = "https://api.venice.ai/api/v1";
-    } else if (typeLabel.includes("OpenRouter")) {
-      defaultName = "OpenRouter AI";
-      defaultUrl = "https://openrouter.ai/api/v1";
-    }
-
-    setInstFormName(defaultName);
-    setInstFormUrl(defaultUrl);
-    setInstFormApiKey("");
-    setShowApiKeyText(false);
-    setInstFormThink(false);
-    setInstFormShareName(2);
-    setInstFormShowMetadata(false);
-    setInstFormAllowSsl(false);
-    setInstFormOverrideParams(true);
-    setIsOverrideAccordionOpen(true);
-    setInstFormTemp(0.70);
-    setInstFormSeed(0);
-    setInstFormNumCtx(16384);
-    setInstFormKeepAlivePreset("Set Timer");
-    setInstFormKeepAliveMinutes(5);
-
-    setInstanceSubView("form");
-  };
-
-  const handleOpenEditInstanceModal = (inst: InstanceItem) => {
-    setEditingInstanceId(inst.id); // Edit mode - type is locked!
-    setSelectedInstanceType(
-      inst.type === "ollama"
-        ? "Ollama"
-        : inst.type === "openai"
-        ? "OpenAI ChatGPT"
-        : inst.type === "gemini"
-        ? "Google Gemini"
-        : inst.type === "anthropic"
-        ? "Anthropic"
-        : inst.type === "deepseek"
-        ? "Deepseek"
-        : inst.type === "groq"
-        ? "Groq Cloud"
-        : inst.type === "together"
-        ? "Together AI"
-        : inst.type === "venice"
-        ? "Venice"
-        : inst.type === "openrouter"
-        ? "OpenRouter AI"
-        : inst.type
-    );
-    setInstFormName(inst.properties?.name || "Instance");
-    setInstFormUrl(inst.properties?.url || "http://0.0.0.0:11434");
-    setInstFormApiKey(inst.properties?.api && inst.properties.api !== "NOKEY" ? inst.properties.api : "");
-    setShowApiKeyText(false);
-    setInstFormThink(Boolean(inst.properties?.think));
-    setInstFormShareName(inst.properties?.share_name ?? 2);
-    setInstFormShowMetadata(Boolean(inst.properties?.show_response_metadata));
-    setInstFormAllowSsl(Boolean(inst.properties?.allow_self_signed_ssl));
-    setInstFormOverrideParams(inst.properties?.override_parameters ?? true);
-    setIsOverrideAccordionOpen(true);
-    setInstFormTemp(inst.properties?.temperature ?? 0.70);
-    setInstFormSeed(inst.properties?.seed ?? 0);
-    setInstFormNumCtx(inst.properties?.num_ctx ?? 16384);
-    setInstFormKeepAliveMinutes(inst.properties?.keep_alive ?? 5);
-
-    setInstanceSubView("form");
-  };
-
-  const handleDeleteInstance = async (id: string) => {
-    setStoreInstances(instances.filter((item) => item.id !== id));
-    try {
-      await fetch(`${API_URL}/instances/${id}`, { method: "DELETE" });
-      fetchInstances(true);
-    } catch (err) {
-      console.warn("Could not delete instance:", err);
-    }
-  };
-
-  const handleSaveInstanceForm = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    let backendType = "ollama";
-    if (selectedInstanceType.includes("OpenAI")) backendType = "openai";
-    else if (selectedInstanceType.includes("Gemini")) backendType = "gemini";
-    else if (selectedInstanceType.includes("Anthropic")) backendType = "anthropic";
-    else if (selectedInstanceType.includes("Deepseek")) backendType = "deepseek";
-    else if (selectedInstanceType.includes("Groq")) backendType = "groq";
-    else if (selectedInstanceType.includes("Together")) backendType = "together";
-    else if (selectedInstanceType.includes("Venice")) backendType = "venice";
-    else if (selectedInstanceType.includes("OpenRouter")) backendType = "openrouter";
-
-    const payload = {
-      type: backendType,
-      pinned: false,
-      properties: {
-        name: instFormName.trim() || "Instance",
-        url: instFormUrl.trim() || "http://0.0.0.0:11434",
-        api: instFormApiKey.trim() || "NOKEY",
-        think: instFormThink,
-        share_name: Number(instFormShareName),
-        show_response_metadata: instFormShowMetadata,
-        allow_self_signed_ssl: instFormAllowSsl,
-        override_parameters: instFormOverrideParams,
-        temperature: Number(instFormTemp),
-        seed: Number(instFormSeed),
-        num_ctx: Number(instFormNumCtx),
-        keep_alive: Number(instFormKeepAliveMinutes),
-        default_model: null,
-        title_model: null,
-      },
-    };
-
-    if (editingInstanceId) {
-      setStoreInstances(
-        instances.map((inst) =>
-          inst.id === editingInstanceId ? { ...inst, type: backendType, properties: { ...inst.properties, ...payload.properties } } : inst
-        )
-      );
-      try {
-        await fetch(`${API_URL}/instances/${editingInstanceId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        fetchInstances(true);
-      } catch (err) {
-        console.warn("Could not update instance:", err);
-      }
-    } else {
-      const tempId = `inst-${Date.now()}`;
-      const newInst: InstanceItem = { id: tempId, pinned: false, type: backendType, properties: payload.properties };
-      setStoreInstances([...instances, newInst]);
-      try {
-        const res = await fetch(`${API_URL}/instances`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) {
-          fetchInstances(true);
-        }
-      } catch (err) {
-        console.warn("Could not create instance:", err);
-      }
-    }
-
-    setInstanceSubView("list");
-  };
-
-  // --- TTS Voice Playback State & Controls ---
-  const [ttsState, setTtsState] = useState<{
-    msgId: string | null;
-    status: "playing" | "paused" | "stopped";
-    lineIndex: number;
-  }>({ msgId: null, status: "stopped", lineIndex: -1 });
-
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const ttsStateRef = useRef(ttsState);
-
-  const updateTTSState = (
-    newState:
-      | { msgId: string | null; status: "playing" | "paused" | "stopped"; lineIndex: number }
-      | ((prev: { msgId: string | null; status: "playing" | "paused" | "stopped"; lineIndex: number }) => {
-          msgId: string | null;
-          status: "playing" | "paused" | "stopped";
-          lineIndex: number;
-        })
-  ) => {
-    if (typeof newState === "function") {
-      const next = newState(ttsStateRef.current);
-      ttsStateRef.current = next;
-      setTtsState(next);
-    } else {
-      ttsStateRef.current = newState;
-      setTtsState(newState);
-    }
-  };
-
-  const handleStopTTS = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
-    }
-    updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
-  };
-
-  const handlePauseTTS = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    updateTTSState((prev) => ({ ...prev, status: "paused" }));
-  };
-
-  const handleResumeTTS = () => {
-    if (audioRef.current) {
-      audioRef.current.play().catch(console.warn);
-    }
-    updateTTSState((prev) => ({ ...prev, status: "playing" }));
-  };
-
-  const fetchTTSBlob = async (text: string, voice: string, signal: AbortSignal): Promise<Blob | null> => {
-    try {
-      const res = await fetch(`${API_URL}/tts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          voice: voice || "af_heart",
-        }),
-        signal,
-      });
-      if (!res.ok) {
-        console.warn("TTS fetch returned status:", res.status);
-        return null;
-      }
-      return await res.blob();
-    } catch (err: any) {
-      if (err.name !== "AbortError") {
-        console.warn("TTS fetch error:", err);
-      }
-      return null;
-    }
-  };
-
-  const handlePlayTTS = async (msgId: string, content: string, voice?: string, fromLineIndex?: number) => {
-    if (ttsStateRef.current.msgId === msgId && ttsStateRef.current.status === "paused") {
-      handleResumeTTS();
-      return;
-    }
-
-    handleStopTTS();
-
-    const rawLines = content.split("\n");
-    const validLines: { origIndex: number; cleanText: string }[] = [];
-
-    rawLines.forEach((lineText, origIndex) => {
-      if (fromLineIndex !== undefined && origIndex < fromLineIndex) return;
-      const trimmed = lineText.trim();
-      if (!trimmed) return;
-
-      const cleanText = trimmed
-        .replace(/```[\s\S]*?```/g, "")
-        .replace(/`([^`]+)`/g, "$1")
-        .replace(/\*\*([^*]+)\*\*/g, "$1")
-        .replace(/\*([^*]+)\*/g, "$1")
-        .replace(/^#+\s*/gm, "")
-        .replace(/^>\s*/gm, "")
-        .replace(/^[-*+]\s+/gm, "")
-        .replace(/^\d+\.\s+/gm, "")
-        .replace(/\|/g, " ")
-        .trim();
-
-      if (cleanText) {
-        validLines.push({ origIndex, cleanText });
-      }
-    });
-
-    if (validLines.length === 0) return;
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    updateTTSState({ msgId, status: "playing", lineIndex: validLines[0].origIndex });
-
-    // Pipeline background audio fetches back-to-back immediately for all valid lines
-    const audioBlobPromises: Promise<Blob | null>[] = validLines.map((item) =>
-      fetchTTSBlob(item.cleanText, voice || "af_heart", controller.signal)
-    );
-
-    // Stream playback through pre-fetched audio blobs
-    for (let i = 0; i < validLines.length; i++) {
-      if (ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === "stopped") {
-        break;
-      }
-
-      const currentItem = validLines[i];
-      updateTTSState({ msgId, status: "playing", lineIndex: currentItem.origIndex });
-
-      const blob = await audioBlobPromises[i];
-      if (!blob || ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === "stopped") {
-        continue;
-      }
-
-      const audioUrl = URL.createObjectURL(blob);
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-
-      await new Promise<void>((resolve) => {
-        audio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
-          resolve();
-        };
-        audio.onerror = (e) => {
-          console.warn("Audio playback error:", e);
-          URL.revokeObjectURL(audioUrl);
-          resolve();
-        };
-
-        const checkAndPlay = () => {
-          const st = ttsStateRef.current.status;
-          if (st === "paused") {
-            const interval = setInterval(() => {
-              const currentSt = ttsStateRef.current.status;
-              if (currentSt === "playing" || (currentSt as string) === "stopped") {
-                clearInterval(interval);
-                if (currentSt === "playing") {
-                  audio.play().catch(resolve);
-                } else {
-                  resolve();
-                }
-              }
-            }, 100);
-          } else if (st === "stopped" || ttsStateRef.current.msgId !== msgId) {
-            resolve();
-          } else {
-            audio.play().catch((err) => {
-              console.warn("audio.play() error:", err);
-              resolve();
-            });
-          }
-        };
-
-        checkAndPlay();
-      });
-    }
-
-    if (ttsStateRef.current.msgId === msgId) {
-      updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
-    }
-  };
-
-  const handlePlayTTSLine = async (msgId: string, lineText: string, origIndex: number, voice?: string) => {
-    handleStopTTS();
-
-    const trimmed = lineText.trim();
-    if (!trimmed) return;
-
-    const cleanText = trimmed
-      .replace(/```[\s\S]*?```/g, "")
-      .replace(/`([^`]+)`/g, "$1")
-      .replace(/\*\*([^*]+)\*\*/g, "$1")
-      .replace(/\*([^*]+)\*/g, "$1")
-      .replace(/^#+\s*/gm, "")
-      .replace(/^>\s*/gm, "")
-      .replace(/^[-*+]\s+/gm, "")
-      .replace(/^\d+\.\s+/gm, "")
-      .replace(/\|/g, " ")
-      .trim();
-
-    if (!cleanText) return;
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    updateTTSState({ msgId, status: "playing", lineIndex: origIndex });
-
-    const blob = await fetchTTSBlob(cleanText, voice || "af_heart", controller.signal);
-    if (!blob || ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === "stopped") {
-      updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
-      return;
-    }
-
-    const audioUrl = URL.createObjectURL(blob);
-    const audio = new Audio(audioUrl);
-    audioRef.current = audio;
-
-    await new Promise<void>((resolve) => {
-      audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
-        resolve();
-      };
-      audio.onerror = (e) => {
-        console.warn("Audio playback error:", e);
-        URL.revokeObjectURL(audioUrl);
-        resolve();
-      };
-      audio.play().catch((err) => {
-        console.warn("audio.play() error:", err);
-        resolve();
-      });
-    });
-
-    if (ttsStateRef.current.msgId === msgId) {
-      updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
-    }
-  };
-
-  const getConversationParticipants = () => {
-    const map = new Map<string, { id: string; name: string; avatar: string; role: string }>();
-
-    map.set("user", {
-      id: "user",
-      name: "You",
-      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
-      role: "User",
-    });
-
-    messages.forEach((msg) => {
-      if (!msg.isSelf) {
-        const key = (msg.senderName || "").toLowerCase();
-        if (!map.has(key)) {
-          const pref = modelPreferences[key] || modelPreferences[msg.senderName || ""];
-          const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || DEFAULT_MODEL_AVATAR;
-          const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
-          const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
-          const roleLabel = isCharEnabled(pref?.character) ? "Character" : "AI Model";
-
-          map.set(key, {
-            id: key,
-            name: displayName,
-            avatar: avatarSrc,
-            role: roleLabel,
-          });
-        }
-      }
-    });
-
-    return Array.from(map.values());
-  };
-  const [activeTab, setActiveTab] = useState<string>("none");
-  const [activeChatId, setActiveChatId] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const chatParam = params.get("chat");
-      if (chatParam) return chatParam;
-    }
-    return "design-chat";
-  });
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [inputText, setInputText] = useState<string>("");
-  const [expandedSection, setExpandedSection] = useState<string>("photos");
-  const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState<boolean>(false);
-  const [isCreatingFolder, setIsCreatingFolder] = useState<boolean>(false);
-  const [newFolderName, setNewFolderName] = useState<string>("");
-
-  const handleOpenRenameModal = () => {
-    setIsChatContextMenuOpen(false);
-    const activeChat = chatItems.find((c) => c.id === activeChatId);
-    if (activeChat) {
-      setRenameInputVal(activeChat.name);
-      setIsRenameModalOpen(true);
-    }
-  };
-
-  const handleOpenDeleteModal = () => {
-    setIsChatContextMenuOpen(false);
-    setIsDeleteModalOpen(true);
-  };
-
-  const handleConfirmRenameChat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!renameInputVal.trim()) return;
-
-    const trimmed = renameInputVal.trim();
-    setIsRenameModalOpen(false);
-
-    setChatItems((prev) =>
-      prev.map((c) => (c.id === activeChatId ? { ...c, name: trimmed } : c))
-    );
-
-    try {
-      await fetch(`${API_URL}/chats/${activeChatId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
-      });
-    } catch (err) {
-      console.warn("Could not rename chat on backend API:", err);
-    }
-  };
-
-  const handleConfirmDeleteChat = async () => {
-    setIsDeleteModalOpen(false);
-    const deletedId = activeChatId;
-    const remaining = chatItems.filter((c) => c.id !== deletedId);
-
-    setChatItems(remaining);
-    setActiveChatId(remaining.length > 0 ? remaining[0].id : "");
-
-    try {
-      await fetch(`${API_URL}/chats/${deletedId}`, {
-        method: "DELETE",
-      });
-    } catch (err) {
-      console.warn("Could not delete chat on backend API:", err);
-    }
-  };
-
-  const handleOpenExportModal = () => {
-    setIsChatContextMenuOpen(false);
-    setIsExportModalOpen(true);
-  };
-
-  const handleExportChat = () => {
-    if (!messages || messages.length === 0) {
-      alert("No messages to export.");
-      return;
-    }
-
-    const currentChat = chatItems.find((c) => c.id === activeChatId);
-    const chatTitle = currentChat?.name || "Chat";
-    const safeTitle = chatTitle.replace(/[^a-zA-Z0-9_-]/g, "_");
-    let fileContent = "";
-    let mimeType = "text/plain";
-    let fileExt = "txt";
-
-    if (exportFormat === "json") {
-      mimeType = "application/json";
-      fileExt = "json";
-      const exportData = {
-        title: chatTitle,
-        exported_at: new Date().toISOString(),
-        messages: messages.map((m) => ({
-          id: m.id,
-          senderName: m.senderName,
-          role: m.isSelf ? "user" : m.senderRole || "assistant",
-          model: m.model,
-          content: m.content,
-          time: m.time,
-          image: m.image,
-          attachments: m.attachments,
-        })),
-      };
-      fileContent = JSON.stringify(exportData, null, 2);
-    } else if (exportFormat === "txt") {
-      mimeType = "text/plain";
-      fileExt = "txt";
-      const lines: string[] = [`=== ${chatTitle} ===\n`];
-      messages.forEach((m) => {
-        const sender = m.isSelf ? "You" : m.senderName || "Assistant";
-        lines.push(`[${m.time || ""}] ${sender}:`);
-        lines.push(m.content);
-        if (m.attachments && m.attachments.length > 0) {
-          m.attachments.forEach((att) => {
-            if (att.type !== "thought" && att.type !== "metadata") {
-              lines.push(`  [Attachment: ${att.name || att.type}]`);
-            }
-          });
-        }
-        lines.push("----------------------------------------");
-      });
-      lines.push("Generated from AlpacaWeb");
-      fileContent = lines.join("\n");
-    } else {
-      // Standard MD or Obsidian MD
-      mimeType = "text/markdown";
-      fileExt = "md";
-      const isObsidian = exportFormat === "obsidian";
-      const mdLines: string[] = [`# ${chatTitle}\n`];
-
-      messages.forEach((m) => {
-        const sender = m.isSelf ? "User" : m.senderName || "Assistant";
-        const timeStr = m.time || "";
-        mdLines.push(`### **${sender}** | ${timeStr}`);
-        mdLines.push(m.content);
-
-        if (m.image) {
-          mdLines.push(`![🖼️ Image](${m.image})`);
-        }
-
-        if (m.attachments && m.attachments.length > 0) {
-          m.attachments.forEach((att) => {
-            if (att.type === "thought" || att.type === "metadata") return;
-            const attName = att.name || "Attachment";
-            const attContent = att.content || "";
-            if (isObsidian) {
-              let block = `> [!quote]- ${attName}\n`;
-              attContent.split("\n").forEach((l) => {
-                block += `> ${l}\n`;
-              });
-              mdLines.push(block);
-            } else {
-              mdLines.push(
-                `<details>\n\n<summary>📄 ${attName}</summary>\n\n\`\`\`\n${attContent}\n\`\`\`\n\n</details>`
-              );
-            }
-          });
-        }
-        mdLines.push("----");
-      });
-      mdLines.push('Generated from [Walpaca](https://github.com/c42759/walpaca)');
-      fileContent = mdLines.join("\n\n");
-    }
-
-    const blob = new Blob([fileContent], { type: `${mimeType};charset=utf-8` });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${safeTitle}_Export.${fileExt}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    setIsExportModalOpen(false);
-  };
-
-  const getConversationAttachments = () => {
-    const photos: string[] = [];
-    const otherFiles: MessageAttachment[] = [];
-
-    messages.forEach((msg) => {
-      if (msg.image && !photos.includes(msg.image)) {
-        photos.push(msg.image);
-      }
-      if (msg.attachments && Array.isArray(msg.attachments)) {
-        msg.attachments.forEach((att) => {
-          const typeLower = (att.type || "").toLowerCase();
-          if (typeLower === "thought" || typeLower === "brain" || typeLower === "metadata" || typeLower === "data") {
-            return; // Ignore/hide thoughts and metadata from Attachments widget
-          }
-          if (isImageAttachment(att)) {
-            const src = getImageSrc(att);
-            if (src && !photos.includes(src)) {
-              photos.push(src);
-            }
-          } else {
-            otherFiles.push(att);
-          }
-        });
-      }
-    });
-
-    return { photos, otherFiles };
-  };
-
-
-  const [chatItems, setChatItems] = useState<ChatItem[]>(initialMockChatList);
-  const [messages, setMessages] = useState<Message[]>([]);
-
-  const API_URL = getApiUrl();
-
-  const fetchFolders = async () => {
-    try {
-      const res = await fetch(`${API_URL}/folders`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setFolders(data);
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn("Could not fetch folders from backend, fallback to initial default folders:", err);
-    }
-    setFolders([
-      { id: "work", name: "Work" },
-      { id: "friends", name: "Friends" },
-      { id: "news", name: "News" },
-      { id: "archive", name: "Archive" },
-    ]);
-  };
-
-  const fetchChats = async (folderId?: string) => {
-    try {
-      let url = `${API_URL}/chats`;
-      if (folderId && folderId !== "all") {
-        url += `?folder=${encodeURIComponent(folderId)}`;
-      }
-      const res = await fetch(url);
-      if (res.ok) {
-        const data: BackendChat[] = await res.json();
-        if (Array.isArray(data)) {
-          const mapped = data.map(mapBackendChatToChatItem);
-          setChatItems(mapped);
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn("Could not fetch chats from backend API, using current list:", err);
-    }
-  };
-
-
-
-  const fetchChatMessages = async (chatId: string) => {
-    try {
-      const res = await fetch(`${API_URL}/chats/${chatId}`);
-      if (res.ok) {
-        const data: BackendChat = await res.json();
-        const rawMsgs = Array.isArray(data.messages) ? data.messages : [];
-        setMessages(rawMsgs.map((m) => mapBackendMsgToMessage(m, modelPreferences)));
-      } else {
-        setMessages([]);
-      }
-    } catch (err) {
-      console.warn("Could not fetch chat messages from backend API:", err);
-      setMessages([]);
-    }
-  };
-
-  useEffect(() => {
-    fetchFolders();
-    fetchModelPreferences();
-    fetchInstances();
-
-    const handlePopState = () => {
-      if (typeof window !== "undefined") {
-        const params = new URLSearchParams(window.location.search);
-        const chatParam = params.get("chat");
-        if (chatParam) {
-          setActiveChatId(chatParam);
-        }
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
-  useEffect(() => {
-    fetchChats(activeTab);
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (activeChatId) {
-      setMessages([]);
-      fetchChatMessages(activeChatId);
-      if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        if (url.searchParams.get("chat") !== activeChatId) {
-          url.searchParams.set("chat", activeChatId);
-          window.history.pushState({}, "", url.toString());
-        }
-      }
-    } else {
-      setMessages([]);
-    }
-  }, [activeChatId]);
-
-  useEffect(() => {
-    if (activeChatId) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
-    }
-  }, [messages, activeChatId]);
-
-  // Requirement 1: Auto-select Instance if only 1 exists or unselected
-  useEffect(() => {
-    if (instances.length > 0) {
-      if (instances.length === 1 || !selectedChatInstanceId) {
-        const defaultInstId = instances[0].id;
-        setSelectedChatInstanceId(defaultInstId);
-        fetchModelsForInstance(defaultInstId);
-      }
-    }
-  }, [instances]);
-
-  // Requirement 2: Auto-select Model/Preference if only 1 exists or unselected
-  useEffect(() => {
-    const prefs = Array.from(new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values());
-    const options = [...prefs.map((p) => p.id), ...instanceModelsList.map((m) => m.id)];
-    if (options.length === 1 || (!selectedChatModelId && options.length > 0)) {
-      setSelectedChatModelId(options[0]);
-    }
-  }, [instanceModelsList, modelPreferences, selectedChatInstanceId]);
-
-  // Requirement 3: Auto-select Instance & Model based on last assistant message in active chat
-  useEffect(() => {
-    if (!messages || messages.length === 0) return;
-
-    const lastAssistantMsg = [...messages].reverse().find(
-      (m) => !m.isSelf && (m.senderRole === "assistant" || m.senderName !== "You" || m.model)
-    );
-
-    if (lastAssistantMsg) {
-      const targetModelIdentifier = String(lastAssistantMsg.model || lastAssistantMsg.senderName || "").trim();
-      if (targetModelIdentifier) {
-        const prefsList = Array.from(
-          new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()
-        );
-        const matchingPref = prefsList.find(
-          (p) =>
-            p.id.toLowerCase() === targetModelIdentifier.toLowerCase() ||
-            (getCharacterName(p.character) && getCharacterName(p.character)?.toLowerCase() === targetModelIdentifier.toLowerCase())
-        );
-
-        if (matchingPref) {
-          setSelectedChatModelId(matchingPref.id);
-        } else {
-          const matchingMod = instanceModelsList.find(
-            (m) =>
-              String(m.id || "").toLowerCase() === targetModelIdentifier.toLowerCase() ||
-              String(m.name || "").toLowerCase() === targetModelIdentifier.toLowerCase()
-          );
-          if (matchingMod) {
-            setSelectedChatModelId(matchingMod.id);
-          }
-        }
-
-        if ((lastAssistantMsg as any).instanceId) {
-          const matchingInst = instances.find((inst) => inst.id === (lastAssistantMsg as any).instanceId);
-          if (matchingInst) {
-            setSelectedChatInstanceId(matchingInst.id);
-            fetchModelsForInstance(matchingInst.id);
-          }
-        }
-      }
-    }
-  }, [messages, activeChatId]);
-
-  const handleCreateFolderSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFolderName.trim()) return;
-
-    const name = newFolderName.trim();
-    try {
-      const res = await fetch(`${API_URL}/folders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      if (res.ok) {
-        const created: ChatFolder = await res.json();
-        setFolders((prev) => [...prev, created]);
-        setActiveTab(created.id);
-      } else {
-        const localFolder: ChatFolder = { id: `folder-${Date.now()}`, name };
-        setFolders((prev) => [...prev, localFolder]);
-        setActiveTab(localFolder.id);
-      }
-    } catch (err) {
-      const localFolder: ChatFolder = { id: `folder-${Date.now()}`, name };
-      setFolders((prev) => [...prev, localFolder]);
-      setActiveTab(localFolder.id);
-    }
-
-    setNewFolderName("");
-    setIsCreatingFolder(false);
-  };
-
-  const handleOpenNewChatModal = () => {
-    setNewChatTitleInput("New Chat");
-    setIsNewChatModalOpen(true);
-  };
-
-  const handleConfirmCreateNewChat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newChatTitleInput.trim()) return;
-
-    const chatName = newChatTitleInput.trim();
-    setIsNewChatModalOpen(false);
-
-    try {
-      const res = await fetch(`${API_URL}/chats`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: chatName,
-          folder: (activeTab !== "none" && activeTab !== "all") ? activeTab : null,
-        }),
-      });
-      if (res.ok) {
-        const created: BackendChat = await res.json();
-        const mapped = mapBackendChatToChatItem(created);
-        setChatItems((prev) => [mapped, ...prev]);
-        setActiveChatId(created.id);
-      } else {
-        const localChat: ChatItem = {
-          id: `chat-${Date.now()}`,
-          name: chatName,
-          avatarText: chatName.slice(0, 2).toUpperCase(),
-          lastMessage: "New chat started",
-          time: "now",
-        };
-        setChatItems((prev) => [localChat, ...prev]);
-        setActiveChatId(localChat.id);
-      }
-    } catch (err) {
-      const localChat: ChatItem = {
-        id: `chat-${Date.now()}`,
-        name: chatName,
-        avatarText: chatName.slice(0, 2).toUpperCase(),
-        lastMessage: "New chat started",
-        time: "now",
-      };
-      setChatItems((prev) => [localChat, ...prev]);
-      setActiveChatId(localChat.id);
-    }
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim() && selectedAttachments.length === 0) return;
-
-    const content = inputText.trim();
-    const currentAttachments = [...selectedAttachments];
-    setInputText("");
-    setSelectedAttachments([]);
-
-    if (promptTextareaRef.current) {
-      promptTextareaRef.current.style.height = "auto";
-      promptTextareaRef.current.style.overflowY = "hidden";
-    }
-
-    const attachmentsPayload: MessageAttachment[] = currentAttachments.map((att, idx) => ({
-      id: att.id || `att-${Date.now()}-${idx}`,
-      type: att.type,
-      name: att.name,
-      content: att.content,
-    }));
-
-    const firstImage = currentAttachments.find((a) => a.type === "image")?.content;
-
-    const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-    const userMsg: Message = {
-      id: `msg-${Date.now()}`,
-      senderName: "You",
-      senderAvatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
-      isSelf: true,
-      content,
-      time: nowStr,
-      image: firstImage,
-      attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-
-    // Save user message to backend
-    if (activeChatId) {
-      try {
-        await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            role: "user",
-            content,
-            model: selectedChatModelId,
-            instance_id: selectedChatInstanceId,
-            attachments: attachmentsPayload,
-          }),
-        });
-      } catch (err) {
-        console.warn("Could not post user message to backend API:", err);
-      }
-    }
-
-    await handleCallForAnswer();
-  };
-
-  const handleCallForAnswer = async () => {
-    // Determine Assistant Metadata & System Prompt
-    const selectedPrefKey = (selectedChatModelId || "").toLowerCase();
-    const selectedPref =
-      modelPreferences[selectedChatModelId] ||
-      modelPreferences[selectedPrefKey] ||
-      Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
-
-    let assistantName = "Assistant";
-    let assistantAvatar = DEFAULT_MODEL_AVATAR;
-    let systemPrompt = "";
-
-    if (selectedPref) {
-      const char = selectedPref.character || {};
-      const charData = char.data || char || {};
-      assistantName = getCharacterName(char) || (selectedPref as any).name || selectedPref.id;
-      if (selectedPref.picture) {
-        assistantAvatar = formatAvatarPicture(selectedPref.picture) || assistantAvatar;
-      }
-      systemPrompt =
-        charData.system_prompt ||
-        charData.personality ||
-        charData.description ||
-        selectedPref.description ||
-        "";
-    } else if (selectedChatModelId) {
-      const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
-      if (instMod) {
-        assistantName = instMod.name || instMod.id;
-      } else {
-        assistantName = selectedChatModelId;
-      }
-    }
-
-    const assistantMsgId = `msg-${Date.now()}`;
-    const assistantMsg: Message = {
-      id: assistantMsgId,
-      senderName: assistantName,
-      senderAvatar: assistantAvatar,
-      senderRole: "assistant",
-      model: selectedChatModelId,
-      instanceId: selectedChatInstanceId,
-      isSelf: false,
-      content: "",
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
-    };
-
-    setMessages((prev) => [...prev, assistantMsg]);
-
-    let fullResponseText = "";
-    const genUrl = activeChatId ? `${API_URL}/chats/${activeChatId}/generate` : `${API_URL}/generate`;
-
-    try {
-      const genRes = await fetch(genUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: selectedChatModelId,
-          instance_id: selectedChatInstanceId,
-          system: systemPrompt || undefined,
-          think: isThinkingEnabled,
-        }),
-      });
-
-      if (genRes.ok && genRes.body) {
-        const reader = genRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || !trimmed.startsWith("data: ")) continue;
-            const dataStr = trimmed.slice(6).trim();
-            if (dataStr === "[DONE]") continue;
-
-            try {
-              const parsed = JSON.parse(dataStr);
-              if (parsed.id) {
-                const serverId = parsed.id;
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantMsgId ? { ...m, id: serverId } : m))
-                );
-              }
-              if (parsed.thinking) {
-                const thinkChunk = parsed.thinking;
-                setMessages((prev) =>
-                  prev.map((m) => {
-                    if (m.id === assistantMsgId || m.id === parsed.id) {
-                      const existingAtts = m.attachments || [];
-                      const thoughtIdx = existingAtts.findIndex(
-                        (a) => a.type?.toLowerCase() === "thought" || a.type?.toLowerCase() === "brain"
-                      );
-                      let updatedAtts = [...existingAtts];
-                      if (thoughtIdx >= 0) {
-                        updatedAtts[thoughtIdx] = {
-                          ...updatedAtts[thoughtIdx],
-                          content: updatedAtts[thoughtIdx].content + thinkChunk,
-                        };
-                      } else {
-                        updatedAtts.push({
-                          id: `thought-${Date.now()}`,
-                          type: "thought",
-                          name: "Thought",
-                          content: thinkChunk,
-                        });
-                      }
-                      return { ...m, attachments: updatedAtts };
-                    }
-                    return m;
-                  })
-                );
-              }
-              if (parsed.metadata) {
-                const metaContent = parsed.metadata;
-                setMessages((prev) =>
-                  prev.map((m) => {
-                    if (m.id === assistantMsgId || m.id === parsed.id) {
-                      const existingAtts = m.attachments || [];
-                      const metaIdx = existingAtts.findIndex(
-                        (a) => a.type?.toLowerCase() === "metadata" || a.type?.toLowerCase() === "data"
-                      );
-                      let updatedAtts = [...existingAtts];
-                      if (metaIdx >= 0) {
-                        updatedAtts[metaIdx] = {
-                          ...updatedAtts[metaIdx],
-                          content: metaContent,
-                        };
-                      } else {
-                        updatedAtts.push({
-                          id: `meta-${Date.now()}`,
-                          type: "metadata",
-                          name: "Metadata",
-                          content: metaContent,
-                        });
-                      }
-                      return { ...m, attachments: updatedAtts };
-                    }
-                    return m;
-                  })
-                );
-              }
-              if (parsed.content) {
-                fullResponseText += parsed.content;
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantMsgId || m.id === parsed.id ? { ...m, content: m.content + parsed.content } : m))
-                );
-              }
-            } catch {
-              if (dataStr && !dataStr.startsWith("{")) {
-                fullResponseText += dataStr;
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantMsgId ? { ...m, content: m.content + dataStr } : m))
-                );
-              }
-            }
-          }
-        }
-        playNotificationSound();
-      }
-    } catch (err) {
-      console.warn("Error during LLM response generation:", err);
-    }
-  };
-
-  const handleUseCharacterFirstMes = async () => {
-    if (!activeChatId || !selectedChatModelId) return;
-    const prefKey = selectedChatModelId.toLowerCase();
-    const pref =
-      modelPreferences[selectedChatModelId] ||
-      modelPreferences[prefKey] ||
-      Object.values(modelPreferences).find((p) => p.id.toLowerCase() === prefKey);
-
-    if (!pref) return;
-    const char = pref.character || {};
-    const charData = char.data || char || {};
-    const firstMes = (charData.first_mes || charData.first_message || pref.first_message || '').trim();
-
-    if (!firstMes) return;
-
-    const charName = getCharacterName(char) || (pref as any).name || pref.id;
-    const avatarSrc = formatAvatarPicture(pref.picture);
-    const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-
-    const newMsg: Message = {
-      id: `msg-${Date.now()}`,
-      senderName: charName,
-      senderAvatar: avatarSrc,
-      senderRole: "assistant",
-      model: selectedChatModelId,
-      instanceId: selectedChatInstanceId,
-      isSelf: false,
-      content: firstMes,
-      time: nowStr,
-    };
-
-    setMessages((prev) => [...prev, newMsg]);
-
-    try {
-      await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role: "assistant",
-          content: firstMes,
-          model: selectedChatModelId,
-          instance_id: selectedChatInstanceId,
-        }),
-      });
-    } catch (err) {
-      console.warn("Could not post character first message to backend API:", err);
-    }
-  };
-
-  const handleGoToRoot = () => {
-    setCurrentView("chat");
-    setActiveTab("all");
-    setActiveChatId("");
-    setMessages([]);
-    if (typeof window !== "undefined") {
-      window.history.pushState(null, "", "/");
-    }
-  };
-
-  return (
-		<main className='topo-bg min-h-screen w-screen flex justify-center font-sans antialiased text-[#202022] box-border'>
+	const messagesEndRef = useRef<HTMLDivElement>(null);
+	const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const fileInputRef = useRef<HTMLInputElement | null>(null);
+	const [selectedAttachments, setSelectedAttachments] = useState<SelectedAttachment[]>([]);
+
+	const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const files = e.target.files;
+		if (!files || files.length === 0) return;
+
+		const currentCount = selectedAttachments.length;
+		const maxAllowed = 4;
+		const remaining = maxAllowed - currentCount;
+
+		if (remaining <= 0) {
+			alert('Maximum limit of 4 attachments (images or document files) reached.');
+			if (e.target) e.target.value = '';
+			return;
+		}
+
+		const selectedFiles = Array.from(files).slice(0, remaining);
+		if (files.length > remaining) {
+			alert(`Only ${remaining} more attachment(s) allowed (limit is 4 total).`);
+		}
+
+		const readPromises = selectedFiles.map((file) => {
+			return new Promise<SelectedAttachment>((resolve, reject) => {
+				const reader = new FileReader();
+				const attType = getAttachmentType(file.name, file.type);
+				const ext = file.name.split('.').pop()?.toLowerCase() || 'txt';
+
+				reader.onload = () => {
+					if (typeof reader.result === 'string') {
+						resolve({
+							id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+							name: file.name,
+							type: attType,
+							content: reader.result,
+							size: file.size,
+							extension: ext,
+						});
+					} else {
+						reject(new Error('Failed to read file'));
+					}
+				};
+				reader.onerror = () => reject(reader.error);
+
+				if (attType === 'image') {
+					reader.readAsDataURL(file);
+				} else {
+					reader.readAsText(file);
+				}
+			});
+		});
+
+		Promise.all(readPromises)
+			.then((newAtts) => {
+				setSelectedAttachments((prev) => [...prev, ...newAtts].slice(0, maxAllowed));
+			})
+			.catch((err) => {
+				console.error('Error reading attached files:', err);
+			});
+
+		if (e.target) e.target.value = '';
+	};
+
+	const handleRemoveSelectedAttachment = (indexToRemove: number) => {
+		setSelectedAttachments((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+	};
+
+	const [folders, setFolders] = useState<ChatFolder[]>([]);
+
+	// Zustand Store Integration for long-lived data caching
+	const {
+		instances,
+		modelPreferences,
+		fetchInstances,
+		fetchModelPreferences,
+		fetchInstanceModels,
+		setInstances: setStoreInstances,
+		setModelPreference: setStoreModelPreference,
+		removeModelPreference: storeRemoveModelPreference,
+	} = useAppStore();
+
+	const [activeAttachmentModal, setActiveAttachmentModal] = useState<{ title: string; type: string; content: string } | null>(null);
+	const [activeImageModal, setActiveImageModal] = useState<{ src: string; title?: string } | null>(null);
+	const [isChatContextMenuOpen, setIsChatContextMenuOpen] = useState<boolean>(false);
+	const [isRenameModalOpen, setIsRenameModalOpen] = useState<boolean>(false);
+	const [renameInputVal, setRenameInputVal] = useState<string>('');
+	const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+	const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState<boolean>(false);
+	const [isForkModalOpen, setIsForkModalOpen] = useState<boolean>(false);
+	const [forkTargetMsg, setForkTargetMsg] = useState<Message | null>(null);
+	const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+	const [exportFormat, setExportFormat] = useState<'md' | 'obsidian' | 'json' | 'txt'>('md');
+	const [editingModel, setEditingModel] = useState<any | null>(null);
+	const [editModelVoice, setEditModelVoice] = useState<string>('af_heart');
+	const [editModelNumCtx, setEditModelNumCtx] = useState<number>(8192);
+	const [editModelName, setEditModelName] = useState<string>('');
+	const [editModelDescription, setEditModelDescription] = useState<string>('');
+	const [editModelFirstMessage, setEditModelFirstMessage] = useState<string>('');
+	const [editModelAlternateGreetings, setEditModelAlternateGreetings] = useState<string[]>([]);
+	const [editModelCharacterBook, setEditModelCharacterBook] = useState<Array<{ name: string; description: string; tags: string }>>([]);
+	const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
+	const [newChatTitleInput, setNewChatTitleInput] = useState<string>('New Chat');
+	const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
+	const [activeSettingsCategory, setActiveSettingsCategory] = useState<
+		'import-chat' | 'manage-instances' | 'preferences' | 'manage-lorebook' | 'manage-personas' | 'about-walpaca'
+	>('import-chat');
+
+	// --- Manage Lorebook State & Handlers ---
+	const [lorebookTemplates, setLorebookTemplates] = useState<LorebookTemplate[]>([]);
+	const [isLorebookLoading, setIsLorebookLoading] = useState<boolean>(false);
+	const [lorebookSearchQuery, setLorebookSearchQuery] = useState<string>('');
+	const [isLorebookModalOpen, setIsLorebookModalOpen] = useState<boolean>(false);
+	const [editingLorebookTemplate, setEditingLorebookTemplate] = useState<LorebookTemplate | null>(null);
+	const [lorebookFormName, setLorebookFormName] = useState<string>('');
+	const [lorebookFormKeys, setLorebookFormKeys] = useState<string>('');
+	const [lorebookFormContent, setLorebookFormContent] = useState<string>('');
+	const [lorebookFormFilename, setLorebookFormFilename] = useState<string>('');
+	const [lorebookSaving, setLorebookSaving] = useState<boolean>(false);
+
+	const fetchLorebookTemplates = useCallback(async () => {
+		setIsLorebookLoading(true);
+		try {
+			const res = await fetch(`${getApiUrl()}/lorebook`);
+			if (res.ok) {
+				const data = await res.json();
+				setLorebookTemplates(Array.isArray(data) ? data : []);
+			}
+		} catch (err) {
+			console.error('Failed fetching lorebook templates:', err);
+		} finally {
+			setIsLorebookLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		fetchLorebookTemplates();
+	}, [fetchLorebookTemplates]);
+
+	useEffect(() => {
+		if (currentView === 'settings' && activeSettingsCategory === 'manage-lorebook') {
+			fetchLorebookTemplates();
+		}
+	}, [currentView, activeSettingsCategory, fetchLorebookTemplates]);
+
+	// --- Manage Personas State & Handlers ---
+	const [personaTemplates, setPersonaTemplates] = useState<PersonaTemplate[]>([]);
+	const [isPersonaLoading, setIsPersonaLoading] = useState<boolean>(false);
+	const [personaSearchQuery, setPersonaSearchQuery] = useState<string>('');
+	const [personaViewMode, setPersonaViewMode] = useState<'list' | 'editor'>('list');
+	const [editingPersonaTemplate, setEditingPersonaTemplate] = useState<PersonaTemplate | null>(null);
+
+	// Persona Editor Form State
+	const [personaFormName, setPersonaFormName] = useState<string>('');
+	const [personaFormDescription, setPersonaFormDescription] = useState<string>('');
+	const [personaFormScenario, setPersonaFormScenario] = useState<string>('');
+	const [personaFormSystemPrompt, setPersonaFormSystemPrompt] = useState<string>('');
+	const [personaFormPostHistoryInstructions, setPersonaFormPostHistoryInstructions] = useState<string>('');
+	const [personaFormFirstMes, setPersonaFormFirstMes] = useState<string>('');
+	const [personaFormAlternateGreetings, setPersonaFormAlternateGreetings] = useState<string[]>([]);
+	const [personaFormVoice, setPersonaFormVoice] = useState<string>('af_heart');
+	const [personaFormPicture, setPersonaFormPicture] = useState<string>('');
+	const [personaFormNumCtx, setPersonaFormNumCtx] = useState<number>(8192);
+	const [personaFormTemperature, setPersonaFormTemperature] = useState<number>(0.7);
+	const [personaFormTopP, setPersonaFormTopP] = useState<number>(0.9);
+	const [personaFormTopK, setPersonaFormTopK] = useState<number>(40);
+	const [personaFormRepeatPenalty, setPersonaFormRepeatPenalty] = useState<number>(1.1);
+	const [personaFormPresencePenalty, setPersonaFormPresencePenalty] = useState<number>(0.0);
+	const [personaFormFrequencyPenalty, setPersonaFormFrequencyPenalty] = useState<number>(0.0);
+	const [personaFormLorebookEntries, setPersonaFormLorebookEntries] = useState<Array<{ name: string; keys: string; content: string; enabled: boolean }>>([]);
+	const [personaAvatarPreview, setPersonaAvatarPreview] = useState<string>('');
+	const [isUploadingPersonaAvatar, setIsUploadingPersonaAvatar] = useState<boolean>(false);
+
+	const [personaSaving, setPersonaSaving] = useState<boolean>(false);
+	const [deletingPersonaTemplate, setDeletingPersonaTemplate] = useState<PersonaTemplate | null>(null);
+
+	// Apply Persona to Model Modal state
+	const [applyPersonaModalTemplate, setApplyPersonaModalTemplate] = useState<PersonaTemplate | null>(null);
+	const [applyPersonaSelectedModelId, setApplyPersonaSelectedModelId] = useState<string>('');
+	const [isApplyingPersona, setIsApplyingPersona] = useState<boolean>(false);
+
+	const fetchPersonaTemplates = useCallback(async () => {
+		setIsPersonaLoading(true);
+		try {
+			const res = await fetch(`${getApiUrl()}/personas`);
+			if (res.ok) {
+				const data = await res.json();
+				setPersonaTemplates(Array.isArray(data) ? data : []);
+			}
+		} catch (err) {
+			console.error('Failed fetching persona templates:', err);
+		} finally {
+			setIsPersonaLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		fetchPersonaTemplates();
+	}, [fetchPersonaTemplates]);
+
+	useEffect(() => {
+		if (currentView === 'settings' && activeSettingsCategory === 'manage-personas') {
+			fetchPersonaTemplates();
+		}
+	}, [currentView, activeSettingsCategory, fetchPersonaTemplates]);
+
+	const handleOpenCreatePersonaEditor = () => {
+		setEditingPersonaTemplate(null);
+		setPersonaFormName('');
+		setPersonaFormDescription('');
+		setPersonaFormScenario('');
+		setPersonaFormSystemPrompt('');
+		setPersonaFormPostHistoryInstructions('');
+		setPersonaFormFirstMes('');
+		setPersonaFormAlternateGreetings([]);
+		setPersonaFormVoice('af_heart');
+		setPersonaFormPicture('');
+		setPersonaAvatarPreview('');
+		setPersonaFormNumCtx(8192);
+		setPersonaFormTemperature(0.7);
+		setPersonaFormTopP(0.9);
+		setPersonaFormTopK(40);
+		setPersonaFormRepeatPenalty(1.1);
+		setPersonaFormPresencePenalty(0.0);
+		setPersonaFormFrequencyPenalty(0.0);
+		setPersonaFormLorebookEntries([]);
+		setPersonaViewMode('editor');
+	};
+
+	const handleOpenEditPersonaEditor = (template: PersonaTemplate) => {
+		setEditingPersonaTemplate(template);
+		setPersonaFormName(template.name || '');
+		setPersonaFormDescription(template.description || template.personality || '');
+		setPersonaFormScenario(template.scenario || '');
+		setPersonaFormSystemPrompt(template.system_prompt || '');
+		setPersonaFormPostHistoryInstructions(template.post_history_instructions || '');
+		setPersonaFormFirstMes(template.first_mes || template.greeting || '');
+		setPersonaFormAlternateGreetings(Array.isArray(template.alternate_greetings) ? [...template.alternate_greetings] : []);
+		setPersonaFormVoice(template.voice || 'af_heart');
+		setPersonaFormPicture(template.picture || '');
+		setPersonaAvatarPreview(template.picture || '');
+		setPersonaFormNumCtx(template.num_ctx || 8192);
+		setPersonaFormTemperature(template.generation_settings?.temperature ?? template.temperature ?? 0.7);
+		setPersonaFormTopP(template.generation_settings?.top_p ?? template.top_p ?? 0.9);
+		setPersonaFormTopK(template.generation_settings?.top_k ?? template.top_k ?? 40);
+		setPersonaFormRepeatPenalty(template.generation_settings?.repeat_penalty ?? template.repeat_penalty ?? 1.1);
+		setPersonaFormPresencePenalty(template.generation_settings?.presence_penalty ?? template.presence_penalty ?? 0.0);
+		setPersonaFormFrequencyPenalty(template.generation_settings?.frequency_penalty ?? template.frequency_penalty ?? 0.0);
+
+		const rawEntries = template.character_book?.entries || [];
+		const parsedEntries = rawEntries.map((e) => ({
+			name: e.name || 'Entry',
+			keys: Array.isArray(e.keys) ? e.keys.join(', ') : e.keys || '',
+			content: e.content || '',
+			enabled: e.enabled !== false,
+		}));
+		setPersonaFormLorebookEntries(parsedEntries);
+		setPersonaViewMode('editor');
+	};
+
+	const handlePersonaAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+
+		// Show avatar preview immediately as soon as selected
+		const localBlobUrl = URL.createObjectURL(file);
+		setPersonaAvatarPreview(localBlobUrl);
+		setIsUploadingPersonaAvatar(true);
+
+		try {
+			const formData = new FormData();
+			formData.append('file', file);
+
+			const res = await fetch(`${getApiUrl()}/personas/avatar`, {
+				method: 'POST',
+				body: formData,
+			});
+
+			if (res.ok) {
+				const data = await res.json();
+				if (data.picture) {
+					setPersonaFormPicture(data.picture);
+					setPersonaAvatarPreview(data.picture);
+				}
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed uploading avatar image');
+			}
+		} catch (err: any) {
+			console.error('Error uploading persona avatar:', err);
+			alert(err.message || 'Error uploading avatar image');
+		} finally {
+			setIsUploadingPersonaAvatar(false);
+		}
+	};
+
+	const handleAddPersonaGreeting = () => {
+		setPersonaFormAlternateGreetings((prev) => [...prev, '']);
+	};
+
+	const handleUpdatePersonaGreeting = (idx: number, val: string) => {
+		setPersonaFormAlternateGreetings((prev) => {
+			const next = [...prev];
+			next[idx] = val;
+			return next;
+		});
+	};
+
+	const handleRemovePersonaGreeting = (idx: number) => {
+		setPersonaFormAlternateGreetings((prev) => prev.filter((_, i) => i !== idx));
+	};
+
+	const handleAddPersonaLorebookEntry = () => {
+		setPersonaFormLorebookEntries((prev) => [...prev, { name: 'New Entry', keys: 'name, keyword', content: '', enabled: true }]);
+	};
+
+	const handleCopyLorebookTemplateToPersona = (filename: string) => {
+		if (!filename) return;
+		const tmpl = lorebookTemplates.find((l) => l.filename === filename);
+		if (!tmpl) return;
+
+		setPersonaFormLorebookEntries((prev) => [
+			...prev,
+			{
+				name: tmpl.name || tmpl.filename.replace('.json', ''),
+				keys: Array.isArray(tmpl.keys) ? tmpl.keys.join(', ') : tmpl.keys || '',
+				content: tmpl.content || '',
+				enabled: true,
+			},
+		]);
+	};
+
+	const handleUpdatePersonaLorebookEntry = (idx: number, field: 'name' | 'keys' | 'content' | 'enabled', value: any) => {
+		setPersonaFormLorebookEntries((prev) => {
+			const next = [...prev];
+			next[idx] = { ...next[idx], [field]: value };
+			return next;
+		});
+	};
+
+	const handleRemovePersonaLorebookEntry = (idx: number) => {
+		setPersonaFormLorebookEntries((prev) => prev.filter((_, i) => i !== idx));
+	};
+
+	const handleSavePersonaTemplate = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!personaFormName.trim()) return;
+
+		setPersonaSaving(true);
+		try {
+			const payload: any = {
+				name: personaFormName.trim(),
+				description: personaFormDescription.trim(),
+				personality: personaFormDescription.trim(),
+				scenario: personaFormScenario.trim(),
+				system_prompt: personaFormSystemPrompt.trim(),
+				post_history_instructions: personaFormPostHistoryInstructions.trim(),
+				first_mes: personaFormFirstMes.trim(),
+				alternate_greetings: personaFormAlternateGreetings.filter((g) => g.trim().length > 0),
+				voice: personaFormVoice,
+				picture: personaFormPicture || null,
+				num_ctx: Number(personaFormNumCtx) || 8192,
+				generation_settings: {
+					temperature: Number(personaFormTemperature),
+					top_p: Number(personaFormTopP),
+					top_k: Number(personaFormTopK),
+					repeat_penalty: Number(personaFormRepeatPenalty),
+					presence_penalty: Number(personaFormPresencePenalty),
+					frequency_penalty: Number(personaFormFrequencyPenalty),
+				},
+				character_book: {
+					name: `${personaFormName.trim()} Lorebook`,
+					entries: personaFormLorebookEntries.map((e) => ({
+						name: e.name.trim(),
+						keys: e.keys
+							.split(',')
+							.map((k) => k.trim())
+							.filter(Boolean),
+						content: e.content,
+						enabled: e.enabled !== false,
+					})),
+				},
+			};
+
+			let url = `${getApiUrl()}/personas`;
+			let method = 'POST';
+
+			if (editingPersonaTemplate) {
+				url = `${getApiUrl()}/personas/${encodeURIComponent(editingPersonaTemplate.filename)}`;
+				method = 'PUT';
+			}
+
+			const res = await fetch(url, {
+				method,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+			});
+
+			if (res.ok) {
+				setPersonaViewMode('list');
+				fetchPersonaTemplates();
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed saving persona template');
+			}
+		} catch (err: any) {
+			console.error('Error saving persona template:', err);
+			alert(err.message || 'Error saving template');
+		} finally {
+			setPersonaSaving(false);
+		}
+	};
+
+	const handleConfirmDeletePersonaTemplate = async () => {
+		if (!deletingPersonaTemplate) return;
+
+		try {
+			const filename = deletingPersonaTemplate.filename;
+			const res = await fetch(`${getApiUrl()}/personas/${encodeURIComponent(filename)}`, {
+				method: 'DELETE',
+			});
+			if (res.ok) {
+				setDeletingPersonaTemplate(null);
+				fetchPersonaTemplates();
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed deleting persona template');
+			}
+		} catch (err: any) {
+			console.error('Error deleting persona template:', err);
+			alert(err.message || 'Error deleting template');
+		}
+	};
+
+	const handleApplyPersonaToModel = async (template: PersonaTemplate, targetModelId: string) => {
+		if (!targetModelId) return;
+		setIsApplyingPersona(true);
+		try {
+			const payload = {
+				id: targetModelId,
+				picture: template.picture || null,
+				voice: template.voice || 'af_heart',
+				num_ctx: template.num_ctx ? Number(template.num_ctx) : undefined,
+				character: {
+					name: template.name,
+					description: template.description || '',
+					personality: template.description || '',
+					scenario: template.scenario || '',
+					system_prompt: template.system_prompt || '',
+					post_history_instructions: template.post_history_instructions || '',
+					first_mes: template.first_mes || '',
+					alternate_greetings: template.alternate_greetings || [],
+					character_book: template.character_book || null,
+					generation_settings: template.generation_settings || null,
+				},
+			};
+
+			const res = await fetch(`${getApiUrl()}/model-preferences`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+			});
+
+			if (res.ok) {
+				await fetchModelPreferences();
+				setApplyPersonaModalTemplate(null);
+				alert(`Successfully applied persona '${template.name}' to model '${targetModelId}'!`);
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed applying persona to model');
+			}
+		} catch (err: any) {
+			console.error('Error applying persona to model:', err);
+			alert(err.message || 'Error applying persona to model');
+		} finally {
+			setIsApplyingPersona(false);
+		}
+	};
+
+	const handleOpenCreateLorebookModal = () => {
+		setEditingLorebookTemplate(null);
+		setLorebookFormName('');
+		setLorebookFormKeys('');
+		setLorebookFormContent('');
+		setLorebookFormFilename('');
+		setIsLorebookModalOpen(true);
+	};
+
+	const handleOpenEditLorebookModal = (template: LorebookTemplate) => {
+		setEditingLorebookTemplate(template);
+		setLorebookFormName(template.name);
+		setLorebookFormKeys(Array.isArray(template.keys) ? template.keys.join(', ') : '');
+		setLorebookFormContent(template.content || '');
+		setLorebookFormFilename(template.filename);
+		setIsLorebookModalOpen(true);
+	};
+
+	const handleSaveLorebookTemplate = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!lorebookFormName.trim()) return;
+
+		setLorebookSaving(true);
+		try {
+			const keysArray = lorebookFormKeys
+				.split(',')
+				.map((k) => k.trim())
+				.filter(Boolean);
+
+			const payload: any = {
+				name: lorebookFormName.trim(),
+				keys: keysArray,
+				content: lorebookFormContent,
+			};
+
+			let url = `${getApiUrl()}/lorebook`;
+			let method = 'POST';
+
+			if (editingLorebookTemplate) {
+				url = `${getApiUrl()}/lorebook/${encodeURIComponent(editingLorebookTemplate.filename)}`;
+				method = 'PUT';
+			} else if (lorebookFormFilename.trim()) {
+				payload.filename = lorebookFormFilename.trim();
+			}
+
+			const res = await fetch(url, {
+				method,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+			});
+
+			if (res.ok) {
+				setIsLorebookModalOpen(false);
+				fetchLorebookTemplates();
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed saving lorebook template');
+			}
+		} catch (err: any) {
+			console.error('Error saving lorebook template:', err);
+			alert(err.message || 'Error saving template');
+		} finally {
+			setLorebookSaving(false);
+		}
+	};
+
+	const [deletingLorebookTemplate, setDeletingLorebookTemplate] = useState<LorebookTemplate | null>(null);
+
+	const handleConfirmDeleteLorebookTemplate = async () => {
+		if (!deletingLorebookTemplate) return;
+
+		try {
+			const filename = deletingLorebookTemplate.filename;
+			const res = await fetch(`${getApiUrl()}/lorebook/${encodeURIComponent(filename)}`, {
+				method: 'DELETE',
+			});
+			if (res.ok) {
+				setDeletingLorebookTemplate(null);
+				fetchLorebookTemplates();
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed deleting template');
+			}
+		} catch (err: any) {
+			console.error('Error deleting template:', err);
+			alert(err.message || 'Error deleting template');
+		}
+	};
+
+	// --- Instances Management State & Handlers ---
+	const [instanceSubView, setInstanceSubView] = useState<'list' | 'select-type' | 'form' | 'instance-models' | 'edit-model'>('list');
+	const [selectedInstanceForModels, setSelectedInstanceForModels] = useState<InstanceItem | null>(null);
+	const [instanceModelsList, setInstanceModelsList] = useState<any[]>([]);
+	const [selectedInstanceType, setSelectedInstanceType] = useState<string>('Ollama');
+	const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
+
+	// Chat Instance & Model Selector State
+	const [selectedChatInstanceId, setSelectedChatInstanceId] = useState<string>('');
+	const [selectedChatModelId, setSelectedChatModelId] = useState<string>('');
+	const [isThinkingEnabled, setIsThinkingEnabled] = useState<boolean>(false);
+	const [isSelectModelModalOpen, setIsSelectModelModalOpen] = useState<boolean>(false);
+	const [modelModalSearchQuery, setModelModalSearchQuery] = useState<string>('');
+
+	// Chat Drag & Drop to Folders State & Handler
+	const [draggedChatId, setDraggedChatId] = useState<string | null>(null);
+	const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
+
+	// Import Chat State & Handlers
+	const [isImporting, setIsImporting] = useState<boolean>(false);
+	const [importStatusMessage, setImportStatusMessage] = useState<string>('');
+	const [isDraggingImport, setIsDraggingImport] = useState<boolean>(false);
+	const importFileInputRef = useRef<HTMLInputElement>(null);
+
+	const parseImportContent = (fileName: string, text: string): any[] => {
+		const cleanFileName = fileName.replace(/\.[^/.]+$/, '');
+		const trimmed = text.trim();
+
+		// 1. JSON Parsing
+		if (fileName.endsWith('.json') || trimmed.startsWith('{') || trimmed.startsWith('[')) {
+			try {
+				const parsed = JSON.parse(text);
+				const results: any[] = [];
+
+				const processJsonObject = (obj: any): any | null => {
+					if (!obj || typeof obj !== 'object') return null;
+
+					// ChatGPT export format (mapping object)
+					if (obj.mapping && typeof obj.mapping === 'object') {
+						const title = obj.title || cleanFileName;
+						const msgs: any[] = [];
+						Object.values(obj.mapping).forEach((node: any) => {
+							const msg = node?.message;
+							if (msg && msg.content && Array.isArray(msg.content.parts)) {
+								const textParts = msg.content.parts.filter((p: any) => typeof p === 'string').join('\n');
+								if (textParts.trim()) {
+									const authorRole = msg.author?.role;
+									const role = authorRole === 'user' ? 'user' : 'assistant';
+									msgs.push({
+										role,
+										content: textParts,
+										model: msg.metadata?.model_slug,
+										date_time: msg.create_time ? new Date(msg.create_time * 1000).toISOString() : undefined,
+									});
+								}
+							}
+						});
+						return msgs.length > 0 ? { title, messages: msgs } : null;
+					}
+
+					// Claude export format (chat_messages array)
+					if (Array.isArray(obj.chat_messages)) {
+						const title = obj.name || obj.title || cleanFileName;
+						const msgs: any[] = obj.chat_messages
+							.map((m: any) => ({
+								role: m.sender === 'human' || m.sender === 'user' ? 'user' : 'assistant',
+								content: m.text || m.content || '',
+								date_time: m.created_at,
+							}))
+							.filter((m: any) => m.content.trim());
+						return msgs.length > 0 ? { title, messages: msgs } : null;
+					}
+
+					// Walpaca / Generic export format (messages array)
+					if (Array.isArray(obj.messages)) {
+						const title = obj.title || obj.name || cleanFileName;
+						const msgs: any[] = obj.messages
+							.map((m: any) => ({
+								role: m.role === 'user' || m.isSelf ? 'user' : 'assistant',
+								content: m.content || '',
+								model: m.model,
+								date_time: m.time || m.date_time,
+								attachments: Array.isArray(m.attachments)
+									? m.attachments.map((a: any) => ({
+											name: a.name || 'attachment',
+											type: a.type || 'txt',
+											content: a.content || '',
+										}))
+									: undefined,
+							}))
+							.filter((m: any) => m.content.trim() || (m.attachments && m.attachments.length > 0));
+						return msgs.length > 0 ? { title, messages: msgs } : null;
+					}
+
+					return null;
+				};
+
+				if (Array.isArray(parsed)) {
+					parsed.forEach((item) => {
+						const c = processJsonObject(item);
+						if (c) results.push(c);
+					});
+				} else {
+					const c = processJsonObject(parsed);
+					if (c) results.push(c);
+				}
+
+				if (results.length > 0) return results;
+			} catch (e) {
+				console.warn('JSON import parse warning:', e);
+			}
+		}
+
+		// 2. Markdown Parsing (.md / .markdown)
+		if (fileName.endsWith('.md') || fileName.endsWith('.markdown') || text.includes('# ') || text.includes('### ')) {
+			let title = cleanFileName;
+			const titleMatch = text.match(/^#\s+(.+)$/m);
+			if (titleMatch) {
+				title = titleMatch[1].trim();
+			}
+
+			const messages: any[] = [];
+			const sections = text.split(/(?=^###\s+|^----\s*$)/m);
+
+			sections.forEach((sec) => {
+				const headerMatch = sec.match(/^###\s+\*\*?([^*\n|]+)\*\*?(\s*\|\s*(.+))?/m);
+				if (headerMatch) {
+					const senderStr = headerMatch[1].trim();
+					const timeStr = headerMatch[3]?.trim();
+					const isUser = /user|you/i.test(senderStr);
+					const role: 'user' | 'assistant' = isUser ? 'user' : 'assistant';
+
+					let body = sec
+						.replace(/^###\s+.+$/m, '')
+						.replace(/^----\s*$/m, '')
+						.trim();
+					const attachments: any[] = [];
+
+					// HTML details tags
+					body = body.replace(
+						/<details>\s*<summary>.*?([^\/\s>]+)<\/summary>\s*```[\w]*\n([\s\S]*?)```\s*<\/details>/gi,
+						(_, attName, attContent) => {
+							attachments.push({ name: attName.trim(), type: 'txt', content: attContent.trim() });
+							return '';
+						},
+					);
+
+					// Obsidian callouts (> [!quote]- filename)
+					body = body.replace(/^>\s*\[!(?:quote|info)\]-?\s*(.+)\n((?:>\s*.*\n?)*)/gm, (_, attName, blockContent) => {
+						const cleanContent = blockContent
+							.split('\n')
+							.map((l: string) => l.replace(/^>\s?/, ''))
+							.join('\n')
+							.trim();
+						attachments.push({ name: attName.trim(), type: 'txt', content: cleanContent });
+						return '';
+					});
+
+					body = body.trim();
+					if (body || attachments.length > 0) {
+						messages.push({
+							role,
+							content: body,
+							model: !isUser && senderStr !== 'Assistant' ? senderStr : undefined,
+							date_time: timeStr,
+							attachments: attachments.length > 0 ? attachments : undefined,
+						});
+					}
+				}
+			});
+
+			if (messages.length > 0) {
+				return [{ title, messages }];
+			}
+		}
+
+		// 3. Plain Text Parsing (.txt or fallback)
+		let title = cleanFileName;
+		const txtTitleMatch = text.match(/^===\s*(.+?)\s*===$/m);
+		if (txtTitleMatch) {
+			title = txtTitleMatch[1].trim();
+		}
+
+		const textLines = text.split('\n');
+		const messages: any[] = [];
+		let currentSender = '';
+		let currentTime = '';
+		let currentLines: string[] = [];
+
+		const flushMessage = () => {
+			if (currentSender && currentLines.length > 0) {
+				const isUser = /you|user/i.test(currentSender);
+				const content = currentLines.join('\n').trim();
+				if (content) {
+					messages.push({
+						role: isUser ? 'user' : 'assistant',
+						content,
+						model: !isUser && currentSender !== 'Assistant' ? currentSender : undefined,
+						date_time: currentTime || undefined,
+					});
+				}
+			}
+			currentLines = [];
+		};
+
+		textLines.forEach((line) => {
+			const msgHeaderMatch = line.match(/^\[([^\]]+)\]\s*([^:\n]+):$/);
+			if (msgHeaderMatch) {
+				flushMessage();
+				currentTime = msgHeaderMatch[1].trim();
+				currentSender = msgHeaderMatch[2].trim();
+			} else if (line.trim() === '----------------------------------------') {
+				flushMessage();
+				currentSender = '';
+			} else if (!line.startsWith('===') && !line.startsWith('Generated from AlpacaWeb')) {
+				currentLines.push(line);
+			}
+		});
+		flushMessage();
+
+		if (messages.length > 0) {
+			return [{ title, messages }];
+		}
+
+		return [
+			{
+				title: cleanFileName,
+				messages: [{ role: 'user', content: trimmed }],
+			},
+		];
+	};
+
+	const handleImportFiles = async (files: FileList | File[]) => {
+		if (!files || files.length === 0) return;
+		setIsImporting(true);
+		setImportStatusMessage(`Reading ${files.length} file(s)...`);
+
+		try {
+			const allParsedChats: any[] = [];
+
+			for (let i = 0; i < files.length; i++) {
+				const file = files[i];
+				setImportStatusMessage(`Parsing ${file.name}...`);
+				const text = await file.text();
+				const parsed = parseImportContent(file.name, text);
+				allParsedChats.push(...parsed);
+			}
+
+			if (allParsedChats.length === 0) {
+				setImportStatusMessage('No valid chat messages found in selected file(s).');
+				setIsImporting(false);
+				return;
+			}
+
+			setImportStatusMessage(`Importing ${allParsedChats.length} conversation(s)...`);
+			const res = await fetch(`${API_URL}/chats/import`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ chats: allParsedChats }),
+			});
+
+			if (!res.ok) {
+				throw new Error('Failed to import chats');
+			}
+
+			const newChats = await res.json();
+			setImportStatusMessage(`Successfully imported ${newChats.length} conversation(s)!`);
+
+			const chatsRes = await fetch(`${API_URL}/chats`);
+			if (chatsRes.ok) {
+				const updatedList = await chatsRes.json();
+				setChatItems(updatedList.map(mapBackendChatToChatItem));
+			}
+
+			if (newChats.length > 0 && newChats[0].id) {
+				setActiveChatId(newChats[0].id);
+				setTimeout(() => {
+					setCurrentView('chat');
+				}, 800);
+			}
+		} catch (e: any) {
+			console.error('Import error:', e);
+			setImportStatusMessage(`Import failed: ${e.message || 'Unknown error'}`);
+		} finally {
+			setIsImporting(false);
+		}
+	};
+
+	const handleDropChatToFolder = async (chatId: string, targetFolderId: string | null) => {
+		setDragOverFolderTarget(null);
+		setDraggedChatId(null);
+		if (!chatId) return;
+
+		const targetFolderVal = targetFolderId === 'none' || !targetFolderId ? null : targetFolderId;
+
+		setChatItems((prev) => prev.map((c) => (c.id === chatId ? { ...c, folder: targetFolderVal || undefined } : c)));
+
+		try {
+			await fetch(`${API_URL}/chats/${chatId}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ folder: targetFolderVal }),
+			});
+		} catch (err) {
+			console.warn('Could not move chat to folder on backend:', err);
+		}
+	};
+
+	// Folder Context Menu & Action States
+	const [folderContextMenu, setFolderContextMenu] = useState<{
+		x: number;
+		y: number;
+		folderId: string;
+		folderName: string;
+	} | null>(null);
+	const [lineContextMenu, setLineContextMenu] = useState<{
+		x: number;
+		y: number;
+		msgId: string;
+		lineText: string;
+		lineIndex: number;
+		voice?: string;
+		fullContent: string;
+	} | null>(null);
+	const [renamingFolder, setRenamingFolder] = useState<{ id: string; name: string } | null>(null);
+	const [renameFolderNameInput, setRenameFolderNameInput] = useState<string>('');
+	const [deletingFolder, setDeletingFolder] = useState<{ id: string; name: string } | null>(null);
+
+	useEffect(() => {
+		const handleGlobalClick = () => {
+			setFolderContextMenu(null);
+			setLineContextMenu(null);
+		};
+		window.addEventListener('click', handleGlobalClick);
+		return () => window.removeEventListener('click', handleGlobalClick);
+	}, []);
+
+	const handleStartRenameFolder = (folderId: string, folderName: string) => {
+		setFolderContextMenu(null);
+		setRenamingFolder({ id: folderId, name: folderName });
+		setRenameFolderNameInput(folderName);
+	};
+
+	const handleConfirmRenameFolder = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!renamingFolder || !renameFolderNameInput.trim()) return;
+		const { id } = renamingFolder;
+		const newName = renameFolderNameInput.trim();
+		setRenamingFolder(null);
+
+		setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, name: newName } : f)));
+
+		try {
+			await fetch(`${API_URL}/folders/${id}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: newName }),
+			});
+		} catch (err) {
+			console.warn('Could not rename folder on backend:', err);
+		}
+	};
+
+	const handleStartDeleteFolder = (folderId: string, folderName: string) => {
+		setFolderContextMenu(null);
+		setDeletingFolder({ id: folderId, name: folderName });
+	};
+
+	const handleConfirmDeleteFolder = async () => {
+		if (!deletingFolder) return;
+		const { id } = deletingFolder;
+		setDeletingFolder(null);
+
+		setFolders((prev) => prev.filter((f) => f.id !== id));
+		if (activeTab === id) {
+			setActiveTab('none');
+		}
+
+		try {
+			await fetch(`${API_URL}/folders/${id}`, {
+				method: 'DELETE',
+			});
+			fetchChats(activeTab === id ? 'none' : activeTab);
+		} catch (err) {
+			console.warn('Could not delete folder on backend:', err);
+		}
+	};
+
+	// Inline Message Editing States & Handlers
+	const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+	const [editingMsgContent, setEditingMsgContent] = useState<string>('');
+	const [deletingMsg, setDeletingMsg] = useState<Message | null>(null);
+
+	const handleOpenForkModal = (msg: Message) => {
+		setForkTargetMsg(msg);
+		setIsForkModalOpen(true);
+	};
+
+	const handleConfirmForkChat = async () => {
+		if (!activeChatId || !forkTargetMsg?.id) {
+			setIsForkModalOpen(false);
+			return;
+		}
+
+		const targetMsgId = forkTargetMsg.id;
+		setIsForkModalOpen(false);
+		setForkTargetMsg(null);
+
+		try {
+			const res = await fetch(`${API_URL}/chats/${activeChatId}/fork`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ message_id: targetMsgId }),
+			});
+
+			if (!res.ok) {
+				throw new Error('Failed to fork chat');
+			}
+
+			const newChat = await res.json();
+
+			const chatsRes = await fetch(`${API_URL}/chats`);
+			if (chatsRes.ok) {
+				const updatedList = await chatsRes.json();
+				setChatItems(updatedList.map(mapBackendChatToChatItem));
+			}
+
+			if (newChat && newChat.id) {
+				setActiveChatId(newChat.id);
+			}
+		} catch (e: any) {
+			console.error('Fork Chat Error:', e);
+		}
+	};
+
+	const handleStartInlineEdit = (msg: Message) => {
+		setEditingMsgId(msg.id);
+		setEditingMsgContent(msg.content);
+	};
+
+	const handleSaveInlineEdit = async () => {
+		if (!editingMsgId) return;
+		const updatedContent = editingMsgContent.trim();
+		const msgId = editingMsgId;
+
+		setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, content: updatedContent } : m)));
+		setEditingMsgId(null);
+		setEditingMsgContent('');
+
+		try {
+			await fetch(`${API_URL}/messages/${msgId}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ content: updatedContent }),
+			});
+		} catch (err) {
+			console.warn('Could not update message content on backend:', err);
+		}
+	};
+
+	const handleOpenDeleteMessageModal = (msg: Message) => {
+		setDeletingMsg(msg);
+	};
+
+	const handleConfirmDeleteMessage = async () => {
+		if (!deletingMsg) return;
+		const msgId = deletingMsg.id;
+
+		setMessages((prev) => prev.filter((m) => m.id !== msgId));
+		setDeletingMsg(null);
+
+		try {
+			await fetch(`${API_URL}/messages/${msgId}`, {
+				method: 'DELETE',
+			});
+		} catch (err) {
+			console.warn('Could not delete message on backend:', err);
+		}
+	};
+
+	const fetchModelsForInstance = async (instId: string) => {
+		if (!instId) return;
+		const data = await fetchInstanceModels(instId);
+		if (Array.isArray(data) && data.length > 0) {
+			setInstanceModelsList(data);
+			return;
+		}
+		const inst = instances.find((i) => i.id === instId);
+		if (inst) {
+			const instName = inst.properties?.name || inst.type;
+			setInstanceModelsList([
+				{ id: `${inst.id}-m1`, name: `${instName} Model 1`, provider: inst.type, voice: 'af_heart', context: '8,192 tokens' },
+				{ id: `${inst.id}-m2`, name: `${instName} Model 2`, provider: inst.type, voice: 'am_adam', context: '16,384 tokens' },
+			]);
+		}
+	};
+
+	const handleOpenDuplicateModal = () => {
+		setIsChatContextMenuOpen(false);
+		setIsDuplicateModalOpen(true);
+	};
+
+	const handleConfirmDuplicateChat = async () => {
+		setIsDuplicateModalOpen(false);
+		const targetChat = chatItems.find((c) => c.id === activeChatId);
+		if (!targetChat) return;
+
+		const newId = `chat-${Date.now()}`;
+		const duplicateName = `${targetChat.name} (Copy)`;
+		const newChatObj: ChatItem = {
+			...targetChat,
+			id: newId,
+			name: duplicateName,
+			time: 'Just now',
+			unreadCount: undefined,
+		};
+
+		setChatItems((prev) => [newChatObj, ...prev]);
+		setActiveChatId(newId);
+		if (typeof window !== 'undefined') {
+			window.history.pushState(null, '', `/?chat=${newId}`);
+		}
+
+		try {
+			await fetch(`${API_URL}/chats`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					id: newId,
+					name: duplicateName,
+					folder: targetChat.folder || null,
+				}),
+			});
+		} catch (err) {
+			console.warn('Could not duplicate chat on backend API:', err);
+		}
+	};
+
+	const handleOpenEditModelModal = (mod: any) => {
+		setEditingModel(mod);
+		const rawId = String(mod.id || '');
+		const prefKey = rawId.toLowerCase();
+		const pref = modelPreferences[rawId] || modelPreferences[prefKey];
+		setEditModelVoice(pref?.voice || mod.voice || 'af_heart');
+		setEditModelNumCtx(
+			pref?.num_ctx ?? (typeof mod.num_ctx === 'number' ? mod.num_ctx : mod.context ? parseInt(String(mod.context).replace(/,/g, ''), 10) || 8192 : 8192),
+		);
+
+		const char = pref?.character || {};
+		const charData = char.data || char || {};
+
+		setEditModelName(getCharacterName(char) || (pref as any)?.name || mod.name || mod.id || '');
+		setEditModelDescription(charData.description || pref?.description || '');
+		setEditModelFirstMessage(charData.first_mes || charData.first_message || pref?.first_message || '');
+
+		const greetings = Array.isArray(charData.alternate_greetings)
+			? charData.alternate_greetings
+			: Array.isArray(pref?.alternate_greetings)
+				? pref.alternate_greetings
+				: [];
+		setEditModelAlternateGreetings(greetings);
+
+		let cbItems: Array<{ name: string; description: string; tags: string }> = [];
+		if (Array.isArray(charData.character_book?.entries)) {
+			cbItems = charData.character_book.entries.map((e: any) => ({
+				name: e.comment || e.name || '',
+				description: e.content || e.description || '',
+				tags: Array.isArray(e.keys) ? e.keys.join(', ') : Array.isArray(e.tags) ? e.tags.join(', ') : String(e.keys || e.tags || ''),
+			}));
+		} else if (Array.isArray(charData.character_book)) {
+			cbItems = charData.character_book.map((e: any) => ({
+				name: e.name || e.comment || '',
+				description: e.description || e.content || '',
+				tags: Array.isArray(e.tags) ? e.tags.join(', ') : Array.isArray(e.keys) ? e.keys.join(', ') : String(e.tags || e.keys || ''),
+			}));
+		}
+		setEditModelCharacterBook(cbItems);
+		setInstanceSubView('edit-model');
+	};
+
+	const handleAddGreeting = () => {
+		setEditModelAlternateGreetings([...editModelAlternateGreetings, '']);
+	};
+
+	const handleUpdateGreeting = (index: number, val: string) => {
+		setEditModelAlternateGreetings(editModelAlternateGreetings.map((g, i) => (i === index ? val : g)));
+	};
+
+	const handleRemoveGreeting = (index: number) => {
+		setEditModelAlternateGreetings(editModelAlternateGreetings.filter((_, i) => i !== index));
+	};
+
+	const handleAddBookItem = () => {
+		setEditModelCharacterBook([...editModelCharacterBook, { name: '', description: '', tags: '' }]);
+	};
+
+	const handleUpdateBookItem = (index: number, field: 'name' | 'description' | 'tags', val: string) => {
+		setEditModelCharacterBook(editModelCharacterBook.map((item, i) => (i === index ? { ...item, [field]: val } : item)));
+	};
+
+	const handleRemoveBookItem = (index: number) => {
+		setEditModelCharacterBook(editModelCharacterBook.filter((_, i) => i !== index));
+	};
+
+	const handleSaveEditModel = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!editingModel) return;
+
+		const rawId = String(editingModel.id || '');
+		const prefKey = rawId.toLowerCase();
+
+		const filteredGreetings = editModelAlternateGreetings.map((g) => g.trim()).filter(Boolean);
+		const formattedBookEntries = editModelCharacterBook.map((item) => {
+			const tagsArr = item.tags
+				.split(',')
+				.map((t) => t.trim())
+				.filter(Boolean);
+			return {
+				name: item.name.trim(),
+				comment: item.name.trim(),
+				description: item.description.trim(),
+				content: item.description.trim(),
+				keys: tagsArr,
+				tags: tagsArr,
+			};
+		});
+
+		const existingPref = modelPreferences[rawId] || modelPreferences[prefKey] || {};
+		const existingChar = existingPref.character || {};
+		const existingCharData = existingChar.data || {};
+
+		const updatedCharacter = {
+			...existingChar,
+			data: {
+				...existingCharData,
+				name: editModelName.trim(),
+				description: editModelDescription.trim(),
+				first_mes: editModelFirstMessage.trim(),
+				alternate_greetings: filteredGreetings,
+				character_book: {
+					...(existingCharData.character_book || {}),
+					entries: formattedBookEntries,
+				},
+			},
+			name: editModelName.trim(),
+			description: editModelDescription.trim(),
+			first_message: editModelFirstMessage.trim(),
+			alternate_greetings: filteredGreetings,
+			character_book: formattedBookEntries.map((e) => ({
+				name: e.name,
+				description: e.description,
+				tags: e.tags,
+			})),
+		};
+
+		const updatedPref: ModelPreference = {
+			...(existingPref || { id: rawId }),
+			id: rawId,
+			voice: editModelVoice,
+			num_ctx: editModelNumCtx,
+			character: updatedCharacter,
+		};
+
+		setStoreModelPreference(rawId, updatedPref);
+		setInstanceSubView('instance-models');
+
+		try {
+			await fetch(`${API_URL}/model-preferences`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					id: rawId,
+					voice: editModelVoice,
+					num_ctx: editModelNumCtx,
+					character: updatedCharacter,
+				}),
+			});
+		} catch (err) {
+			console.warn('Could not save model preference:', err);
+		}
+	};
+
+	const handleManageInstanceModels = async (inst: InstanceItem) => {
+		setSelectedInstanceForModels(inst);
+		setInstanceSubView('instance-models');
+
+		await fetchModelPreferences();
+		const data = await fetchInstanceModels(inst.id);
+		if (Array.isArray(data) && data.length > 0) {
+			setInstanceModelsList(data);
+			return;
+		}
+		const instName = inst.properties?.name || inst.type;
+		setInstanceModelsList([
+			{ id: `${inst.id}-m1`, name: `${instName} Model 1`, provider: inst.type, voice: 'af_heart', context: '8,192 tokens' },
+			{ id: `${inst.id}-m2`, name: `${instName} Model 2`, provider: inst.type, voice: 'am_adam', context: '16,384 tokens' },
+		]);
+	};
+
+	// Instance Form fields matching user specs
+	const [instFormName, setInstFormName] = useState<string>('Instance');
+	const [instFormUrl, setInstFormUrl] = useState<string>('http://0.0.0.0:11434');
+	const [instFormApiKey, setInstFormApiKey] = useState<string>('');
+	const [showApiKeyText, setShowApiKeyText] = useState<boolean>(false);
+	const [instFormThink, setInstFormThink] = useState<boolean>(false);
+	const [instFormShareName, setInstFormShareName] = useState<number>(2); // 2 = Do Not Share
+	const [instFormShowMetadata, setInstFormShowMetadata] = useState<boolean>(false);
+	const [instFormAllowSsl, setInstFormAllowSsl] = useState<boolean>(false);
+	const [instFormOverrideParams, setInstFormOverrideParams] = useState<boolean>(true);
+	const [isOverrideAccordionOpen, setIsOverrideAccordionOpen] = useState<boolean>(true);
+	const [instFormTemp, setInstFormTemp] = useState<number>(0.7);
+	const [instFormSeed, setInstFormSeed] = useState<number>(0);
+	const [instFormNumCtx, setInstFormNumCtx] = useState<number>(16384);
+	const [instFormKeepAlivePreset, setInstFormKeepAlivePreset] = useState<string>('Set Timer');
+	const [instFormKeepAliveMinutes, setInstFormKeepAliveMinutes] = useState<number>(5);
+
+	const handleOpenAddInstanceModal = () => {
+		setInstanceSubView('select-type');
+	};
+
+	const handleSelectInstanceType = (typeLabel: string) => {
+		setSelectedInstanceType(typeLabel);
+		setEditingInstanceId(null); // Add mode
+
+		// Dynamic default values for new instance based on selected provider type
+		let defaultName = 'Instance';
+		let defaultUrl = 'http://0.0.0.0:11434';
+		if (typeLabel.includes('Ollama')) {
+			defaultName = 'Ollama External';
+			defaultUrl = 'http://0.0.0.0:11434';
+		} else if (typeLabel.includes('Ollama (Cloud)')) {
+			defaultName = 'Ollama Cloud';
+			defaultUrl = 'https://ollama.example.com';
+		} else if (typeLabel.includes('OpenAI')) {
+			defaultName = 'OpenAI ChatGPT';
+			defaultUrl = 'https://api.openai.com/v1';
+		} else if (typeLabel.includes('Gemini')) {
+			defaultName = 'Google Gemini';
+			defaultUrl = 'https://generativelanguage.googleapis.com';
+		} else if (typeLabel.includes('Anthropic')) {
+			defaultName = 'Anthropic Claude';
+			defaultUrl = 'https://api.anthropic.com';
+		} else if (typeLabel.includes('Deepseek')) {
+			defaultName = 'Deepseek AI';
+			defaultUrl = 'https://api.deepseek.com';
+		} else if (typeLabel.includes('Groq')) {
+			defaultName = 'Groq Cloud';
+			defaultUrl = 'https://api.groq.com/openai/v1';
+		} else if (typeLabel.includes('Together')) {
+			defaultName = 'Together AI';
+			defaultUrl = 'https://api.together.xyz/v1';
+		} else if (typeLabel.includes('Venice')) {
+			defaultName = 'Venice AI';
+			defaultUrl = 'https://api.venice.ai/api/v1';
+		} else if (typeLabel.includes('OpenRouter')) {
+			defaultName = 'OpenRouter AI';
+			defaultUrl = 'https://openrouter.ai/api/v1';
+		}
+
+		setInstFormName(defaultName);
+		setInstFormUrl(defaultUrl);
+		setInstFormApiKey('');
+		setShowApiKeyText(false);
+		setInstFormThink(false);
+		setInstFormShareName(2);
+		setInstFormShowMetadata(false);
+		setInstFormAllowSsl(false);
+		setInstFormOverrideParams(true);
+		setIsOverrideAccordionOpen(true);
+		setInstFormTemp(0.7);
+		setInstFormSeed(0);
+		setInstFormNumCtx(16384);
+		setInstFormKeepAlivePreset('Set Timer');
+		setInstFormKeepAliveMinutes(5);
+
+		setInstanceSubView('form');
+	};
+
+	const handleOpenEditInstanceModal = (inst: InstanceItem) => {
+		setEditingInstanceId(inst.id); // Edit mode - type is locked!
+		setSelectedInstanceType(
+			inst.type === 'ollama'
+				? 'Ollama'
+				: inst.type === 'openai'
+					? 'OpenAI ChatGPT'
+					: inst.type === 'gemini'
+						? 'Google Gemini'
+						: inst.type === 'anthropic'
+							? 'Anthropic'
+							: inst.type === 'deepseek'
+								? 'Deepseek'
+								: inst.type === 'groq'
+									? 'Groq Cloud'
+									: inst.type === 'together'
+										? 'Together AI'
+										: inst.type === 'venice'
+											? 'Venice'
+											: inst.type === 'openrouter'
+												? 'OpenRouter AI'
+												: inst.type,
+		);
+		setInstFormName(inst.properties?.name || 'Instance');
+		setInstFormUrl(inst.properties?.url || 'http://0.0.0.0:11434');
+		setInstFormApiKey(inst.properties?.api && inst.properties.api !== 'NOKEY' ? inst.properties.api : '');
+		setShowApiKeyText(false);
+		setInstFormThink(Boolean(inst.properties?.think));
+		setInstFormShareName(inst.properties?.share_name ?? 2);
+		setInstFormShowMetadata(Boolean(inst.properties?.show_response_metadata));
+		setInstFormAllowSsl(Boolean(inst.properties?.allow_self_signed_ssl));
+		setInstFormOverrideParams(inst.properties?.override_parameters ?? true);
+		setIsOverrideAccordionOpen(true);
+		setInstFormTemp(inst.properties?.temperature ?? 0.7);
+		setInstFormSeed(inst.properties?.seed ?? 0);
+		setInstFormNumCtx(inst.properties?.num_ctx ?? 16384);
+		setInstFormKeepAliveMinutes(inst.properties?.keep_alive ?? 5);
+
+		setInstanceSubView('form');
+	};
+
+	const handleDeleteInstance = async (id: string) => {
+		setStoreInstances(instances.filter((item) => item.id !== id));
+		try {
+			await fetch(`${API_URL}/instances/${id}`, { method: 'DELETE' });
+			fetchInstances(true);
+		} catch (err) {
+			console.warn('Could not delete instance:', err);
+		}
+	};
+
+	const handleSaveInstanceForm = async (e: React.FormEvent) => {
+		e.preventDefault();
+
+		let backendType = 'ollama';
+		if (selectedInstanceType.includes('OpenAI')) backendType = 'openai';
+		else if (selectedInstanceType.includes('Gemini')) backendType = 'gemini';
+		else if (selectedInstanceType.includes('Anthropic')) backendType = 'anthropic';
+		else if (selectedInstanceType.includes('Deepseek')) backendType = 'deepseek';
+		else if (selectedInstanceType.includes('Groq')) backendType = 'groq';
+		else if (selectedInstanceType.includes('Together')) backendType = 'together';
+		else if (selectedInstanceType.includes('Venice')) backendType = 'venice';
+		else if (selectedInstanceType.includes('OpenRouter')) backendType = 'openrouter';
+
+		const payload = {
+			type: backendType,
+			pinned: false,
+			properties: {
+				name: instFormName.trim() || 'Instance',
+				url: instFormUrl.trim() || 'http://0.0.0.0:11434',
+				api: instFormApiKey.trim() || 'NOKEY',
+				think: instFormThink,
+				share_name: Number(instFormShareName),
+				show_response_metadata: instFormShowMetadata,
+				allow_self_signed_ssl: instFormAllowSsl,
+				override_parameters: instFormOverrideParams,
+				temperature: Number(instFormTemp),
+				seed: Number(instFormSeed),
+				num_ctx: Number(instFormNumCtx),
+				keep_alive: Number(instFormKeepAliveMinutes),
+				default_model: null,
+				title_model: null,
+			},
+		};
+
+		if (editingInstanceId) {
+			setStoreInstances(
+				instances.map((inst) =>
+					inst.id === editingInstanceId ? { ...inst, type: backendType, properties: { ...inst.properties, ...payload.properties } } : inst,
+				),
+			);
+			try {
+				await fetch(`${API_URL}/instances/${editingInstanceId}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload),
+				});
+				fetchInstances(true);
+			} catch (err) {
+				console.warn('Could not update instance:', err);
+			}
+		} else {
+			const tempId = `inst-${Date.now()}`;
+			const newInst: InstanceItem = { id: tempId, pinned: false, type: backendType, properties: payload.properties };
+			setStoreInstances([...instances, newInst]);
+			try {
+				const res = await fetch(`${API_URL}/instances`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload),
+				});
+				if (res.ok) {
+					fetchInstances(true);
+				}
+			} catch (err) {
+				console.warn('Could not create instance:', err);
+			}
+		}
+
+		setInstanceSubView('list');
+	};
+
+	// --- TTS Voice Playback State & Controls ---
+	const [ttsState, setTtsState] = useState<{
+		msgId: string | null;
+		status: 'playing' | 'paused' | 'stopped';
+		lineIndex: number;
+	}>({ msgId: null, status: 'stopped', lineIndex: -1 });
+
+	const audioRef = useRef<HTMLAudioElement | null>(null);
+	const abortControllerRef = useRef<AbortController | null>(null);
+	const ttsStateRef = useRef(ttsState);
+
+	const updateTTSState = (
+		newState:
+			| { msgId: string | null; status: 'playing' | 'paused' | 'stopped'; lineIndex: number }
+			| ((prev: { msgId: string | null; status: 'playing' | 'paused' | 'stopped'; lineIndex: number }) => {
+					msgId: string | null;
+					status: 'playing' | 'paused' | 'stopped';
+					lineIndex: number;
+			  }),
+	) => {
+		if (typeof newState === 'function') {
+			const next = newState(ttsStateRef.current);
+			ttsStateRef.current = next;
+			setTtsState(next);
+		} else {
+			ttsStateRef.current = newState;
+			setTtsState(newState);
+		}
+	};
+
+	const handleStopTTS = () => {
+		if (abortControllerRef.current) {
+			abortControllerRef.current.abort();
+			abortControllerRef.current = null;
+		}
+		if (audioRef.current) {
+			audioRef.current.pause();
+			audioRef.current.src = '';
+			audioRef.current = null;
+		}
+		updateTTSState({ msgId: null, status: 'stopped', lineIndex: -1 });
+	};
+
+	const handlePauseTTS = () => {
+		if (audioRef.current) {
+			audioRef.current.pause();
+		}
+		updateTTSState((prev) => ({ ...prev, status: 'paused' }));
+	};
+
+	const handleResumeTTS = () => {
+		if (audioRef.current) {
+			audioRef.current.play().catch(console.warn);
+		}
+		updateTTSState((prev) => ({ ...prev, status: 'playing' }));
+	};
+
+	const fetchTTSBlob = async (text: string, voice: string, signal: AbortSignal): Promise<Blob | null> => {
+		try {
+			const res = await fetch(`${API_URL}/tts`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					text,
+					voice: voice || 'af_heart',
+				}),
+				signal,
+			});
+			if (!res.ok) {
+				console.warn('TTS fetch returned status:', res.status);
+				return null;
+			}
+			return await res.blob();
+		} catch (err: any) {
+			if (err.name !== 'AbortError') {
+				console.warn('TTS fetch error:', err);
+			}
+			return null;
+		}
+	};
+
+	const handlePlayTTS = async (msgId: string, content: string, voice?: string, fromLineIndex?: number) => {
+		if (ttsStateRef.current.msgId === msgId && ttsStateRef.current.status === 'paused') {
+			handleResumeTTS();
+			return;
+		}
+
+		handleStopTTS();
+
+		const rawLines = content.split('\n');
+		const validLines: { origIndex: number; cleanText: string }[] = [];
+
+		rawLines.forEach((lineText, origIndex) => {
+			if (fromLineIndex !== undefined && origIndex < fromLineIndex) return;
+			const trimmed = lineText.trim();
+			if (!trimmed) return;
+
+			const cleanText = trimmed
+				.replace(/```[\s\S]*?```/g, '')
+				.replace(/`([^`]+)`/g, '$1')
+				.replace(/\*\*([^*]+)\*\*/g, '$1')
+				.replace(/\*([^*]+)\*/g, '$1')
+				.replace(/^#+\s*/gm, '')
+				.replace(/^>\s*/gm, '')
+				.replace(/^[-*+]\s+/gm, '')
+				.replace(/^\d+\.\s+/gm, '')
+				.replace(/\|/g, ' ')
+				.trim();
+
+			if (cleanText) {
+				validLines.push({ origIndex, cleanText });
+			}
+		});
+
+		if (validLines.length === 0) return;
+
+		const controller = new AbortController();
+		abortControllerRef.current = controller;
+
+		updateTTSState({ msgId, status: 'playing', lineIndex: validLines[0].origIndex });
+
+		// Pipeline background audio fetches back-to-back immediately for all valid lines
+		const audioBlobPromises: Promise<Blob | null>[] = validLines.map((item) => fetchTTSBlob(item.cleanText, voice || 'af_heart', controller.signal));
+
+		// Stream playback through pre-fetched audio blobs
+		for (let i = 0; i < validLines.length; i++) {
+			if (ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === 'stopped') {
+				break;
+			}
+
+			const currentItem = validLines[i];
+			updateTTSState({ msgId, status: 'playing', lineIndex: currentItem.origIndex });
+
+			const blob = await audioBlobPromises[i];
+			if (!blob || ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === 'stopped') {
+				continue;
+			}
+
+			const audioUrl = URL.createObjectURL(blob);
+			const audio = new Audio(audioUrl);
+			audioRef.current = audio;
+
+			await new Promise<void>((resolve) => {
+				audio.onended = () => {
+					URL.revokeObjectURL(audioUrl);
+					resolve();
+				};
+				audio.onerror = (e) => {
+					console.warn('Audio playback error:', e);
+					URL.revokeObjectURL(audioUrl);
+					resolve();
+				};
+
+				const checkAndPlay = () => {
+					const st = ttsStateRef.current.status;
+					if (st === 'paused') {
+						const interval = setInterval(() => {
+							const currentSt = ttsStateRef.current.status;
+							if (currentSt === 'playing' || (currentSt as string) === 'stopped') {
+								clearInterval(interval);
+								if (currentSt === 'playing') {
+									audio.play().catch(resolve);
+								} else {
+									resolve();
+								}
+							}
+						}, 100);
+					} else if (st === 'stopped' || ttsStateRef.current.msgId !== msgId) {
+						resolve();
+					} else {
+						audio.play().catch((err) => {
+							console.warn('audio.play() error:', err);
+							resolve();
+						});
+					}
+				};
+
+				checkAndPlay();
+			});
+		}
+
+		if (ttsStateRef.current.msgId === msgId) {
+			updateTTSState({ msgId: null, status: 'stopped', lineIndex: -1 });
+		}
+	};
+
+	const handlePlayTTSLine = async (msgId: string, lineText: string, origIndex: number, voice?: string) => {
+		handleStopTTS();
+
+		const trimmed = lineText.trim();
+		if (!trimmed) return;
+
+		const cleanText = trimmed
+			.replace(/```[\s\S]*?```/g, '')
+			.replace(/`([^`]+)`/g, '$1')
+			.replace(/\*\*([^*]+)\*\*/g, '$1')
+			.replace(/\*([^*]+)\*/g, '$1')
+			.replace(/^#+\s*/gm, '')
+			.replace(/^>\s*/gm, '')
+			.replace(/^[-*+]\s+/gm, '')
+			.replace(/^\d+\.\s+/gm, '')
+			.replace(/\|/g, ' ')
+			.trim();
+
+		if (!cleanText) return;
+
+		const controller = new AbortController();
+		abortControllerRef.current = controller;
+
+		updateTTSState({ msgId, status: 'playing', lineIndex: origIndex });
+
+		const blob = await fetchTTSBlob(cleanText, voice || 'af_heart', controller.signal);
+		if (!blob || ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === 'stopped') {
+			updateTTSState({ msgId: null, status: 'stopped', lineIndex: -1 });
+			return;
+		}
+
+		const audioUrl = URL.createObjectURL(blob);
+		const audio = new Audio(audioUrl);
+		audioRef.current = audio;
+
+		await new Promise<void>((resolve) => {
+			audio.onended = () => {
+				URL.revokeObjectURL(audioUrl);
+				resolve();
+			};
+			audio.onerror = (e) => {
+				console.warn('Audio playback error:', e);
+				URL.revokeObjectURL(audioUrl);
+				resolve();
+			};
+			audio.play().catch((err) => {
+				console.warn('audio.play() error:', err);
+				resolve();
+			});
+		});
+
+		if (ttsStateRef.current.msgId === msgId) {
+			updateTTSState({ msgId: null, status: 'stopped', lineIndex: -1 });
+		}
+	};
+
+	const getConversationParticipants = () => {
+		const map = new Map<string, { id: string; name: string; avatar: string; role: string }>();
+
+		map.set('user', {
+			id: 'user',
+			name: 'You',
+			avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80',
+			role: 'User',
+		});
+
+		messages.forEach((msg) => {
+			if (!msg.isSelf) {
+				const key = (msg.senderName || '').toLowerCase();
+				if (!map.has(key)) {
+					const pref = modelPreferences[key] || modelPreferences[msg.senderName || ''];
+					const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || DEFAULT_MODEL_AVATAR;
+					const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
+					const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
+					const roleLabel = isCharEnabled(pref?.character) ? 'Character' : 'AI Model';
+
+					map.set(key, {
+						id: key,
+						name: displayName,
+						avatar: avatarSrc,
+						role: roleLabel,
+					});
+				}
+			}
+		});
+
+		return Array.from(map.values());
+	};
+	const [activeTab, setActiveTab] = useState<string>('none');
+	const [activeChatId, setActiveChatId] = useState<string>(() => {
+		if (typeof window !== 'undefined') {
+			const params = new URLSearchParams(window.location.search);
+			const chatParam = params.get('chat');
+			if (chatParam) return chatParam;
+		}
+		return 'design-chat';
+	});
+	const [searchQuery, setSearchQuery] = useState<string>('');
+	const [inputText, setInputText] = useState<string>('');
+	const [expandedSection, setExpandedSection] = useState<string>('photos');
+	const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState<boolean>(false);
+	const [isCreatingFolder, setIsCreatingFolder] = useState<boolean>(false);
+	const [newFolderName, setNewFolderName] = useState<string>('');
+
+	const handleOpenRenameModal = () => {
+		setIsChatContextMenuOpen(false);
+		const activeChat = chatItems.find((c) => c.id === activeChatId);
+		if (activeChat) {
+			setRenameInputVal(activeChat.name);
+			setIsRenameModalOpen(true);
+		}
+	};
+
+	const handleOpenDeleteModal = () => {
+		setIsChatContextMenuOpen(false);
+		setIsDeleteModalOpen(true);
+	};
+
+	const handleConfirmRenameChat = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!renameInputVal.trim()) return;
+
+		const trimmed = renameInputVal.trim();
+		setIsRenameModalOpen(false);
+
+		setChatItems((prev) => prev.map((c) => (c.id === activeChatId ? { ...c, name: trimmed } : c)));
+
+		try {
+			await fetch(`${API_URL}/chats/${activeChatId}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: trimmed }),
+			});
+		} catch (err) {
+			console.warn('Could not rename chat on backend API:', err);
+		}
+	};
+
+	const handleConfirmDeleteChat = async () => {
+		setIsDeleteModalOpen(false);
+		const deletedId = activeChatId;
+		const remaining = chatItems.filter((c) => c.id !== deletedId);
+
+		setChatItems(remaining);
+		setActiveChatId(remaining.length > 0 ? remaining[0].id : '');
+
+		try {
+			await fetch(`${API_URL}/chats/${deletedId}`, {
+				method: 'DELETE',
+			});
+		} catch (err) {
+			console.warn('Could not delete chat on backend API:', err);
+		}
+	};
+
+	const handleOpenExportModal = () => {
+		setIsChatContextMenuOpen(false);
+		setIsExportModalOpen(true);
+	};
+
+	const handleExportChat = () => {
+		if (!messages || messages.length === 0) {
+			alert('No messages to export.');
+			return;
+		}
+
+		const currentChat = chatItems.find((c) => c.id === activeChatId);
+		const chatTitle = currentChat?.name || 'Chat';
+		const safeTitle = chatTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+		let fileContent = '';
+		let mimeType = 'text/plain';
+		let fileExt = 'txt';
+
+		if (exportFormat === 'json') {
+			mimeType = 'application/json';
+			fileExt = 'json';
+			const exportData = {
+				title: chatTitle,
+				exported_at: new Date().toISOString(),
+				messages: messages.map((m) => ({
+					id: m.id,
+					senderName: m.senderName,
+					role: m.isSelf ? 'user' : m.senderRole || 'assistant',
+					model: m.model,
+					content: m.content,
+					time: m.time,
+					image: m.image,
+					attachments: m.attachments,
+				})),
+			};
+			fileContent = JSON.stringify(exportData, null, 2);
+		} else if (exportFormat === 'txt') {
+			mimeType = 'text/plain';
+			fileExt = 'txt';
+			const lines: string[] = [`=== ${chatTitle} ===\n`];
+			messages.forEach((m) => {
+				const sender = m.isSelf ? 'You' : m.senderName || 'Assistant';
+				lines.push(`[${m.time || ''}] ${sender}:`);
+				lines.push(m.content);
+				if (m.attachments && m.attachments.length > 0) {
+					m.attachments.forEach((att) => {
+						if (att.type !== 'thought' && att.type !== 'metadata') {
+							lines.push(`  [Attachment: ${att.name || att.type}]`);
+						}
+					});
+				}
+				lines.push('----------------------------------------');
+			});
+			lines.push('Generated from AlpacaWeb');
+			fileContent = lines.join('\n');
+		} else {
+			// Standard MD or Obsidian MD
+			mimeType = 'text/markdown';
+			fileExt = 'md';
+			const isObsidian = exportFormat === 'obsidian';
+			const mdLines: string[] = [`# ${chatTitle}\n`];
+
+			messages.forEach((m) => {
+				const sender = m.isSelf ? 'User' : m.senderName || 'Assistant';
+				const timeStr = m.time || '';
+				mdLines.push(`### **${sender}** | ${timeStr}`);
+				mdLines.push(m.content);
+
+				if (m.image) {
+					mdLines.push(`![🖼️ Image](${m.image})`);
+				}
+
+				if (m.attachments && m.attachments.length > 0) {
+					m.attachments.forEach((att) => {
+						if (att.type === 'thought' || att.type === 'metadata') return;
+						const attName = att.name || 'Attachment';
+						const attContent = att.content || '';
+						if (isObsidian) {
+							let block = `> [!quote]- ${attName}\n`;
+							attContent.split('\n').forEach((l) => {
+								block += `> ${l}\n`;
+							});
+							mdLines.push(block);
+						} else {
+							mdLines.push(`<details>\n\n<summary>📄 ${attName}</summary>\n\n\`\`\`\n${attContent}\n\`\`\`\n\n</details>`);
+						}
+					});
+				}
+				mdLines.push('----');
+			});
+			mdLines.push('Generated from [Walpaca](https://github.com/c42759/walpaca)');
+			fileContent = mdLines.join('\n\n');
+		}
+
+		const blob = new Blob([fileContent], { type: `${mimeType};charset=utf-8` });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = `${safeTitle}_Export.${fileExt}`;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
+
+		setIsExportModalOpen(false);
+	};
+
+	const getConversationAttachments = () => {
+		const photos: string[] = [];
+		const otherFiles: MessageAttachment[] = [];
+
+		messages.forEach((msg) => {
+			if (msg.image && !photos.includes(msg.image)) {
+				photos.push(msg.image);
+			}
+			if (msg.attachments && Array.isArray(msg.attachments)) {
+				msg.attachments.forEach((att) => {
+					const typeLower = (att.type || '').toLowerCase();
+					if (typeLower === 'thought' || typeLower === 'brain' || typeLower === 'metadata' || typeLower === 'data') {
+						return; // Ignore/hide thoughts and metadata from Attachments widget
+					}
+					if (isImageAttachment(att)) {
+						const src = getImageSrc(att);
+						if (src && !photos.includes(src)) {
+							photos.push(src);
+						}
+					} else {
+						otherFiles.push(att);
+					}
+				});
+			}
+		});
+
+		return { photos, otherFiles };
+	};
+
+	const [chatItems, setChatItems] = useState<ChatItem[]>(initialMockChatList);
+	const [messages, setMessages] = useState<Message[]>([]);
+
+	const API_URL = getApiUrl();
+
+	const fetchFolders = async () => {
+		try {
+			const res = await fetch(`${API_URL}/folders`);
+			if (res.ok) {
+				const data = await res.json();
+				if (Array.isArray(data) && data.length > 0) {
+					setFolders(data);
+					return;
+				}
+			}
+		} catch (err) {
+			console.warn('Could not fetch folders from backend, fallback to initial default folders:', err);
+		}
+		setFolders([
+			{ id: 'work', name: 'Work' },
+			{ id: 'friends', name: 'Friends' },
+			{ id: 'news', name: 'News' },
+			{ id: 'archive', name: 'Archive' },
+		]);
+	};
+
+	const fetchChats = async (folderId?: string) => {
+		try {
+			let url = `${API_URL}/chats`;
+			if (folderId && folderId !== 'all') {
+				url += `?folder=${encodeURIComponent(folderId)}`;
+			}
+			const res = await fetch(url);
+			if (res.ok) {
+				const data: BackendChat[] = await res.json();
+				if (Array.isArray(data)) {
+					const mapped = data.map(mapBackendChatToChatItem);
+					setChatItems(mapped);
+					return;
+				}
+			}
+		} catch (err) {
+			console.warn('Could not fetch chats from backend API, using current list:', err);
+		}
+	};
+
+	const fetchChatMessages = async (chatId: string) => {
+		try {
+			const res = await fetch(`${API_URL}/chats/${chatId}`);
+			if (res.ok) {
+				const data: BackendChat = await res.json();
+				const rawMsgs = Array.isArray(data.messages) ? data.messages : [];
+				setMessages(rawMsgs.map((m) => mapBackendMsgToMessage(m, modelPreferences)));
+			} else {
+				setMessages([]);
+			}
+		} catch (err) {
+			console.warn('Could not fetch chat messages from backend API:', err);
+			setMessages([]);
+		}
+	};
+
+	useEffect(() => {
+		fetchFolders();
+		fetchModelPreferences();
+		fetchInstances();
+
+		const handlePopState = () => {
+			if (typeof window !== 'undefined') {
+				const params = new URLSearchParams(window.location.search);
+				const chatParam = params.get('chat');
+				if (chatParam) {
+					setActiveChatId(chatParam);
+				}
+			}
+		};
+
+		window.addEventListener('popstate', handlePopState);
+		return () => window.removeEventListener('popstate', handlePopState);
+	}, []);
+
+	useEffect(() => {
+		fetchChats(activeTab);
+	}, [activeTab]);
+
+	useEffect(() => {
+		if (activeChatId) {
+			setMessages([]);
+			fetchChatMessages(activeChatId);
+			if (typeof window !== 'undefined') {
+				const url = new URL(window.location.href);
+				if (url.searchParams.get('chat') !== activeChatId) {
+					url.searchParams.set('chat', activeChatId);
+					window.history.pushState({}, '', url.toString());
+				}
+			}
+		} else {
+			setMessages([]);
+		}
+	}, [activeChatId]);
+
+	useEffect(() => {
+		if (activeChatId) {
+			messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
+		}
+	}, [messages, activeChatId]);
+
+	// Requirement 1: Auto-select Instance if only 1 exists or unselected
+	useEffect(() => {
+		if (instances.length > 0) {
+			if (instances.length === 1 || !selectedChatInstanceId) {
+				const defaultInstId = instances[0].id;
+				setSelectedChatInstanceId(defaultInstId);
+				fetchModelsForInstance(defaultInstId);
+			}
+		}
+	}, [instances]);
+
+	// Requirement 2: Auto-select Model/Preference if only 1 exists or unselected
+	useEffect(() => {
+		const prefs = Array.from(new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values());
+		const options = [...prefs.map((p) => p.id), ...instanceModelsList.map((m) => m.id)];
+		if (options.length === 1 || (!selectedChatModelId && options.length > 0)) {
+			setSelectedChatModelId(options[0]);
+		}
+	}, [instanceModelsList, modelPreferences, selectedChatInstanceId]);
+
+	// Requirement 3: Auto-select Instance & Model based on last assistant message in active chat
+	useEffect(() => {
+		if (!messages || messages.length === 0) return;
+
+		const lastAssistantMsg = [...messages].reverse().find((m) => !m.isSelf && (m.senderRole === 'assistant' || m.senderName !== 'You' || m.model));
+
+		if (lastAssistantMsg) {
+			const targetModelIdentifier = String(lastAssistantMsg.model || lastAssistantMsg.senderName || '').trim();
+			if (targetModelIdentifier) {
+				const prefsList = Array.from(new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values());
+				const matchingPref = prefsList.find(
+					(p) =>
+						p.id.toLowerCase() === targetModelIdentifier.toLowerCase() ||
+						(getCharacterName(p.character) && getCharacterName(p.character)?.toLowerCase() === targetModelIdentifier.toLowerCase()),
+				);
+
+				if (matchingPref) {
+					setSelectedChatModelId(matchingPref.id);
+				} else {
+					const matchingMod = instanceModelsList.find(
+						(m) =>
+							String(m.id || '').toLowerCase() === targetModelIdentifier.toLowerCase() ||
+							String(m.name || '').toLowerCase() === targetModelIdentifier.toLowerCase(),
+					);
+					if (matchingMod) {
+						setSelectedChatModelId(matchingMod.id);
+					}
+				}
+
+				if ((lastAssistantMsg as any).instanceId) {
+					const matchingInst = instances.find((inst) => inst.id === (lastAssistantMsg as any).instanceId);
+					if (matchingInst) {
+						setSelectedChatInstanceId(matchingInst.id);
+						fetchModelsForInstance(matchingInst.id);
+					}
+				}
+			}
+		}
+	}, [messages, activeChatId]);
+
+	const handleCreateFolderSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!newFolderName.trim()) return;
+
+		const name = newFolderName.trim();
+		try {
+			const res = await fetch(`${API_URL}/folders`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name }),
+			});
+			if (res.ok) {
+				const created: ChatFolder = await res.json();
+				setFolders((prev) => [...prev, created]);
+				setActiveTab(created.id);
+			} else {
+				const localFolder: ChatFolder = { id: `folder-${Date.now()}`, name };
+				setFolders((prev) => [...prev, localFolder]);
+				setActiveTab(localFolder.id);
+			}
+		} catch (err) {
+			const localFolder: ChatFolder = { id: `folder-${Date.now()}`, name };
+			setFolders((prev) => [...prev, localFolder]);
+			setActiveTab(localFolder.id);
+		}
+
+		setNewFolderName('');
+		setIsCreatingFolder(false);
+	};
+
+	const handleOpenNewChatModal = () => {
+		setNewChatTitleInput('New Chat');
+		setIsNewChatModalOpen(true);
+	};
+
+	const handleConfirmCreateNewChat = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!newChatTitleInput.trim()) return;
+
+		const chatName = newChatTitleInput.trim();
+		setIsNewChatModalOpen(false);
+
+		try {
+			const res = await fetch(`${API_URL}/chats`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					name: chatName,
+					folder: activeTab !== 'none' && activeTab !== 'all' ? activeTab : null,
+				}),
+			});
+			if (res.ok) {
+				const created: BackendChat = await res.json();
+				const mapped = mapBackendChatToChatItem(created);
+				setChatItems((prev) => [mapped, ...prev]);
+				setActiveChatId(created.id);
+			} else {
+				const localChat: ChatItem = {
+					id: `chat-${Date.now()}`,
+					name: chatName,
+					avatarText: chatName.slice(0, 2).toUpperCase(),
+					lastMessage: 'New chat started',
+					time: 'now',
+				};
+				setChatItems((prev) => [localChat, ...prev]);
+				setActiveChatId(localChat.id);
+			}
+		} catch (err) {
+			const localChat: ChatItem = {
+				id: `chat-${Date.now()}`,
+				name: chatName,
+				avatarText: chatName.slice(0, 2).toUpperCase(),
+				lastMessage: 'New chat started',
+				time: 'now',
+			};
+			setChatItems((prev) => [localChat, ...prev]);
+			setActiveChatId(localChat.id);
+		}
+	};
+
+	const handleSendMessage = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!inputText.trim() && selectedAttachments.length === 0) return;
+
+		const content = inputText.trim();
+		const currentAttachments = [...selectedAttachments];
+		setInputText('');
+		setSelectedAttachments([]);
+
+		if (promptTextareaRef.current) {
+			promptTextareaRef.current.style.height = 'auto';
+			promptTextareaRef.current.style.overflowY = 'hidden';
+		}
+
+		const attachmentsPayload: MessageAttachment[] = currentAttachments.map((att, idx) => ({
+			id: att.id || `att-${Date.now()}-${idx}`,
+			type: att.type,
+			name: att.name,
+			content: att.content,
+		}));
+
+		const firstImage = currentAttachments.find((a) => a.type === 'image')?.content;
+
+		const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+		const userMsg: Message = {
+			id: `msg-${Date.now()}`,
+			senderName: 'You',
+			senderAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80',
+			isSelf: true,
+			content,
+			time: nowStr,
+			image: firstImage,
+			attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
+		};
+
+		setMessages((prev) => [...prev, userMsg]);
+
+		// Save user message to backend
+		if (activeChatId) {
+			try {
+				await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						role: 'user',
+						content,
+						model: selectedChatModelId,
+						instance_id: selectedChatInstanceId,
+						attachments: attachmentsPayload,
+					}),
+				});
+			} catch (err) {
+				console.warn('Could not post user message to backend API:', err);
+			}
+		}
+
+		await handleCallForAnswer();
+	};
+
+	const handleCallForAnswer = async () => {
+		// Determine Assistant Metadata & System Prompt
+		const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
+		const selectedPref =
+			modelPreferences[selectedChatModelId] ||
+			modelPreferences[selectedPrefKey] ||
+			Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+
+		let assistantName = 'Assistant';
+		let assistantAvatar = DEFAULT_MODEL_AVATAR;
+		let systemPrompt = '';
+
+		if (selectedPref) {
+			const char = selectedPref.character || {};
+			const charData = char.data || char || {};
+			assistantName = getCharacterName(char) || (selectedPref as any).name || selectedPref.id;
+			if (selectedPref.picture) {
+				assistantAvatar = formatAvatarPicture(selectedPref.picture) || assistantAvatar;
+			}
+			systemPrompt = charData.system_prompt || charData.personality || charData.description || selectedPref.description || '';
+		} else if (selectedChatModelId) {
+			const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
+			if (instMod) {
+				assistantName = instMod.name || instMod.id;
+			} else {
+				assistantName = selectedChatModelId;
+			}
+		}
+
+		const assistantMsgId = `msg-${Date.now()}`;
+		const assistantMsg: Message = {
+			id: assistantMsgId,
+			senderName: assistantName,
+			senderAvatar: assistantAvatar,
+			senderRole: 'assistant',
+			model: selectedChatModelId,
+			instanceId: selectedChatInstanceId,
+			isSelf: false,
+			content: '',
+			time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+		};
+
+		setMessages((prev) => [...prev, assistantMsg]);
+
+		let fullResponseText = '';
+		const genUrl = activeChatId ? `${API_URL}/chats/${activeChatId}/generate` : `${API_URL}/generate`;
+
+		try {
+			const genRes = await fetch(genUrl, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					model: selectedChatModelId,
+					instance_id: selectedChatInstanceId,
+					system: systemPrompt || undefined,
+					think: isThinkingEnabled,
+				}),
+			});
+
+			if (genRes.ok && genRes.body) {
+				const reader = genRes.body.getReader();
+				const decoder = new TextDecoder();
+				let buffer = '';
+
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+
+					buffer += decoder.decode(value, { stream: true });
+					const lines = buffer.split('\n');
+					buffer = lines.pop() || '';
+
+					for (const line of lines) {
+						const trimmed = line.trim();
+						if (!trimmed || !trimmed.startsWith('data: ')) continue;
+						const dataStr = trimmed.slice(6).trim();
+						if (dataStr === '[DONE]') continue;
+
+						try {
+							const parsed = JSON.parse(dataStr);
+							if (parsed.id) {
+								const serverId = parsed.id;
+								setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, id: serverId } : m)));
+							}
+							if (parsed.thinking) {
+								const thinkChunk = parsed.thinking;
+								setMessages((prev) =>
+									prev.map((m) => {
+										if (m.id === assistantMsgId || m.id === parsed.id) {
+											const existingAtts = m.attachments || [];
+											const thoughtIdx = existingAtts.findIndex(
+												(a) => a.type?.toLowerCase() === 'thought' || a.type?.toLowerCase() === 'brain',
+											);
+											let updatedAtts = [...existingAtts];
+											if (thoughtIdx >= 0) {
+												updatedAtts[thoughtIdx] = {
+													...updatedAtts[thoughtIdx],
+													content: updatedAtts[thoughtIdx].content + thinkChunk,
+												};
+											} else {
+												updatedAtts.push({
+													id: `thought-${Date.now()}`,
+													type: 'thought',
+													name: 'Thought',
+													content: thinkChunk,
+												});
+											}
+											return { ...m, attachments: updatedAtts };
+										}
+										return m;
+									}),
+								);
+							}
+							if (parsed.metadata) {
+								const metaContent = parsed.metadata;
+								setMessages((prev) =>
+									prev.map((m) => {
+										if (m.id === assistantMsgId || m.id === parsed.id) {
+											const existingAtts = m.attachments || [];
+											const metaIdx = existingAtts.findIndex(
+												(a) => a.type?.toLowerCase() === 'metadata' || a.type?.toLowerCase() === 'data',
+											);
+											let updatedAtts = [...existingAtts];
+											if (metaIdx >= 0) {
+												updatedAtts[metaIdx] = {
+													...updatedAtts[metaIdx],
+													content: metaContent,
+												};
+											} else {
+												updatedAtts.push({
+													id: `meta-${Date.now()}`,
+													type: 'metadata',
+													name: 'Metadata',
+													content: metaContent,
+												});
+											}
+											return { ...m, attachments: updatedAtts };
+										}
+										return m;
+									}),
+								);
+							}
+							if (parsed.content) {
+								fullResponseText += parsed.content;
+								setMessages((prev) =>
+									prev.map((m) => (m.id === assistantMsgId || m.id === parsed.id ? { ...m, content: m.content + parsed.content } : m)),
+								);
+							}
+						} catch {
+							if (dataStr && !dataStr.startsWith('{')) {
+								fullResponseText += dataStr;
+								setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: m.content + dataStr } : m)));
+							}
+						}
+					}
+				}
+				playNotificationSound();
+			}
+		} catch (err) {
+			console.warn('Error during LLM response generation:', err);
+		}
+	};
+
+	const handleUseCharacterFirstMes = async () => {
+		if (!activeChatId || !selectedChatModelId) return;
+		const prefKey = selectedChatModelId.toLowerCase();
+		const pref =
+			modelPreferences[selectedChatModelId] || modelPreferences[prefKey] || Object.values(modelPreferences).find((p) => p.id.toLowerCase() === prefKey);
+
+		if (!pref) return;
+		const char = pref.character || {};
+		const charData = char.data || char || {};
+		const firstMes = (charData.first_mes || charData.first_message || pref.first_message || '').trim();
+
+		if (!firstMes) return;
+
+		const charName = getCharacterName(char) || (pref as any).name || pref.id;
+		const avatarSrc = formatAvatarPicture(pref.picture);
+		const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+		const newMsg: Message = {
+			id: `msg-${Date.now()}`,
+			senderName: charName,
+			senderAvatar: avatarSrc,
+			senderRole: 'assistant',
+			model: selectedChatModelId,
+			instanceId: selectedChatInstanceId,
+			isSelf: false,
+			content: firstMes,
+			time: nowStr,
+		};
+
+		setMessages((prev) => [...prev, newMsg]);
+
+		try {
+			await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					role: 'assistant',
+					content: firstMes,
+					model: selectedChatModelId,
+					instance_id: selectedChatInstanceId,
+				}),
+			});
+		} catch (err) {
+			console.warn('Could not post character first message to backend API:', err);
+		}
+	};
+
+	const handleGoToRoot = () => {
+		setCurrentView('chat');
+		setActiveTab('all');
+		setActiveChatId('');
+		setMessages([]);
+		if (typeof window !== 'undefined') {
+			window.history.pushState(null, '', '/');
+		}
+	};
+
+	return (
+		<>
 			{/* Outer Floating Application Window */}
 			<div className='w-full min-w-[90vw] h-[calc(100vh-0px)] md:h-[calc(100vh-0px)] lg:h-100vh-0px)] bg-[#202022] flex overflow-hidden border-8 border-[#202022]'>
 				{/* ========================================================= */}
@@ -3921,7 +3984,12 @@ export default function AlpacaWebPage() {
 																desc: 'Deepseek Coder & Reasoner LLM endpoints',
 																icon: '🧠',
 															},
-															{ label: 'Groq Cloud', tag: 'Cloud API', desc: 'Groq ultra-fast LPU inference engine', icon: '🚀' },
+															{
+																label: 'Groq Cloud',
+																tag: 'Cloud API',
+																desc: 'Groq ultra-fast LPU inference engine',
+																icon: '🚀',
+															},
 															{
 																label: 'Anthropic',
 																tag: 'Cloud API',
@@ -5070,8 +5138,13 @@ export default function AlpacaWebPage() {
 														{personaTemplates.length > 0 && (
 															<div className='p-4 rounded-2xl bg-[#f0f2fb] border border-[#7678ed]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4'>
 																<div>
-																	<h5 className='text-xs font-bold text-[#7678ed] uppercase tracking-wider'>Load Persona Template</h5>
-																	<p className='text-xs text-[#5d6075] mt-0.5'>Instantly populate character name, system instructions, avatar, and TTS voice from a persona template.</p>
+																	<h5 className='text-xs font-bold text-[#7678ed] uppercase tracking-wider'>
+																		Load Persona Template
+																	</h5>
+																	<p className='text-xs text-[#5d6075] mt-0.5'>
+																		Instantly populate character name, system instructions, avatar, and TTS voice from a
+																		persona template.
+																	</p>
 																</div>
 																<select
 																	onChange={(e) => {
@@ -5080,10 +5153,10 @@ export default function AlpacaWebPage() {
 																		const tmpl = personaTemplates.find((p) => p.filename === selectedFname);
 																		if (tmpl) {
 																			setEditModelName(tmpl.name);
-																			setEditModelDescription(tmpl.description || tmpl.system_prompt || "");
+																			setEditModelDescription(tmpl.description || tmpl.system_prompt || '');
 																			if (tmpl.voice) setEditModelVoice(tmpl.voice);
 																		}
-																		e.target.value = "";
+																		e.target.value = '';
 																	}}
 																	className='bg-white border border-[#7678ed]/30 rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:border-[#7678ed] transition-all cursor-pointer shrink-0'
 																>
@@ -5696,9 +5769,9 @@ export default function AlpacaWebPage() {
 											</p>
 											<pre className='bg-[#f9fafc] p-2.5 rounded-xl border border-[#e8ebf3] text-[11px] font-mono text-[#202022] overflow-x-auto'>
 												{`{
-  "name": "Character Name",
-  "keys": ["key1", "key2"],
-  "content": "My content here"
+"name": "Character Name",
+"keys": ["key1", "key2"],
+"content": "My content here"
 }`}
 											</pre>
 										</div>
@@ -7213,6 +7286,7 @@ export default function AlpacaWebPage() {
 					</div>
 				</div>
 			)}
+
 			{/* Attachment Content Modal */}
 			{activeAttachmentModal && (
 				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
@@ -7263,6 +7337,7 @@ export default function AlpacaWebPage() {
 					</div>
 				</div>
 			)}
+
 			{/* Full Size Image Gallery Modal */}
 			{activeImageModal && (
 				<div
@@ -7305,6 +7380,7 @@ export default function AlpacaWebPage() {
 					</div>
 				</div>
 			)}
+
 			{/* Custom Rename Chat Modal */}
 			{isRenameModalOpen && (
 				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4'>
@@ -7467,6 +7543,7 @@ export default function AlpacaWebPage() {
 					</div>
 				</div>
 			)}
+
 			{/* Custom New Chat Modal */}
 			{isNewChatModalOpen && (
 				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4'>
@@ -8319,15 +8396,26 @@ export default function AlpacaWebPage() {
 				</div>
 			)}
 
-
 			{/* Apply Persona to Model Modal */}
 			{applyPersonaModalTemplate && (
 				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
 					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200'>
 						<div className='flex items-center justify-between mb-4 pb-3 border-b border-white/10'>
 							<h3 className='text-lg font-bold text-white'>Apply Persona to Model</h3>
-							<button onClick={() => setApplyPersonaModalTemplate(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
-								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+							<button
+								onClick={() => setApplyPersonaModalTemplate(null)}
+								className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'
+							>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<line x1='18' y1='6' x2='6' y2='18' />
 									<line x1='6' y1='6' x2='18' y2='18' />
 								</svg>
@@ -8338,7 +8426,11 @@ export default function AlpacaWebPage() {
 							<div className='p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3'>
 								<div className='w-10 h-10 rounded-xl bg-[#eaecf9] text-[#7678ed] overflow-hidden flex items-center justify-center shrink-0'>
 									{applyPersonaModalTemplate.picture ? (
-										<img src={applyPersonaModalTemplate.picture} alt={applyPersonaModalTemplate.name} className='w-full h-full object-cover' />
+										<img
+											src={applyPersonaModalTemplate.picture}
+											alt={applyPersonaModalTemplate.name}
+											className='w-full h-full object-cover'
+										/>
 									) : (
 										<span>🎭</span>
 									)}
@@ -8356,7 +8448,9 @@ export default function AlpacaWebPage() {
 									onChange={(e) => setApplyPersonaSelectedModelId(e.target.value)}
 									className='w-full bg-white/10 border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-[#7678ed] transition-all cursor-pointer'
 								>
-									<option value='' className='bg-[#202022] text-white'>Select a model...</option>
+									<option value='' className='bg-[#202022] text-white'>
+										Select a model...
+									</option>
 									{instanceModelsList.map((mod) => (
 										<option key={mod.id} value={mod.id} className='bg-[#202022] text-white'>
 											{mod.name || mod.id} ({mod.provider || 'AI'})
@@ -8393,7 +8487,10 @@ export default function AlpacaWebPage() {
 					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
 						<div className='flex items-center justify-between mb-2'>
 							<h3 className='text-lg font-bold text-rose-400'>Delete Persona?</h3>
-							<button onClick={() => setDeletingPersonaTemplate(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+							<button
+								onClick={() => setDeletingPersonaTemplate(null)}
+								className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'
+							>
 								<svg
 									width='18'
 									height='18'
@@ -8410,7 +8507,8 @@ export default function AlpacaWebPage() {
 							</button>
 						</div>
 						<p className='text-sm text-white/70 leading-relaxed mb-6'>
-							Are you sure you want to delete persona template <strong className='text-white'>"{deletingPersonaTemplate.name}"</strong> (<span className='font-mono text-xs text-white/50'>{deletingPersonaTemplate.filename}</span>)? This action cannot be undone.
+							Are you sure you want to delete persona template <strong className='text-white'>"{deletingPersonaTemplate.name}"</strong> (
+							<span className='font-mono text-xs text-white/50'>{deletingPersonaTemplate.filename}</span>)? This action cannot be undone.
 						</p>
 						<div className='flex items-center justify-end gap-3'>
 							<button
@@ -8431,7 +8529,6 @@ export default function AlpacaWebPage() {
 					</div>
 				</div>
 			)}
-
-		</main>
-  );
+		</>
+	);
 }
