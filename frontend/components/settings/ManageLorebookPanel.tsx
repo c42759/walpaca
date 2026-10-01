@@ -6,111 +6,106 @@ import { PlusIcon, EditIcon, TrashIcon, SearchIcon } from '../icons/Icons';
 import { LorebookTemplate } from './ManagePersonasPanel';
 
 export interface ManageLorebookPanelProps {
-  lorebookTemplates: LorebookTemplate[];
-  isLorebookLoading: boolean;
-  getApiUrl: () => string;
-  fetchLorebookTemplates: () => Promise<void>;
+	lorebookTemplates: LorebookTemplate[];
+	isLorebookLoading: boolean;
+	getApiUrl: () => string;
+	fetchLorebookTemplates: () => Promise<void>;
 }
 
-export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({
-  lorebookTemplates,
-  isLorebookLoading,
-  getApiUrl,
-  fetchLorebookTemplates,
-}) => {
-  const [lorebookSearchQuery, setLorebookSearchQuery] = useState<string>('');
-  const [isLorebookModalOpen, setIsLorebookModalOpen] = useState<boolean>(false);
-  const [editingLorebookTemplate, setEditingLorebookTemplate] = useState<LorebookTemplate | null>(null);
-  const [lorebookFormName, setLorebookFormName] = useState<string>('');
-  const [lorebookFormKeys, setLorebookFormKeys] = useState<string>('');
-  const [lorebookFormContent, setLorebookFormContent] = useState<string>('');
-  const [lorebookSaving, setLorebookSaving] = useState<boolean>(false);
-  const [deletingLorebookTemplate, setDeletingLorebookTemplate] = useState<LorebookTemplate | null>(null);
+export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({ lorebookTemplates, isLorebookLoading, getApiUrl, fetchLorebookTemplates }) => {
+	const [lorebookSearchQuery, setLorebookSearchQuery] = useState<string>('');
+	const [isLorebookModalOpen, setIsLorebookModalOpen] = useState<boolean>(false);
+	const [editingLorebookTemplate, setEditingLorebookTemplate] = useState<LorebookTemplate | null>(null);
+	const [lorebookFormName, setLorebookFormName] = useState<string>('');
+	const [lorebookFormKeys, setLorebookFormKeys] = useState<string>('');
+	const [lorebookFormContent, setLorebookFormContent] = useState<string>('');
+	const [lorebookSaving, setLorebookSaving] = useState<boolean>(false);
+	const [deletingLorebookTemplate, setDeletingLorebookTemplate] = useState<LorebookTemplate | null>(null);
 
-  const handleOpenCreateLorebookModal = () => {
-    setEditingLorebookTemplate(null);
-    setLorebookFormName('');
-    setLorebookFormKeys('');
-    setLorebookFormContent('');
-    setIsLorebookModalOpen(true);
-  };
+	const handleOpenCreateLorebookModal = () => {
+		setEditingLorebookTemplate(null);
+		setLorebookFormName('');
+		setLorebookFormKeys('');
+		setLorebookFormContent('');
+		setIsLorebookModalOpen(true);
+	};
 
-  const handleOpenEditLorebookModal = (template: LorebookTemplate) => {
-    setEditingLorebookTemplate(template);
-    setLorebookFormName(template.name);
-    setLorebookFormKeys(Array.isArray(template.keys) ? template.keys.join(', ') : '');
-    setLorebookFormContent(template.content || '');
-    setIsLorebookModalOpen(true);
-  };
+	const handleOpenEditLorebookModal = (template: LorebookTemplate) => {
+		setEditingLorebookTemplate(template);
+		setLorebookFormName(template.name);
+		setLorebookFormKeys(Array.isArray(template.keys) ? template.keys.join(', ') : '');
+		setLorebookFormContent(template.content || '');
+		setIsLorebookModalOpen(true);
+	};
 
-  const handleSaveLorebookTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!lorebookFormName.trim()) return;
+	const handleSaveLorebookTemplate = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!lorebookFormName.trim()) return;
 
-    setLorebookSaving(true);
-    try {
-      const keysArray = lorebookFormKeys
-        .split(',')
-        .map((k) => k.trim())
-        .filter((k) => k.length > 0);
+		setLorebookSaving(true);
+		try {
+			const keysArray = lorebookFormKeys
+				.split(',')
+				.map((k) => k.trim())
+				.filter((k) => k.length > 0);
 
-      const payload: any = {
-        name: lorebookFormName.trim(),
-        keys: keysArray,
-        content: lorebookFormContent,
-      };
+			const payload: any = {
+				name: lorebookFormName.trim(),
+				keys: keysArray,
+				content: lorebookFormContent,
+			};
 
-      let url = `${getApiUrl()}/lorebook`;
-      let method = 'POST';
+			let url = `${getApiUrl()}/lorebook`;
+			let method = 'POST';
 
-      if (editingLorebookTemplate) {
-        url = `${getApiUrl()}/lorebook/${encodeURIComponent(editingLorebookTemplate.filename)}`;
-        method = 'PUT';
-      }
+			if (editingLorebookTemplate) {
+				url = `${getApiUrl()}/lorebook/${encodeURIComponent(editingLorebookTemplate.filename)}`;
+				method = 'PUT';
+			}
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+			const res = await fetch(url, {
+				method,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+			});
 
-      if (res.ok) {
-        setIsLorebookModalOpen(false);
-        fetchLorebookTemplates();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed saving lorebook template');
-      }
-    } catch (err: any) {
-      console.error('Error saving lorebook template:', err);
-      alert(err.message || 'Error saving template');
-    } finally {
-      setLorebookSaving(false);
-    }
-  };
+			if (res.ok) {
+				setIsLorebookModalOpen(false);
+				fetchLorebookTemplates();
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed saving lorebook template');
+			}
+		} catch (err: any) {
+			console.error('Error saving lorebook template:', err);
+			alert(err.message || 'Error saving template');
+		} finally {
+			setLorebookSaving(false);
+		}
+	};
 
-  const handleConfirmDeleteLorebookTemplate = async () => {
-    if (!deletingLorebookTemplate) return;
+	const handleConfirmDeleteLorebookTemplate = async () => {
+		if (!deletingLorebookTemplate) return;
 
-    try {
-      const filename = deletingLorebookTemplate.filename;
-      const res = await fetch(`${getApiUrl()}/lorebook/${encodeURIComponent(filename)}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        setDeletingLorebookTemplate(null);
-        fetchLorebookTemplates();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed deleting lorebook template');
-      }
-    } catch (err: any) {
-      console.error('Error deleting lorebook template:', err);
-      alert(err.message || 'Error deleting template');
-    }
-  };
+		try {
+			const filename = deletingLorebookTemplate.filename;
+			const res = await fetch(`${getApiUrl()}/lorebook/${encodeURIComponent(filename)}`, {
+				method: 'DELETE',
+			});
+			if (res.ok) {
+				setDeletingLorebookTemplate(null);
+				fetchLorebookTemplates();
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed deleting lorebook template');
+			}
+		} catch (err: any) {
+			console.error('Error deleting lorebook template:', err);
+			alert(err.message || 'Error deleting template');
+		}
+	};
 
-  return (
+	return (
 		<div className='space-y-6 animate-in fade-in duration-200 pb-8'>
 			{/* Header */}
 			<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4'>
@@ -204,23 +199,47 @@ export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({
 										</div>
 									</div>
 
-									<div className='pt-3 border-t border-[#e8ebf3] flex items-center justify-end gap-2'>
-										<Button
-											size='sm'
-											variant='secondary'
-											onClick={() => handleOpenEditLorebookModal(tmpl)}
-											icon={<EditIcon className='w-3.5 h-3.5' />}
-										>
-											Edit
-										</Button>
-										<Button
-											size='sm'
-											variant='danger'
-											onClick={() => setDeletingLorebookTemplate(tmpl)}
-											icon={<TrashIcon className='w-3.5 h-3.5' />}
-										>
-											Delete
-										</Button>
+									<div className={'flex items-center justify-between pt-3 border-t border-[#e8ebf3] gap-2 justify-end'}>
+										<div className='flex items-center gap-1'>
+											<button
+												onClick={() => handleOpenEditLorebookModal(tmpl)}
+												className='p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9]'
+												title='Edit'
+											>
+												<svg
+													width='16'
+													height='16'
+													viewBox='0 0 24 24'
+													fill='none'
+													stroke='currentColor'
+													strokeWidth='2'
+													strokeLinecap='round'
+													strokeLinejoin='round'
+												>
+													<path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' />
+													<path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' />
+												</svg>
+											</button>
+											<button
+												onClick={() => setDeletingLorebookTemplate(tmpl)}
+												className='p-1.5 text-[#7a7d90] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50'
+												title='Delete'
+											>
+												<svg
+													width='16'
+													height='16'
+													viewBox='0 0 24 24'
+													fill='none'
+													stroke='currentColor'
+													strokeWidth='2'
+													strokeLinecap='round'
+													strokeLinejoin='round'
+												>
+													<polyline points='3 6 5 6 21 6' />
+													<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+												</svg>
+											</button>
+										</div>
 									</div>
 								</div>
 							))}
@@ -302,5 +321,5 @@ export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({
 				</div>
 			)}
 		</div>
-  );
+	);
 };

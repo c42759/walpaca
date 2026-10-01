@@ -6,330 +6,318 @@ import { PlusIcon, EditIcon, TrashIcon, CheckIcon, SearchIcon, ChevronIcon } fro
 import { TTS_VOICE_GROUPS, getVoiceDisplayName } from '@/lib/voiceConstants';
 
 export interface PersonaTemplate {
-  filename: string;
-  name: string;
-  description?: string;
-  personality?: string;
-  scenario?: string;
-  system_prompt?: string;
-  post_history_instructions?: string;
-  first_mes?: string;
-  alternate_greetings?: string[];
-  picture?: string | null;
-  voice?: string | null;
-  num_ctx?: number | null;
-  temperature?: number;
-  top_p?: number;
-  top_k?: number;
-  repeat_penalty?: number;
-  presence_penalty?: number;
-  frequency_penalty?: number;
-  character_book?: {
-    name?: string;
-    description?: string;
-    entries?: Array<{
-      name?: string;
-      keys?: string[] | string;
-      content?: string;
-      comment?: string;
-      enabled?: boolean;
-    }>;
-  } | null;
-  generation_settings?: {
-    temperature?: number;
-    top_p?: number;
-    top_k?: number;
-    repeat_penalty?: number;
-    presence_penalty?: number;
-    frequency_penalty?: number;
-  } | null;
-  error?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any;
+	filename: string;
+	name: string;
+	description?: string;
+	personality?: string;
+	scenario?: string;
+	system_prompt?: string;
+	post_history_instructions?: string;
+	first_mes?: string;
+	alternate_greetings?: string[];
+	picture?: string | null;
+	voice?: string | null;
+	num_ctx?: number | null;
+	temperature?: number;
+	top_p?: number;
+	top_k?: number;
+	repeat_penalty?: number;
+	presence_penalty?: number;
+	frequency_penalty?: number;
+	character_book?: {
+		name?: string;
+		description?: string;
+		entries?: Array<{
+			name?: string;
+			keys?: string[] | string;
+			content?: string;
+			comment?: string;
+			enabled?: boolean;
+		}>;
+	} | null;
+	generation_settings?: {
+		temperature?: number;
+		top_p?: number;
+		top_k?: number;
+		repeat_penalty?: number;
+		presence_penalty?: number;
+		frequency_penalty?: number;
+	} | null;
+	error?: string;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	[key: string]: any;
 }
 
 export interface LorebookTemplate {
-  filename: string;
-  name: string;
-  keys: string[];
-  content: string;
-  error?: string;
+	filename: string;
+	name: string;
+	keys: string[];
+	content: string;
+	error?: string;
 }
 
 export interface ManagePersonasPanelProps {
-  personaTemplates: PersonaTemplate[];
-  lorebookTemplates: LorebookTemplate[];
-  isPersonaLoading: boolean;
-  getApiUrl: () => string;
-  fetchPersonaTemplates: () => Promise<void>;
-  setApplyPersonaModalTemplate: (template: PersonaTemplate | null) => void;
-  setApplyPersonaSelectedModelId: (id: string) => void;
-  setDeletingPersonaTemplate: (template: PersonaTemplate | null) => void;
+	personaTemplates: PersonaTemplate[];
+	lorebookTemplates: LorebookTemplate[];
+	isPersonaLoading: boolean;
+	getApiUrl: () => string;
+	fetchPersonaTemplates: () => Promise<void>;
+	setApplyPersonaModalTemplate: (template: PersonaTemplate | null) => void;
+	setApplyPersonaSelectedModelId: (id: string) => void;
+	setDeletingPersonaTemplate: (template: PersonaTemplate | null) => void;
 }
 
 export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
-  personaTemplates,
-  lorebookTemplates,
-  isPersonaLoading,
-  getApiUrl,
-  fetchPersonaTemplates,
-  setApplyPersonaModalTemplate,
-  setApplyPersonaSelectedModelId,
-  setDeletingPersonaTemplate,
+	personaTemplates,
+	lorebookTemplates,
+	isPersonaLoading,
+	getApiUrl,
+	fetchPersonaTemplates,
+	setApplyPersonaModalTemplate,
+	setApplyPersonaSelectedModelId,
+	setDeletingPersonaTemplate,
 }) => {
-  const [personaViewMode, setPersonaViewMode] = useState<'list' | 'editor'>('list');
-  const [personaSearchQuery, setPersonaSearchQuery] = useState<string>('');
-  const [editingPersonaTemplate, setEditingPersonaTemplate] = useState<PersonaTemplate | null>(null);
+	const [personaViewMode, setPersonaViewMode] = useState<'list' | 'editor'>('list');
+	const [personaSearchQuery, setPersonaSearchQuery] = useState<string>('');
+	const [editingPersonaTemplate, setEditingPersonaTemplate] = useState<PersonaTemplate | null>(null);
 
-  // Form State
-  const [personaFormName, setPersonaFormName] = useState<string>('');
-  const [personaFormDescription, setPersonaFormDescription] = useState<string>('');
-  const [personaFormScenario, setPersonaFormScenario] = useState<string>('');
-  const [personaFormSystemPrompt, setPersonaFormSystemPrompt] = useState<string>('');
-  const [personaFormPostHistoryInstructions, setPersonaFormPostHistoryInstructions] = useState<string>('');
-  const [personaFormFirstMes, setPersonaFormFirstMes] = useState<string>('');
-  const [personaFormAlternateGreetings, setPersonaFormAlternateGreetings] = useState<string[]>([]);
-  const [personaFormVoice, setPersonaFormVoice] = useState<string>('af_heart');
-  const [personaFormPicture, setPersonaFormPicture] = useState<string>('');
-  const [personaAvatarPreview, setPersonaAvatarPreview] = useState<string>('');
-  const [isUploadingPersonaAvatar, setIsUploadingPersonaAvatar] = useState<boolean>(false);
-  const [personaFormNumCtx, setPersonaFormNumCtx] = useState<number>(8192);
-  const [personaFormTemperature, setPersonaFormTemperature] = useState<number>(0.7);
-  const [personaFormTopP, setPersonaFormTopP] = useState<number>(0.9);
-  const [personaFormTopK, setPersonaFormTopK] = useState<number>(40);
-  const [personaFormRepeatPenalty, setPersonaFormRepeatPenalty] = useState<number>(1.1);
-  const [personaFormPresencePenalty, setPersonaFormPresencePenalty] = useState<number>(0.0);
-  const [personaFormFrequencyPenalty, setPersonaFormFrequencyPenalty] = useState<number>(0.0);
-  const [personaFormLorebookEntries, setPersonaFormLorebookEntries] = useState<
-    Array<{ name: string; keys: string; content: string; enabled: boolean }>
-  >([]);
-  const [personaSaving, setPersonaSaving] = useState<boolean>(false);
+	// Form State
+	const [personaFormName, setPersonaFormName] = useState<string>('');
+	const [personaFormDescription, setPersonaFormDescription] = useState<string>('');
+	const [personaFormScenario, setPersonaFormScenario] = useState<string>('');
+	const [personaFormSystemPrompt, setPersonaFormSystemPrompt] = useState<string>('');
+	const [personaFormPostHistoryInstructions, setPersonaFormPostHistoryInstructions] = useState<string>('');
+	const [personaFormFirstMes, setPersonaFormFirstMes] = useState<string>('');
+	const [personaFormAlternateGreetings, setPersonaFormAlternateGreetings] = useState<string[]>([]);
+	const [personaFormVoice, setPersonaFormVoice] = useState<string>('af_heart');
+	const [personaFormPicture, setPersonaFormPicture] = useState<string>('');
+	const [personaAvatarPreview, setPersonaAvatarPreview] = useState<string>('');
+	const [isUploadingPersonaAvatar, setIsUploadingPersonaAvatar] = useState<boolean>(false);
+	const [personaFormNumCtx, setPersonaFormNumCtx] = useState<number>(8192);
+	const [personaFormTemperature, setPersonaFormTemperature] = useState<number>(0.7);
+	const [personaFormTopP, setPersonaFormTopP] = useState<number>(0.9);
+	const [personaFormTopK, setPersonaFormTopK] = useState<number>(40);
+	const [personaFormRepeatPenalty, setPersonaFormRepeatPenalty] = useState<number>(1.1);
+	const [personaFormPresencePenalty, setPersonaFormPresencePenalty] = useState<number>(0.0);
+	const [personaFormFrequencyPenalty, setPersonaFormFrequencyPenalty] = useState<number>(0.0);
+	const [personaFormLorebookEntries, setPersonaFormLorebookEntries] = useState<Array<{ name: string; keys: string; content: string; enabled: boolean }>>([]);
+	const [personaSaving, setPersonaSaving] = useState<boolean>(false);
 
-  const handleOpenCreatePersonaEditor = () => {
-    setEditingPersonaTemplate(null);
-    setPersonaFormName('');
-    setPersonaFormDescription('');
-    setPersonaFormScenario('');
-    setPersonaFormSystemPrompt('');
-    setPersonaFormPostHistoryInstructions('');
-    setPersonaFormFirstMes('');
-    setPersonaFormAlternateGreetings([]);
-    setPersonaFormVoice('af_heart');
-    setPersonaFormPicture('');
-    setPersonaAvatarPreview('');
-    setPersonaFormNumCtx(8192);
-    setPersonaFormTemperature(0.7);
-    setPersonaFormTopP(0.9);
-    setPersonaFormTopK(40);
-    setPersonaFormRepeatPenalty(1.1);
-    setPersonaFormPresencePenalty(0.0);
-    setPersonaFormFrequencyPenalty(0.0);
-    setPersonaFormLorebookEntries([]);
-    setPersonaViewMode('editor');
-  };
+	const handleOpenCreatePersonaEditor = () => {
+		setEditingPersonaTemplate(null);
+		setPersonaFormName('');
+		setPersonaFormDescription('');
+		setPersonaFormScenario('');
+		setPersonaFormSystemPrompt('');
+		setPersonaFormPostHistoryInstructions('');
+		setPersonaFormFirstMes('');
+		setPersonaFormAlternateGreetings([]);
+		setPersonaFormVoice('af_heart');
+		setPersonaFormPicture('');
+		setPersonaAvatarPreview('');
+		setPersonaFormNumCtx(8192);
+		setPersonaFormTemperature(0.7);
+		setPersonaFormTopP(0.9);
+		setPersonaFormTopK(40);
+		setPersonaFormRepeatPenalty(1.1);
+		setPersonaFormPresencePenalty(0.0);
+		setPersonaFormFrequencyPenalty(0.0);
+		setPersonaFormLorebookEntries([]);
+		setPersonaViewMode('editor');
+	};
 
-  const handleOpenEditPersonaEditor = (template: PersonaTemplate) => {
-    setEditingPersonaTemplate(template);
-    setPersonaFormName(template.name || '');
-    setPersonaFormDescription(template.description || template.personality || '');
-    setPersonaFormScenario(template.scenario || '');
-    setPersonaFormSystemPrompt(template.system_prompt || '');
-    setPersonaFormPostHistoryInstructions(template.post_history_instructions || '');
-    setPersonaFormFirstMes(template.first_mes || template.greeting || '');
-    setPersonaFormAlternateGreetings(
-      Array.isArray(template.alternate_greetings) ? [...template.alternate_greetings] : []
-    );
-    setPersonaFormVoice(template.voice || 'af_heart');
-    setPersonaFormPicture(template.picture || '');
-    setPersonaAvatarPreview(template.picture || '');
-    setPersonaFormNumCtx(template.num_ctx || 8192);
-    setPersonaFormTemperature(
-      template.generation_settings?.temperature ?? template.temperature ?? 0.7
-    );
-    setPersonaFormTopP(template.generation_settings?.top_p ?? template.top_p ?? 0.9);
-    setPersonaFormTopK(template.generation_settings?.top_k ?? template.top_k ?? 40);
-    setPersonaFormRepeatPenalty(
-      template.generation_settings?.repeat_penalty ?? template.repeat_penalty ?? 1.1
-    );
-    setPersonaFormPresencePenalty(
-      template.generation_settings?.presence_penalty ?? template.presence_penalty ?? 0.0
-    );
-    setPersonaFormFrequencyPenalty(
-      template.generation_settings?.frequency_penalty ?? template.frequency_penalty ?? 0.0
-    );
+	const handleOpenEditPersonaEditor = (template: PersonaTemplate) => {
+		setEditingPersonaTemplate(template);
+		setPersonaFormName(template.name || '');
+		setPersonaFormDescription(template.description || template.personality || '');
+		setPersonaFormScenario(template.scenario || '');
+		setPersonaFormSystemPrompt(template.system_prompt || '');
+		setPersonaFormPostHistoryInstructions(template.post_history_instructions || '');
+		setPersonaFormFirstMes(template.first_mes || template.greeting || '');
+		setPersonaFormAlternateGreetings(Array.isArray(template.alternate_greetings) ? [...template.alternate_greetings] : []);
+		setPersonaFormVoice(template.voice || 'af_heart');
+		setPersonaFormPicture(template.picture || '');
+		setPersonaAvatarPreview(template.picture || '');
+		setPersonaFormNumCtx(template.num_ctx || 8192);
+		setPersonaFormTemperature(template.generation_settings?.temperature ?? template.temperature ?? 0.7);
+		setPersonaFormTopP(template.generation_settings?.top_p ?? template.top_p ?? 0.9);
+		setPersonaFormTopK(template.generation_settings?.top_k ?? template.top_k ?? 40);
+		setPersonaFormRepeatPenalty(template.generation_settings?.repeat_penalty ?? template.repeat_penalty ?? 1.1);
+		setPersonaFormPresencePenalty(template.generation_settings?.presence_penalty ?? template.presence_penalty ?? 0.0);
+		setPersonaFormFrequencyPenalty(template.generation_settings?.frequency_penalty ?? template.frequency_penalty ?? 0.0);
 
-    const rawEntries = template.character_book?.entries || [];
-    const parsedEntries = rawEntries.map((e) => ({
-      name: e.name || 'Entry',
-      keys: Array.isArray(e.keys) ? e.keys.join(', ') : e.keys || '',
-      content: e.content || '',
-      enabled: e.enabled !== false,
-    }));
-    setPersonaFormLorebookEntries(parsedEntries);
-    setPersonaViewMode('editor');
-  };
+		const rawEntries = template.character_book?.entries || [];
+		const parsedEntries = rawEntries.map((e) => ({
+			name: e.name || 'Entry',
+			keys: Array.isArray(e.keys) ? e.keys.join(', ') : e.keys || '',
+			content: e.content || '',
+			enabled: e.enabled !== false,
+		}));
+		setPersonaFormLorebookEntries(parsedEntries);
+		setPersonaViewMode('editor');
+	};
 
-  const handlePersonaAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+	const handlePersonaAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
 
-    const localBlobUrl = URL.createObjectURL(file);
-    setPersonaAvatarPreview(localBlobUrl);
-    setIsUploadingPersonaAvatar(true);
+		const localBlobUrl = URL.createObjectURL(file);
+		setPersonaAvatarPreview(localBlobUrl);
+		setIsUploadingPersonaAvatar(true);
 
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
+		try {
+			const formData = new FormData();
+			formData.append('file', file);
 
-      const res = await fetch(`${getApiUrl()}/personas/avatar`, {
-        method: 'POST',
-        body: formData,
-      });
+			const res = await fetch(`${getApiUrl()}/personas/avatar`, {
+				method: 'POST',
+				body: formData,
+			});
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.picture) {
-          setPersonaFormPicture(data.picture);
-          setPersonaAvatarPreview(data.picture);
-        }
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed uploading avatar image');
-      }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      console.error('Error uploading persona avatar:', err);
-      alert(err.message || 'Error uploading avatar image');
-    } finally {
-      setIsUploadingPersonaAvatar(false);
-    }
-  };
+			if (res.ok) {
+				const data = await res.json();
+				if (data.picture) {
+					setPersonaFormPicture(data.picture);
+					setPersonaAvatarPreview(data.picture);
+				}
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed uploading avatar image');
+			}
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		} catch (err: any) {
+			console.error('Error uploading persona avatar:', err);
+			alert(err.message || 'Error uploading avatar image');
+		} finally {
+			setIsUploadingPersonaAvatar(false);
+		}
+	};
 
-  const handleAddPersonaGreeting = () => {
-    setPersonaFormAlternateGreetings((prev) => [...prev, '']);
-  };
+	const handleAddPersonaGreeting = () => {
+		setPersonaFormAlternateGreetings((prev) => [...prev, '']);
+	};
 
-  const handleUpdatePersonaGreeting = (idx: number, val: string) => {
-    setPersonaFormAlternateGreetings((prev) => {
-      const next = [...prev];
-      next[idx] = val;
-      return next;
-    });
-  };
+	const handleUpdatePersonaGreeting = (idx: number, val: string) => {
+		setPersonaFormAlternateGreetings((prev) => {
+			const next = [...prev];
+			next[idx] = val;
+			return next;
+		});
+	};
 
-  const handleRemovePersonaGreeting = (idx: number) => {
-    setPersonaFormAlternateGreetings((prev) => prev.filter((_, i) => i !== idx));
-  };
+	const handleRemovePersonaGreeting = (idx: number) => {
+		setPersonaFormAlternateGreetings((prev) => prev.filter((_, i) => i !== idx));
+	};
 
-  const handleAddPersonaLorebookEntry = () => {
-    setPersonaFormLorebookEntries((prev) => [
-      ...prev,
-      { name: 'New Entry', keys: 'name, keyword', content: '', enabled: true },
-    ]);
-  };
+	const handleAddPersonaLorebookEntry = () => {
+		setPersonaFormLorebookEntries((prev) => [...prev, { name: 'New Entry', keys: 'name, keyword', content: '', enabled: true }]);
+	};
 
-  const handleCopyLorebookTemplateToPersona = (filename: string) => {
-    if (!filename) return;
-    const tmpl = lorebookTemplates.find((l) => l.filename === filename);
-    if (!tmpl) return;
+	const handleCopyLorebookTemplateToPersona = (filename: string) => {
+		if (!filename) return;
+		const tmpl = lorebookTemplates.find((l) => l.filename === filename);
+		if (!tmpl) return;
 
-    setPersonaFormLorebookEntries((prev) => [
-      ...prev,
-      {
-        name: tmpl.name || tmpl.filename.replace('.json', ''),
-        keys: Array.isArray(tmpl.keys) ? tmpl.keys.join(', ') : tmpl.keys || '',
-        content: tmpl.content || '',
-        enabled: true,
-      },
-    ]);
-  };
+		setPersonaFormLorebookEntries((prev) => [
+			...prev,
+			{
+				name: tmpl.name || tmpl.filename.replace('.json', ''),
+				keys: Array.isArray(tmpl.keys) ? tmpl.keys.join(', ') : tmpl.keys || '',
+				content: tmpl.content || '',
+				enabled: true,
+			},
+		]);
+	};
 
-  const handleUpdatePersonaLorebookEntry = (
-    idx: number,
-    field: 'name' | 'keys' | 'content' | 'enabled',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    value: any
-  ) => {
-    setPersonaFormLorebookEntries((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      return next;
-    });
-  };
+	const handleUpdatePersonaLorebookEntry = (
+		idx: number,
+		field: 'name' | 'keys' | 'content' | 'enabled',
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		value: any,
+	) => {
+		setPersonaFormLorebookEntries((prev) => {
+			const next = [...prev];
+			next[idx] = { ...next[idx], [field]: value };
+			return next;
+		});
+	};
 
-  const handleRemovePersonaLorebookEntry = (idx: number) => {
-    setPersonaFormLorebookEntries((prev) => prev.filter((_, i) => i !== idx));
-  };
+	const handleRemovePersonaLorebookEntry = (idx: number) => {
+		setPersonaFormLorebookEntries((prev) => prev.filter((_, i) => i !== idx));
+	};
 
-  const handleSavePersonaTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!personaFormName.trim()) return;
+	const handleSavePersonaTemplate = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!personaFormName.trim()) return;
 
-    setPersonaSaving(true);
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: any = {
-        name: personaFormName.trim(),
-        description: personaFormDescription.trim(),
-        personality: personaFormDescription.trim(),
-        scenario: personaFormScenario.trim(),
-        system_prompt: personaFormSystemPrompt.trim(),
-        post_history_instructions: personaFormPostHistoryInstructions.trim(),
-        first_mes: personaFormFirstMes.trim(),
-        alternate_greetings: personaFormAlternateGreetings.filter((g) => g.trim().length > 0),
-        voice: personaFormVoice,
-        picture: personaFormPicture || null,
-        num_ctx: Number(personaFormNumCtx) || 8192,
-        generation_settings: {
-          temperature: Number(personaFormTemperature),
-          top_p: Number(personaFormTopP),
-          top_k: Number(personaFormTopK),
-          repeat_penalty: Number(personaFormRepeatPenalty),
-          presence_penalty: Number(personaFormPresencePenalty),
-          frequency_penalty: Number(personaFormFrequencyPenalty),
-        },
-        character_book: {
-          name: `${personaFormName.trim()} Lorebook`,
-          entries: personaFormLorebookEntries.map((e) => ({
-            name: e.name.trim(),
-            keys: e.keys.split(',').map((k) => k.trim()).filter(Boolean),
-            content: e.content,
-            enabled: e.enabled !== false,
-          })),
-        },
-      };
+		setPersonaSaving(true);
+		try {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const payload: any = {
+				name: personaFormName.trim(),
+				description: personaFormDescription.trim(),
+				personality: personaFormDescription.trim(),
+				scenario: personaFormScenario.trim(),
+				system_prompt: personaFormSystemPrompt.trim(),
+				post_history_instructions: personaFormPostHistoryInstructions.trim(),
+				first_mes: personaFormFirstMes.trim(),
+				alternate_greetings: personaFormAlternateGreetings.filter((g) => g.trim().length > 0),
+				voice: personaFormVoice,
+				picture: personaFormPicture || null,
+				num_ctx: Number(personaFormNumCtx) || 8192,
+				generation_settings: {
+					temperature: Number(personaFormTemperature),
+					top_p: Number(personaFormTopP),
+					top_k: Number(personaFormTopK),
+					repeat_penalty: Number(personaFormRepeatPenalty),
+					presence_penalty: Number(personaFormPresencePenalty),
+					frequency_penalty: Number(personaFormFrequencyPenalty),
+				},
+				character_book: {
+					name: `${personaFormName.trim()} Lorebook`,
+					entries: personaFormLorebookEntries.map((e) => ({
+						name: e.name.trim(),
+						keys: e.keys
+							.split(',')
+							.map((k) => k.trim())
+							.filter(Boolean),
+						content: e.content,
+						enabled: e.enabled !== false,
+					})),
+				},
+			};
 
-      let url = `${getApiUrl()}/personas`;
-      let method = 'POST';
+			let url = `${getApiUrl()}/personas`;
+			let method = 'POST';
 
-      if (editingPersonaTemplate) {
-        url = `${getApiUrl()}/personas/${encodeURIComponent(editingPersonaTemplate.filename)}`;
-        method = 'PUT';
-      }
+			if (editingPersonaTemplate) {
+				url = `${getApiUrl()}/personas/${encodeURIComponent(editingPersonaTemplate.filename)}`;
+				method = 'PUT';
+			}
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+			const res = await fetch(url, {
+				method,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+			});
 
-      if (res.ok) {
-        setPersonaViewMode('list');
-        fetchPersonaTemplates();
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed saving persona template');
-      }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      console.error('Error saving persona template:', err);
-      alert(err.message || 'Error saving template');
-    } finally {
-      setPersonaSaving(false);
-    }
-  };
+			if (res.ok) {
+				setPersonaViewMode('list');
+				fetchPersonaTemplates();
+			} else {
+				const errData = await res.json();
+				alert(errData.error || 'Failed saving persona template');
+			}
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		} catch (err: any) {
+			console.error('Error saving persona template:', err);
+			alert(err.message || 'Error saving template');
+		} finally {
+			setPersonaSaving(false);
+		}
+	};
 
-  return (
+	return (
 		<div className='animate-in fade-in duration-200 pb-8'>
 			{personaViewMode === 'editor' ? (
 				<form onSubmit={handleSavePersonaTemplate} className='space-y-6'>
@@ -801,8 +789,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 													)}
 												</div>
 											</div>
-
-											<div className='pt-3 border-t border-[#e8ebf3] flex items-center justify-between gap-2'>
+											<div className={'flex items-center justify-between pt-3 border-t border-[#e8ebf3] gap-2 justify-end'}>
 												<Button
 													size='sm'
 													variant='primary'
@@ -814,24 +801,45 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 												>
 													Apply to Model
 												</Button>
-
-												<div className='flex items-center gap-2'>
-													<Button
-														size='sm'
-														variant='secondary'
+												<div className='flex items-center gap-1'>
+													<button
 														onClick={() => handleOpenEditPersonaEditor(tmpl)}
-														icon={<EditIcon className='w-3.5 h-3.5' />}
+														className='p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9]'
+														title='Edit'
 													>
-														Edit Page
-													</Button>
-													<Button
-														size='sm'
-														variant='danger'
+														<svg
+															width='16'
+															height='16'
+															viewBox='0 0 24 24'
+															fill='none'
+															stroke='currentColor'
+															strokeWidth='2'
+															strokeLinecap='round'
+															strokeLinejoin='round'
+														>
+															<path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' />
+															<path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' />
+														</svg>
+													</button>
+													<button
 														onClick={() => setDeletingPersonaTemplate(tmpl)}
-														icon={<TrashIcon className='w-3.5 h-3.5' />}
+														className='p-1.5 text-[#7a7d90] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50'
+														title='Delete'
 													>
-														Delete
-													</Button>
+														<svg
+															width='16'
+															height='16'
+															viewBox='0 0 24 24'
+															fill='none'
+															stroke='currentColor'
+															strokeWidth='2'
+															strokeLinecap='round'
+															strokeLinejoin='round'
+														>
+															<polyline points='3 6 5 6 21 6' />
+															<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+														</svg>
+													</button>
 												</div>
 											</div>
 										</div>
@@ -843,5 +851,5 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 				</div>
 			)}
 		</div>
-  );
+	);
 };
