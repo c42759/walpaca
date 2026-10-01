@@ -52,11 +52,12 @@ services:
 
   kokoro:
     container_name: walpaca_kokoro
-    image: hwdsl2/kokoro-server
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest # or -gpu
     volumes:
       - kokoro-data:/var/lib/kokoro
     environment:
       KOKORO_API_KEY: ${KOKORO_API_KEY}
+      HF_HUB_OFFLINE: 0 # 0 = Allows downloads, 1 = Offline mode
     logging:
       driver: "json-file"
       options:
@@ -66,3 +67,4 @@ services:
 
 volumes:
   kokoro-data:
+  kokoro_cache:
