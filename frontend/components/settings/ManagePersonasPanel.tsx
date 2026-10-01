@@ -3,6 +3,7 @@ import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Input, Textarea } from '../ui/Input';
 import { PlusIcon, EditIcon, TrashIcon, CheckIcon, SearchIcon, ChevronIcon } from '../icons/Icons';
+import { TTS_VOICE_GROUPS, getVoiceDisplayName } from '@/lib/voiceConstants';
 
 export interface PersonaTemplate {
   filename: string;
@@ -43,6 +44,7 @@ export interface PersonaTemplate {
     frequency_penalty?: number;
   } | null;
   error?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
 
@@ -194,6 +196,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
         const errData = await res.json();
         alert(errData.error || 'Failed uploading avatar image');
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error('Error uploading persona avatar:', err);
       alert(err.message || 'Error uploading avatar image');
@@ -244,6 +247,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
   const handleUpdatePersonaLorebookEntry = (
     idx: number,
     field: 'name' | 'keys' | 'content' | 'enabled',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     value: any
   ) => {
     setPersonaFormLorebookEntries((prev) => {
@@ -263,6 +267,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 
     setPersonaSaving(true);
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload: any = {
         name: personaFormName.trim(),
         description: personaFormDescription.trim(),
@@ -315,6 +320,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
         const errData = await res.json();
         alert(errData.error || 'Failed saving persona template');
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error('Error saving persona template:', err);
       alert(err.message || 'Error saving template');
@@ -379,11 +385,15 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 									onChange={(e) => setPersonaFormVoice(e.target.value)}
 									className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all cursor-pointer'
 								>
-									<option value='af_heart'>af_heart (Female Warm)</option>
-									<option value='af_bella'>af_bella (Female Expressive)</option>
-									<option value='af_sky'>af_sky (Female Soft)</option>
-									<option value='am_adam'>am_adam (Male Deep)</option>
-									<option value='am_michael'>am_michael (Male Smooth)</option>
+									{TTS_VOICE_GROUPS.map((group) => (
+										<optgroup key={group.gender} label={`${group.gender} Voices`}>
+											{group.voices.map((v) => (
+												<option key={v.id} value={v.id}>
+													{v.label}
+												</option>
+											))}
+										</optgroup>
+									))}
 								</select>
 							</div>
 						</div>
@@ -420,16 +430,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 							</div>
 						</div>
 
-						<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-							<Input
-								label='Avatar Image Data URI / URL'
-								value={personaFormPicture}
-								onChange={(e) => {
-									setPersonaFormPicture(e.target.value);
-									setPersonaAvatarPreview(e.target.value);
-								}}
-								placeholder='data:image/... or https://...'
-							/>
+						<div>
 							<Input
 								label='Context Window Size (tokens)'
 								type='number'
@@ -623,7 +624,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 
 						{personaFormLorebookEntries.length === 0 ? (
 							<div className='p-6 text-center text-[#8e90a6] text-xs italic bg-[#f9fafc] rounded-xl border border-dashed border-[#e8ebf3]'>
-								No lorebook entries in this persona. Click "+ Add Entry" or select a Lorebook template above to copy entries.
+								No lorebook entries in this persona. Click &quot;+ Add Entry&quot; or select a Lorebook template above to copy entries.
 							</div>
 						) : (
 							<div className='space-y-4'>
@@ -793,7 +794,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 												)}
 
 												<div className='flex flex-wrap items-center gap-2 pt-1 text-xs text-[#7a7d90] font-medium'>
-													<Badge variant='primary'>Voice: {tmpl.voice || 'af_heart'}</Badge>
+													<Badge variant='primary'>Voice: {getVoiceDisplayName(tmpl.voice)}</Badge>
 													{tmpl.num_ctx && <Badge variant='secondary'>{tmpl.num_ctx} tokens</Badge>}
 													{tmpl.character_book?.entries && tmpl.character_book.entries.length > 0 && (
 														<Badge variant='success'>📚 {tmpl.character_book.entries.length} Lorebook entries</Badge>

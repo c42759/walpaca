@@ -1,6 +1,6 @@
 {
   "auto_play_voice": false,
-  "desktop_notifications": true,
+  "desktop_notifications": false,
   "play_sound_notification": true,
   "auto_scroll": false,
   "default_audio_output": ""
