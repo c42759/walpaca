@@ -2872,15 +2872,6 @@ export default function ChatPage() {
 	}, [routeChatId]);
 
 	useEffect(() => {
-		if (!routeChatId && chatItems.length > 0 && !activeChatId) {
-			setActiveChatId(chatItems[0].id);
-			if (typeof window !== 'undefined') {
-				window.history.replaceState(null, '', `/${chatItems[0].id}`);
-			}
-		}
-	}, [routeChatId, chatItems, activeChatId]);
-
-	useEffect(() => {
 		if (activeChatId) {
 			fetchChatMessages(activeChatId);
 		} else {
