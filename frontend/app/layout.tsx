@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Poppins } from 'next/font/google';
 import './globals.css';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import { AppShell } from '../components/layout/AppShell';
 
 const poppins = Poppins({
 	variable: '--font-poppins',
@@ -54,7 +55,7 @@ export default function RootLayout({
 				/>
 			</head>
 			<body className='min-h-full flex flex-col antialiased'>
-				<main className='topo-bg min-h-screen w-screen flex justify-center font-sans antialiased text-[#202022] box-border'>{children}</main>
+				<AppShell>{children}</AppShell>
 				<PWAInstallPrompt />
 			</body>
 		</html>

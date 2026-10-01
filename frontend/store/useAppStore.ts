@@ -10,7 +10,8 @@ export interface ModelPreference {
   picture?: string | null;
   voice?: string | null;
   num_ctx?: number | null;
-  character?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  character?: Record<string, any>;
 }
 
 export interface InstanceProperties {
@@ -49,10 +50,43 @@ export interface InstanceModel {
   quantization_level?: string;
   size?: number;
   modified_at?: string;
-  capabilities?: any;
+  capabilities?: Record<string, unknown>;
+}
+
+export interface NavigationFolder {
+  id: string;
+  name: string;
+  color?: string;
+  parent?: string | null;
+}
+
+export interface FolderContextMenuState {
+  x: number;
+  y: number;
+  folderId: string;
+  folderName: string;
 }
 
 interface AppStoreState {
+  // Navigation & Shell States
+  currentView: 'chat' | 'settings';
+  setCurrentView: (view: 'chat' | 'settings') => void;
+
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+
+  folders: NavigationFolder[];
+  setFolders: (folders: NavigationFolder[] | ((prev: NavigationFolder[]) => NavigationFolder[])) => void;
+
+  draggedChatId: string | null;
+  setDraggedChatId: (id: string | null) => void;
+
+  folderContextMenu: FolderContextMenuState | null;
+  setFolderContextMenu: (menu: FolderContextMenuState | null) => void;
+
+  isCreatingFolder: boolean;
+  setIsCreatingFolder: (isCreating: boolean) => void;
+
   // Long-lived Data States
   instances: InstanceItem[];
   instancesLoaded: boolean;
@@ -82,7 +116,60 @@ interface AppStoreState {
   invalidateInstanceModels: (instanceId?: string) => void;
 }
 
+// Static non-reactive registry for shell navigation handlers
+const shellHandlers: {
+  goToRoot?: () => void;
+  dropChat?: (chatId: string, folderId: string) => void;
+} = {};
+
+export const registerGoToRootHandler = (fn: (() => void) | null) => {
+  if (fn) shellHandlers.goToRoot = fn;
+  else delete shellHandlers.goToRoot;
+};
+
+export const triggerGoToRoot = () => {
+  if (shellHandlers.goToRoot) {
+    shellHandlers.goToRoot();
+  } else {
+    useAppStore.getState().setCurrentView('chat');
+    useAppStore.getState().setActiveTab('all');
+    if (typeof window !== 'undefined') {
+      window.history.pushState(null, '', '/');
+    }
+  }
+};
+
+export const registerDropChatToFolderHandler = (fn: ((chatId: string, folderId: string) => void) | null) => {
+  if (fn) shellHandlers.dropChat = fn;
+  else delete shellHandlers.dropChat;
+};
+
+export const triggerDropChatToFolder = (chatId: string, folderId: string) => {
+  shellHandlers.dropChat?.(chatId, folderId);
+};
+
 export const useAppStore = create<AppStoreState>((set, get) => ({
+  currentView: 'chat',
+  setCurrentView: (view) => set({ currentView: view }),
+
+  activeTab: 'none',
+  setActiveTab: (tab) => set({ activeTab: tab }),
+
+  folders: [],
+  setFolders: (folders) =>
+    set((state) => ({
+      folders: typeof folders === 'function' ? folders(state.folders) : folders,
+    })),
+
+  draggedChatId: null,
+  setDraggedChatId: (id) => set({ draggedChatId: id }),
+
+  folderContextMenu: null,
+  setFolderContextMenu: (menu) => set({ folderContextMenu: menu }),
+
+  isCreatingFolder: false,
+  setIsCreatingFolder: (isCreating) => set({ isCreatingFolder: isCreating }),
+
   instances: [],
   instancesLoaded: false,
   instancesLoading: false,
@@ -142,7 +229,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
             }
           });
         } else if (data && typeof data === "object") {
-          Object.entries(data).forEach(([key, val]) => {
+          Object.values(data).forEach((val) => {
             const p = val as ModelPreference;
             if (p && p.id) {
               map[p.id] = p;

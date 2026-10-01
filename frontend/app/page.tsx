@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, registerGoToRootHandler, registerDropChatToFolderHandler } from '../store/useAppStore';
 import { getApiUrl } from '../lib/api';
 
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -10,6 +10,8 @@ import { SettingsSidebar } from '@/components/settings/SettingsSidebar';
 import { ManagePersonasPanel } from '@/components/settings/ManagePersonasPanel';
 import { ManageLorebookPanel } from '@/components/settings/ManageLorebookPanel';
 import { ManageInstancesPanel } from '@/components/settings/ManageInstancesPanel';
+import { SettingsHelpSidebar } from '@/components/settings/SettingsHelpSidebar';
+import { ChatListPanel } from '@/components/chat/ChatListPanel';
 import { ChatMessageList } from '@/components/chat/ChatMessageList';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { Button } from '@/components/ui/Button';
@@ -1039,9 +1041,7 @@ export default function AlpacaWebPage() {
 		setSelectedAttachments((prev) => prev.filter((_, idx) => idx !== indexToRemove));
 	};
 
-	const [folders, setFolders] = useState<ChatFolder[]>([]);
-
-	// Zustand Store Integration for long-lived data caching
+	// Zustand Store Integration for long-lived data caching & navigation
 	const {
 		instances,
 		modelPreferences,
@@ -1051,6 +1051,18 @@ export default function AlpacaWebPage() {
 		setInstances: setStoreInstances,
 		setModelPreference: setStoreModelPreference,
 		removeModelPreference: storeRemoveModelPreference,
+		currentView,
+		setCurrentView,
+		activeTab,
+		setActiveTab,
+		folders,
+		setFolders,
+		draggedChatId,
+		setDraggedChatId,
+		folderContextMenu,
+		setFolderContextMenu,
+		isCreatingFolder,
+		setIsCreatingFolder,
 	} = useAppStore();
 
 	const [activeAttachmentModal, setActiveAttachmentModal] = useState<{ title: string; type: string; content: string } | null>(null);
@@ -1074,7 +1086,6 @@ export default function AlpacaWebPage() {
 	const [editModelCharacterBook, setEditModelCharacterBook] = useState<Array<{ name: string; description: string; tags: string }>>([]);
 	const [isNewChatModalOpen, setIsNewChatModalOpen] = useState<boolean>(false);
 	const [newChatTitleInput, setNewChatTitleInput] = useState<string>('New Chat');
-	const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
 	const [activeSettingsCategory, setActiveSettingsCategory] = useState<
 		'import-chat' | 'manage-instances' | 'preferences' | 'manage-lorebook' | 'manage-personas' | 'about-walpaca'
 	>('import-chat');
@@ -1554,7 +1565,6 @@ export default function AlpacaWebPage() {
 	const [modelModalSearchQuery, setModelModalSearchQuery] = useState<string>('');
 
 	// Chat Drag & Drop to Folders State & Handler
-	const [draggedChatId, setDraggedChatId] = useState<string | null>(null);
 	const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
 
 	// Import Chat State & Handlers
@@ -1847,13 +1857,6 @@ export default function AlpacaWebPage() {
 		}
 	};
 
-	// Folder Context Menu & Action States
-	const [folderContextMenu, setFolderContextMenu] = useState<{
-		x: number;
-		y: number;
-		folderId: string;
-		folderName: string;
-	} | null>(null);
 	const [lineContextMenu, setLineContextMenu] = useState<{
 		x: number;
 		y: number;
@@ -2713,7 +2716,6 @@ export default function AlpacaWebPage() {
 
 		return Array.from(map.values());
 	};
-	const [activeTab, setActiveTab] = useState<string>('none');
 	const [activeChatId, setActiveChatId] = useState<string>(() => {
 		if (typeof window !== 'undefined') {
 			const params = new URLSearchParams(window.location.search);
@@ -2726,7 +2728,6 @@ export default function AlpacaWebPage() {
 	const [inputText, setInputText] = useState<string>('');
 	const [expandedSection, setExpandedSection] = useState<string>('photos');
 	const [isAttachmentsExpanded, setIsAttachmentsExpanded] = useState<boolean>(false);
-	const [isCreatingFolder, setIsCreatingFolder] = useState<boolean>(false);
 	const [newFolderName, setNewFolderName] = useState<string>('');
 
 	const handleOpenRenameModal = () => {
@@ -3432,7 +3433,7 @@ export default function AlpacaWebPage() {
 		}
 	};
 
-	const handleGoToRoot = () => {
+	const handleGoToRoot = useCallback(() => {
 		setCurrentView('chat');
 		setActiveTab('all');
 		setActiveChatId('');
@@ -3440,185 +3441,21 @@ export default function AlpacaWebPage() {
 		if (typeof window !== 'undefined') {
 			window.history.pushState(null, '', '/');
 		}
-	};
+	}, [setCurrentView, setActiveTab, setActiveChatId, setMessages]);
+
+	useEffect(() => {
+		registerGoToRootHandler(handleGoToRoot);
+		registerDropChatToFolderHandler(handleDropChatToFolder);
+		return () => {
+			registerGoToRootHandler(null);
+			registerDropChatToFolderHandler(null);
+		};
+	}, [handleGoToRoot, handleDropChatToFolder]);
 
 	return (
 		<>
-			{/* Outer Floating Application Window */}
-			<div className='w-full min-w-[90vw] h-[calc(100vh-0px)] md:h-[calc(100vh-0px)] lg:h-100vh-0px)] bg-[#202022] flex overflow-hidden border-8 border-[#202022]'>
-				{/* ========================================================= */}
-				{/* 1. SLIM LEFT NAVIGATION RAIL (#202022) */}
-				{/* ========================================================= */}
-				<aside className='w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#2d2d30]'>
-					{/* Top Alpaca Prism Logo */}
-					<div className='flex flex-col items-center gap-8 w-full'>
-						<div
-							onClick={handleGoToRoot}
-							className='w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity'
-						>
-							<img src='/icon-white.svg' alt='Walpaca' className='w-9 h-9 object-contain' />
-						</div>
-
-						{/* Navigation Tabs (Backend Folders API Integrated) */}
-						<nav className='flex flex-col items-center gap-3 w-full overflow-y-auto max-h-[calc(100vh-220px)] px-1'>
-							{/* No Folder tab */}
-							<button
-								onClick={() => {
-									setActiveTab('none');
-									setCurrentView('chat');
-								}}
-								onDragOver={(e) => {
-									e.preventDefault();
-									e.dataTransfer.dropEffect = 'move';
-									setDragOverFolderTarget('none');
-								}}
-								onDragLeave={() => {
-									if (dragOverFolderTarget === 'none') setDragOverFolderTarget(null);
-								}}
-								onDrop={(e) => {
-									e.preventDefault();
-									const droppedId = e.dataTransfer.getData('text/plain') || draggedChatId;
-									if (droppedId) handleDropChatToFolder(droppedId, 'none');
-								}}
-								className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative cursor-pointer ${
-									dragOverFolderTarget === 'none'
-										? 'bg-[#7678ed]/30 border-2 border-[#7678ed] text-white scale-105 shadow-lg'
-										: (activeTab === 'none' || activeTab === 'all') && currentView === 'chat'
-											? 'bg-[#2e2f33] text-white shadow-inner'
-											: 'text-[#8b8d97] hover:text-white'
-								}`}
-								title='No Folder'
-							>
-								<div className='relative'>
-									<svg
-										width='22'
-										height='22'
-										viewBox='0 0 24 24'
-										fill='none'
-										stroke='currentColor'
-										strokeWidth='2'
-										strokeLinecap='round'
-										strokeLinejoin='round'
-									>
-										<path d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' />
-									</svg>
-								</div>
-								<span className='text-xs font-medium tracking-tight text-center truncate w-full px-1'>No Folder</span>
-							</button>
-
-							{/* Dynamic Folders from /api/folders */}
-							{folders.map((folder) => {
-								const isActive = activeTab === folder.id && currentView === 'chat';
-								const isDragOver = dragOverFolderTarget === folder.id;
-								return (
-									<button
-										key={folder.id}
-										onClick={() => {
-											setActiveTab(folder.id);
-											setCurrentView('chat');
-										}}
-										onContextMenu={(e) => {
-											e.preventDefault();
-											e.stopPropagation();
-											setFolderContextMenu({
-												x: e.clientX,
-												y: e.clientY,
-												folderId: folder.id,
-												folderName: folder.name,
-											});
-										}}
-										onDragOver={(e) => {
-											e.preventDefault();
-											e.dataTransfer.dropEffect = 'move';
-											setDragOverFolderTarget(folder.id);
-										}}
-										onDragLeave={() => {
-											if (dragOverFolderTarget === folder.id) setDragOverFolderTarget(null);
-										}}
-										onDrop={(e) => {
-											e.preventDefault();
-											const droppedId = e.dataTransfer.getData('text/plain') || draggedChatId;
-											if (droppedId) handleDropChatToFolder(droppedId, folder.id);
-										}}
-										className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative cursor-pointer group ${
-											isDragOver
-												? 'bg-[#7678ed]/30 border-2 border-[#7678ed] text-white scale-105 shadow-lg'
-												: isActive
-													? 'bg-[#2e2f33] text-white shadow-inner'
-													: 'text-[#8b8d97] hover:text-white'
-										}`}
-										title={`${folder.name} (Right-click for options)`}
-									>
-										<div className='relative'>
-											<svg
-												width='22'
-												height='22'
-												viewBox='0 0 24 24'
-												fill='none'
-												stroke='currentColor'
-												strokeWidth='2'
-												strokeLinecap='round'
-												strokeLinejoin='round'
-											>
-												<path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z' />
-											</svg>
-										</div>
-										<span className='text-sm font-medium tracking-tight truncate w-full text-center px-1'>{folder.name}</span>
-									</button>
-								);
-							})}
-
-							{/* Add Folder Button */}
-							<button
-								onClick={() => setIsCreatingFolder(true)}
-								className='w-full py-2.5 px-1 rounded-2xl flex flex-col items-center gap-1 text-[#7678ed] hover:bg-[#2d2d30] hover:text-white transition-all border border-dashed border-[#7678ed]/40 mt-1 cursor-pointer'
-								title='Create New Folder'
-							>
-								<svg
-									width='20'
-									height='20'
-									viewBox='0 0 24 24'
-									fill='none'
-									stroke='currentColor'
-									strokeWidth='2.2'
-									strokeLinecap='round'
-									strokeLinejoin='round'
-								>
-									<line x1='12' y1='5' x2='12' y2='19' />
-									<line x1='6' y1='12' x2='18' y2='12' />
-								</svg>
-								<span className='text-xs font-medium tracking-tight'>+ Folder</span>
-							</button>
-						</nav>
-					</div>
-
-					{/* Bottom Settings */}
-					<button
-						onClick={() => setCurrentView('settings')}
-						className={`w-full py-3 rounded-2xl flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-							currentView === 'settings' ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
-						}`}
-						title='Settings'
-					>
-						<svg
-							width='22'
-							height='22'
-							viewBox='0 0 24 24'
-							fill='none'
-							stroke='currentColor'
-							strokeWidth='2'
-							strokeLinecap='round'
-							strokeLinejoin='round'
-						>
-							<path d='M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z' />
-							<circle cx='12' cy='12' r='3' />
-						</svg>
-						<span className='text-sm font-medium tracking-tight'>Settings</span>
-					</button>
-				</aside>
-
-				{/* Inner App Container with Rounded Right / Light Theme Area */}
-				<div className='flex-1 flex overflow-hidden bg-[#f9fafc] rounded-l-[32px]'>
+			{/* Inner App Container with Rounded Right / Light Theme Area */}
+			<div className='flex-1 flex overflow-hidden bg-[#f9fafc] rounded-l-[32px]'>
 					{currentView === 'settings' ? (
 						<div className='flex-1 flex h-full overflow-hidden bg-[#f9fafc] select-text'>
 							{/* 1. SETTINGS CATEGORIES SIDEBAR */}
@@ -5693,268 +5530,26 @@ export default function AlpacaWebPage() {
 							</main>
 
 							{/* 3. RIGHT SIDEBAR - HELP & TIPS */}
-							<aside className='w-[320px] bg-[#f9fafc] border-l border-[#e8ebf3] p-6 flex flex-col gap-5 overflow-y-auto shrink-0 select-none'>
-								<div className='flex items-center gap-2 text-[#7678ed] font-bold text-lg border-b border-[#e8ebf3] pb-3'>
-									<svg
-										width='20'
-										height='20'
-										viewBox='0 0 24 24'
-										fill='none'
-										stroke='currentColor'
-										strokeWidth='2.2'
-										strokeLinecap='round'
-										strokeLinejoin='round'
-									>
-										<path d='M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z' />
-									</svg>
-									<span>Help &amp; Tips</span>
-								</div>
-
-								{activeSettingsCategory === 'import-chat' && (
-									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
-										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm'>Supported File Types</h5>
-											<p className='text-xs text-[#7a7d90]'>
-												You can import JSON files exported directly from ChatGPT (
-												<code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>conversations.json</code>) or Anthropic Claude
-												exports.
-											</p>
-										</div>
-										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm'>Size Limits</h5>
-											<p className='text-xs text-[#7a7d90]'>
-												Single file archives up to 500 MB are processed locally without leaving your browser workspace.
-											</p>
-										</div>
-									</div>
-								)}
-
-								{activeSettingsCategory === 'manage-instances' && (
-									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
-										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm'>Connecting Ollama</h5>
-											<p className='text-xs text-[#7a7d90]'>
-												Ensure Ollama is running locally with{' '}
-												<code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>OLLAMA_ORIGINS="*"</code> enabled for web CORS
-												access.
-											</p>
-										</div>
-										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm'>API Key Security</h5>
-											<p className='text-xs text-[#7a7d90]'>
-												Cloud API tokens are encrypted in your browser's local secure storage and never transmitted to third parties.
-											</p>
-										</div>
-									</div>
-								)}
-
-								{activeSettingsCategory === 'preferences' && (
-									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
-										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm'>TTS Audio Output</h5>
-											<p className='text-xs text-[#7a7d90]'>
-												Ensure your browser permission allows HTML5 Web Audio auto-play for seamless speech output.
-											</p>
-										</div>
-									</div>
-								)}
-
-								{activeSettingsCategory === 'manage-lorebook' && (
-									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
-										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm'>Lorebook JSON Format</h5>
-											<p className='text-xs text-[#7a7d90]'>
-												Each template is saved as a JSON file in{' '}
-												<code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>lorebook/</code> with the structure:
-											</p>
-											<pre className='bg-[#f9fafc] p-2.5 rounded-xl border border-[#e8ebf3] text-[11px] font-mono text-[#202022] overflow-x-auto'>
-												{`{
-"name": "Character Name",
-"keys": ["key1", "key2"],
-"content": "My content here"
-}`}
-											</pre>
-										</div>
-										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm'>Keyword Triggering</h5>
-											<p className='text-xs text-[#7a7d90]'>
-												When prompt messages match any trigger key, the character content is automatically evaluated into the model's
-												system prompt.
-											</p>
-										</div>
-									</div>
-								)}
-
-								{activeSettingsCategory === 'about-walpaca' && (
-									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
-										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm flex items-center gap-2'>
-												<span className='w-2 h-2 rounded-full bg-[#27c93f] inline-block' />
-												<span>System Status</span>
-											</h5>
-											<p className='text-xs text-[#7a7d90]'>Frontend UI and Python API services are running.</p>
-										</div>
-
-										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
-											<h5 className='font-bold text-[#202022] text-sm'>Database Path</h5>
-											<p className='text-xs text-[#7a7d90] font-mono'>./alpaca.db</p>
-										</div>
-									</div>
-								)}
-							</aside>
+							<SettingsHelpSidebar activeSettingsCategory={activeSettingsCategory} />
 						</div>
 					) : (
 						<>
 							{/* ========================================================= */}
 							{/* 2. CHAT LIST PANEL (#f9fafc) */}
 							{/* ========================================================= */}
-							<section className='w-[350px] border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0'>
-								{/* Search Bar Header */}
-								<div className='p-4 pb-3 flex items-center gap-2'>
-									<div className='relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]'>
-										<svg
-											width='18'
-											height='18'
-											viewBox='0 0 24 24'
-											fill='none'
-											stroke='#7678ed'
-											strokeWidth='2.2'
-											strokeLinecap='round'
-											strokeLinejoin='round'
-											className='mr-2.5 shrink-0 opacity-80'
-										>
-											<circle cx='11' cy='11' r='8' />
-											<line x1='21' y1='21' x2='16.65' y2='16.65' />
-										</svg>
-										<input
-											type='text'
-											placeholder='Search'
-											value={searchQuery}
-											onChange={(e) => setSearchQuery(e.target.value)}
-											className='bg-transparent text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium'
-										/>
-									</div>
-									<button
-										onClick={handleOpenNewChatModal}
-										className='p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-sm shrink-0 cursor-pointer'
-										title='Create New Chat'
-									>
-										<svg
-											width='18'
-											height='18'
-											viewBox='0 0 24 24'
-											fill='none'
-											stroke='currentColor'
-											strokeWidth='2.5'
-											strokeLinecap='round'
-											strokeLinejoin='round'
-										>
-											<line x1='12' y1='5' x2='12' y2='19' />
-											<line x1='6' y1='12' x2='18' y2='12' />
-										</svg>
-									</button>
-								</div>
-
-								{/* Chat List Scrollable Items */}
-								<div className='flex-1 overflow-y-auto px-2 space-y-1.5 pb-4'>
-									{chatItems
-										.filter((chat) => {
-											const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase());
-											const matchesFolder =
-												activeTab === 'none' || activeTab === 'all'
-													? !chat.folder || chat.folder === 'none'
-													: chat.folder === activeTab;
-											return matchesSearch && matchesFolder;
-										})
-										.map((chat) => {
-											const isSelected = activeChatId === chat.id;
-											const isBeingDragged = draggedChatId === chat.id;
-											return (
-												<div
-													key={chat.id}
-													draggable={true}
-													onDragStart={(e) => {
-														e.dataTransfer.setData('text/plain', chat.id);
-														e.dataTransfer.effectAllowed = 'move';
-														setDraggedChatId(chat.id);
-													}}
-													onDragEnd={() => {
-														setDraggedChatId(null);
-														setDragOverFolderTarget(null);
-													}}
-													onClick={() => setActiveChatId(chat.id)}
-													className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-grab active:cursor-grabbing transition-all ${
-														isBeingDragged ? 'opacity-40 scale-95 border-2 border-dashed border-[#7678ed]' : ''
-													} ${isSelected ? 'bg-[#edeffb] shadow-[0_2px_8px_rgba(118,120,237,0.08)]' : 'hover:bg-[#f2f4fa]'}`}
-												>
-													{/* Avatar */}
-													{chat.avatarText ? (
-														<div
-															style={{ background: getAvatarColor(chat.name) }}
-															className='w-12 h-12 rounded-2xl text-white flex items-center justify-center font-bold text-lg tracking-wide shrink-0 shadow-sm'
-														>
-															{chat.avatarText}
-														</div>
-													) : (
-														<img
-															src={chat.avatarImg}
-															alt={chat.name}
-															className='w-12 h-12 rounded-2xl object-cover shrink-0 shadow-sm'
-														/>
-													)}
-
-													{/* Info */}
-													<div className='flex-1 min-w-0'>
-														<div className='flex items-center justify-between gap-1 mb-0.5'>
-															<h4 className='font-semibold text-lg text-[#202022] truncate'>{chat.name}</h4>
-															<span className='text-sm text-[#8e90a6] font-medium shrink-0'>{chat.time}</span>
-														</div>
-														<div className='flex items-center justify-between gap-1'>
-															<p className={`text-base truncate ${isSelected ? 'text-[#7678ed] font-medium' : 'text-[#7a7d90]'}`}>
-																{chat.lastMessage}
-															</p>
-
-															{/* Pin / Badge / Delivered */}
-															<div className='flex items-center gap-1.5 shrink-0'>
-																{chat.unreadCount && (
-																	<span className='bg-[#ff7a55] text-white text-sm font-bold w-5 h-5 rounded-full flex items-center justify-center leading-none'>
-																		{chat.unreadCount}
-																	</span>
-																)}
-																{chat.isPinned && (
-																	<svg
-																		width='13'
-																		height='13'
-																		viewBox='0 0 24 24'
-																		fill='#7678ed'
-																		stroke='#7678ed'
-																		strokeWidth='1.5'
-																	>
-																		<path d='M12 2L15 8L21 9L17 14L18 20L12 17L6 20L7 14L3 9L9 8L12 2Z' />
-																	</svg>
-																)}
-																{chat.isDelivered && (
-																	<svg
-																		width='15'
-																		height='15'
-																		viewBox='0 0 24 24'
-																		fill='none'
-																		stroke='#7678ed'
-																		strokeWidth='2.5'
-																		strokeLinecap='round'
-																		strokeLinejoin='round'
-																	>
-																		<polyline points='18 6 9 17 4 12' />
-																	</svg>
-																)}
-															</div>
-														</div>
-													</div>
-												</div>
-											);
-										})}
-								</div>
-							</section>
+							<ChatListPanel
+								searchQuery={searchQuery}
+								setSearchQuery={setSearchQuery}
+								handleOpenNewChatModal={handleOpenNewChatModal}
+								chatItems={chatItems}
+								activeTab={activeTab}
+								activeChatId={activeChatId}
+								setActiveChatId={setActiveChatId}
+								draggedChatId={draggedChatId}
+								setDraggedChatId={setDraggedChatId}
+								setDragOverFolderTarget={setDragOverFolderTarget}
+								getAvatarColor={getAvatarColor}
+							/>
 
 							{/* ========================================================= */}
 							{/* 3. MAIN CHAT AREA (WHITE) */}
@@ -6677,281 +6272,25 @@ export default function AlpacaWebPage() {
 										</div>
 
 										{/* Input Composer */}
-										<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex flex-col gap-3'>
-											<input
-												type='file'
-												ref={fileInputRef}
-												accept='image/*,.txt,.md,.css,.js,.jsx,.ts,.tsx,.php,.py,.html,.json,.xml,.csv,.c,.cpp,.h,.hpp,.cs,.java,.rb,.rs,.go,.sql,.sh,.yaml,.yml,.dockerfile,.env,.odt,.docx,.pptx,.pdf'
-												multiple
-												onChange={handleAttachmentSelect}
-												className='hidden'
-											/>
-
-											{/* Attachments Preview Strip */}
-											{selectedAttachments.length > 0 && (
-												<div className='flex items-center gap-3 px-1 py-1.5 overflow-x-auto w-full border-b border-[#eef0f6]/60 pb-3'>
-													{selectedAttachments.map((att, idx) =>
-														att.type === 'image' ? (
-															<div
-																key={att.id || idx}
-																className='relative group w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#e2e5f1] shadow-xs bg-[#f4f6fc]'
-															>
-																<img
-																	src={att.content}
-																	alt={att.name || `Selected ${idx + 1}`}
-																	className='w-full h-full object-cover'
-																/>
-																<button
-																	type='button'
-																	onClick={() => handleRemoveSelectedAttachment(idx)}
-																	className='absolute top-1 right-1 bg-black/60 hover:bg-[#ff4d4f] text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer shadow-sm'
-																	title='Remove image'
-																>
-																	<svg
-																		width='12'
-																		height='12'
-																		viewBox='0 0 24 24'
-																		fill='none'
-																		stroke='currentColor'
-																		strokeWidth='2.5'
-																		strokeLinecap='round'
-																		strokeLinejoin='round'
-																	>
-																		<line x1='18' y1='6' x2='6' y2='18' />
-																		<line x1='6' y1='6' x2='18' y2='18' />
-																	</svg>
-																</button>
-															</div>
-														) : (
-															<div
-																key={att.id || idx}
-																className='relative group flex items-center gap-2.5 px-3 py-2 rounded-xl border border-[#7678ed]/30 bg-[#7678ed]/5 hover:bg-[#7678ed]/10 transition-all shrink-0 max-w-[220px] shadow-2xs'
-															>
-																<div className='w-8 h-8 rounded-lg bg-[#7678ed]/15 text-[#7678ed] flex items-center justify-center shrink-0 font-bold text-xs uppercase'>
-																	{att.extension || 'txt'}
-																</div>
-																<div className='flex flex-col min-w-0 flex-1 pr-1'>
-																	<span className='text-xs font-semibold text-[#2d3142] truncate' title={att.name}>
-																		{att.name}
-																	</span>
-																	<span className='text-[10px] text-[#8e90a6] font-medium'>
-																		{att.size ? `${(att.size / 1024).toFixed(1)} KB` : 'Document'}
-																	</span>
-																</div>
-																<button
-																	type='button'
-																	onClick={() => handleRemoveSelectedAttachment(idx)}
-																	className='text-[#8e90a6] hover:text-[#ff4d4f] p-1 rounded-full hover:bg-black/5 transition-all cursor-pointer shrink-0'
-																	title='Remove attachment'
-																>
-																	<svg
-																		width='12'
-																		height='12'
-																		viewBox='0 0 24 24'
-																		fill='none'
-																		stroke='currentColor'
-																		strokeWidth='2.5'
-																		strokeLinecap='round'
-																		strokeLinejoin='round'
-																	>
-																		<line x1='18' y1='6' x2='6' y2='18' />
-																		<line x1='6' y1='6' x2='18' y2='18' />
-																	</svg>
-																</button>
-															</div>
-														),
-													)}
-													{selectedAttachments.length < 4 && (
-														<span className='text-xs text-[#8e90a6] font-medium ml-1 select-none whitespace-nowrap'>
-															{selectedAttachments.length}/4 attachments
-														</span>
-													)}
-												</div>
-											)}
-
-											<div className='flex items-center gap-2.5 w-full'>
-												{/* Combined Model & Instance Selector Button */}
-												{(() => {
-													const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
-													const selectedInstName = selectedInst?.properties?.name || selectedInst?.type || 'Instance';
-													const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
-													const selectedPref =
-														modelPreferences[selectedChatModelId] ||
-														modelPreferences[selectedPrefKey] ||
-														Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
-
-													let selectedModelName = selectedChatModelId;
-													if (selectedPref) {
-														selectedModelName =
-															getCharacterName(selectedPref.character) || (selectedPref as any).name || selectedPref.id;
-													} else if (selectedChatModelId) {
-														const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
-														if (instMod) {
-															selectedModelName = instMod.name || instMod.id;
-														}
-													}
-
-													if (!selectedModelName) {
-														selectedModelName = 'Select Model';
-													}
-
-													return (
-														<button
-															type='button'
-															onClick={() => setIsSelectModelModalOpen(true)}
-															className='group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2.5 hover:px-3.5 hover:bg-[#eaecf9] transition-all duration-300 ease-in-out shadow-xs cursor-pointer text-xs font-bold text-[#202022] max-w-[42px] hover:max-w-[340px] overflow-hidden'
-															title={`Model: ${selectedModelName} @ ${selectedInstName}`}
-														>
-															<div className='flex items-center gap-2 pl-1 shrink-0'>
-																<svg
-																	width='18'
-																	height='18'
-																	viewBox='0 0 24 24'
-																	fill='none'
-																	stroke='currentColor'
-																	strokeWidth='2'
-																	strokeLinecap='round'
-																	strokeLinejoin='round'
-																	className='text-[#7678ed] shrink-0'
-																>
-																	<rect x='2' y='3' width='20' height='14' rx='2' ry='2' />
-																	<line x1='8' y1='21' x2='16' y2='21' />
-																	<line x1='12' y1='17' x2='12' y2='21' />
-																</svg>
-																<div className='flex items-center gap-1.5 opacity-0 max-w-0 group-hover:opacity-100 group-hover:max-w-[280px] transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden'>
-																	<span className='truncate'>{selectedModelName}</span>
-																	<span className='text-[#8e90a6] font-semibold'>@</span>
-																	<span className='text-[#7678ed] truncate'>{selectedInstName}</span>
-																	<svg
-																		width='14'
-																		height='14'
-																		viewBox='0 0 24 24'
-																		fill='none'
-																		stroke='#8e90a6'
-																		strokeWidth='2.2'
-																		strokeLinecap='round'
-																		strokeLinejoin='round'
-																		className='ml-0.5 shrink-0 group-hover:text-[#202022] transition-colors'
-																	>
-																		<polyline points='6 9 12 15 18 9' />
-																	</svg>
-																</div>
-															</div>
-														</button>
-													);
-												})()}
-
-												{/* 3. Thinking Mode Brain Toggle Button */}
-												<button
-													type='button'
-													onClick={() => setIsThinkingEnabled((prev) => !prev)}
-													className={`p-2.5 rounded-2xl transition-all cursor-pointer shrink-0 border flex items-center justify-center ${
-														isThinkingEnabled
-															? 'bg-[#7678ed]/10 border-[#7678ed] text-[#7678ed] opacity-100 shadow-xs'
-															: 'bg-[#f0f2f9] border-[#e8ebf3] text-[#8e90a6] hover:bg-[#eaecf9] opacity-40 hover:opacity-70'
-													}`}
-													title={
-														isThinkingEnabled ? 'Thinking Mode Enabled (think=True)' : 'Thinking Mode Disabled (click to enable)'
-													}
-												>
-													<BrainIcon className='w-5 h-5' />
-												</button>
-
-												{/* Attach file button */}
-												<button
-													type='button'
-													disabled={selectedAttachments.length >= 4}
-													onClick={() => {
-														if (selectedAttachments.length < 4) {
-															fileInputRef.current?.click();
-														}
-													}}
-													className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#8e90a6] disabled:hover:bg-transparent'
-													title={
-														selectedAttachments.length >= 4 ? 'Maximum 4 attachments reached' : 'Attach file (Max 4 attachments)'
-													}
-												>
-													<svg
-														width='20'
-														height='20'
-														viewBox='0 0 24 24'
-														fill='none'
-														stroke='currentColor'
-														strokeWidth='2'
-														strokeLinecap='round'
-														strokeLinejoin='round'
-													>
-														<path d='M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48' />
-													</svg>
-												</button>
-
-												<textarea
-													ref={(el) => {
-														promptTextareaRef.current = el;
-														autoResizeTextarea(el);
-													}}
-													rows={1}
-													placeholder='Write a message...'
-													value={inputText}
-													onChange={(e) => {
-														setInputText(e.target.value);
-														autoResizeTextarea(e.currentTarget);
-													}}
-													onInput={(e) => autoResizeTextarea(e.currentTarget)}
-													onKeyDown={(e) => {
-														if (e.key === 'Enter' && !e.shiftKey) {
-															e.preventDefault();
-															if (inputText.trim() || selectedAttachments.length > 0) {
-																handleSendMessage(e);
-															}
-														}
-													}}
-													className='flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]'
-												/>
-
-												<button
-													type='button'
-													className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0'
-													title='Emoji'
-												>
-													<svg
-														width='20'
-														height='20'
-														viewBox='0 0 24 24'
-														fill='none'
-														stroke='currentColor'
-														strokeWidth='2'
-														strokeLinecap='round'
-														strokeLinejoin='round'
-													>
-														<circle cx='12' cy='12' r='10' />
-														<path d='M8 14s1.5 2 4 2 4-2 4-2' />
-														<line x1='9' y1='9' x2='9.01' y2='9' />
-														<line x1='15' y1='9' x2='15.01' y2='9' />
-													</svg>
-												</button>
-
-												<button
-													type='submit'
-													className='w-11 h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0'
-													title='Send'
-												>
-													<svg
-														width='18'
-														height='18'
-														viewBox='0 0 24 24'
-														fill='none'
-														stroke='currentColor'
-														strokeWidth='2.5'
-														strokeLinecap='round'
-														strokeLinejoin='round'
-													>
-														<line x1='22' y1='2' x2='11' y2='13' />
-														<polygon points='22 2 15 22 11 13 2 9 22 2' />
-													</svg>
-												</button>
-											</div>
-										</form>
+										<ChatInput
+											inputText={inputText}
+											setInputText={setInputText}
+											handleSendMessage={handleSendMessage}
+											selectedAttachments={selectedAttachments}
+											handleAttachmentSelect={handleAttachmentSelect}
+											handleRemoveSelectedAttachment={handleRemoveSelectedAttachment}
+											isThinkingEnabled={isThinkingEnabled}
+											setIsThinkingEnabled={setIsThinkingEnabled}
+											setIsSelectModelModalOpen={setIsSelectModelModalOpen}
+											selectedChatInstanceId={selectedChatInstanceId}
+											selectedChatModelId={selectedChatModelId}
+											instances={instances}
+											modelPreferences={modelPreferences}
+											instanceModelsList={instanceModelsList}
+											getCharacterName={getCharacterName}
+											promptTextareaRef={promptTextareaRef}
+											autoResizeTextarea={autoResizeTextarea}
+										/>
 									</section>
 								);
 							})()}
@@ -7231,7 +6570,6 @@ export default function AlpacaWebPage() {
 						</>
 					)}
 				</div>
-			</div>
 			{/* Create Folder Modal */}
 			{isCreatingFolder && (
 				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4'>
