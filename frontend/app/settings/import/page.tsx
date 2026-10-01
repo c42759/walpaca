@@ -84,17 +84,11 @@ export default function ImportSettingsPage() {
 			<main className='flex-1 p-8 overflow-y-auto'>
 				<div className='max-w-3xl mx-auto space-y-8'>
 					<div className='space-y-6 animate-in fade-in duration-200'>
-						<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex items-center gap-3.5'>
-							<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 text-[#7678ed] flex items-center justify-center shrink-0 shadow-xs'>
-								<svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-									<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
-									<polyline points='17 8 12 3 7 8' />
-									<line x1='12' y1='3' x2='12' y2='15' />
-								</svg>
-							</div>
+						{/* Header */}
+						<div className='flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs'>
 							<div>
-								<h3 className='text-2xl font-bold text-[#202022] tracking-tight'>Import Chat</h3>
-								<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>
+								<h3 className='text-xl font-bold text-[#202022] tracking-tight'>Import Chat</h3>
+								<p className='text-sm text-[#7a7d90] mt-1 font-medium'>
 									Import conversation logs, JSON backups, Markdown transcripts, or text exports.
 								</p>
 							</div>
@@ -129,7 +123,16 @@ export default function ImportSettingsPage() {
 							} rounded-3xl p-10 bg-white hover:bg-[#f3f4fd] transition-all flex flex-col items-center justify-center text-center cursor-pointer group shadow-xs`}
 						>
 							<div className='w-16 h-16 rounded-2xl bg-[#eaecf9] group-hover:bg-[#7678ed] group-hover:text-white text-[#7678ed] flex items-center justify-center mb-4 transition-colors shadow-sm'>
-								<svg width='28' height='28' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+								<svg
+									width='28'
+									height='28'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
 									<polyline points='17 8 12 3 7 8' />
 									<line x1='12' y1='3' x2='12' y2='15' />

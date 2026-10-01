@@ -23,26 +23,18 @@ export default function AboutSettingsPage() {
 			<main className='flex-1 p-8 overflow-y-auto'>
 				<div className='max-w-3xl mx-auto space-y-8'>
 					<div className='space-y-6 animate-in fade-in duration-200 pb-8'>
-						<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
-							<div className='flex items-center gap-3.5'>
-								<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 flex items-center justify-center p-2.5 shrink-0 shadow-xs'>
-									<img src='/icon-app.svg' alt='Walpaca Logo' className='w-full h-full object-contain' />
-								</div>
-								<div>
-									<div className='flex items-center gap-2.5'>
-										<h3 className='text-2xl font-bold text-[#202022] tracking-tight'>Walpaca</h3>
-										<span className='px-2.5 py-0.5 text-xs font-semibold bg-[#eaecf9] text-[#7678ed] rounded-lg border border-[#7678ed]/20'>
-											v1.0.0
-										</span>
-									</div>
-									<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>
-										Web interface inspired on Jeffser/Alpaca GTK client.
-									</p>
-								</div>
+						{/* Header */}
+						<div className='flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs'>
+							<div>
+								<h3 className='text-xl font-bold text-[#202022] tracking-tight'>Walpaca</h3>
+								<p className='text-sm text-[#7a7d90] mt-1 font-medium'>Web interface inspired on Jeffser/Alpaca GTK client.</p>
 							</div>
+						</div>
 
-							<p className='text-xs text-[#404252] leading-relaxed pt-3 border-t border-[#e8ebf3]'>
-								Walpaca lets you access your local Alpaca workspace across your network or VPN. It mounts the exact same SQLite database file (alpaca.db) used by the native desktop app, keeping your existing chats and settings synchronized.
+						<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+							<p className='text-sm text-[#404252] leading-relaxed'>
+								Walpaca lets you access your local Alpaca workspace across your network or VPN. It mounts the exact same SQLite database file
+								(alpaca.db) used by the native desktop app, keeping your existing chats and settings synchronized.
 							</p>
 						</div>
 
@@ -54,7 +46,11 @@ export default function AboutSettingsPage() {
 							<div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-[#404252]'>
 								{[
 									{ icon: '💬', title: 'Multi-Model Chats', desc: 'Switch between Ollama & Cloud models in the same conversation.' },
-									{ icon: '📄', title: 'Document Recognition', desc: 'Attach text and code files (.txt, .md, .js, .py) for prompt analysis.' },
+									{
+										icon: '📄',
+										title: 'Document Recognition',
+										desc: 'Attach text and code files (.txt, .md, .js, .py) for prompt analysis.',
+									},
 									{ icon: '🖼️', title: 'Image Support', desc: 'Attach up to 4 images per message for multimodal vision models.' },
 									{ icon: '💻', title: 'Syntax Highlighting', desc: 'Tokenized code blocks with copy button and line counters.' },
 									{ icon: '📥', title: 'Export Transcripts', desc: 'Export chats to Markdown (.md), Obsidian, JSON, or Plain Text.' },

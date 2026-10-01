@@ -76,7 +76,15 @@ def fetch_live_instance_models(instance):
     props = instance.get_properties()
     inst_type = (instance.type or "ollama").lower()
     host = props.get("url") or props.get("host") or props.get("endpoint") or ""
-    api_key = props.get("apiKey") or props.get("api_key") or props.get("key") or ""
+    api_key = (
+        props.get("apiKey")
+        or props.get("api_key")
+        or props.get("key")
+        or props.get("api")
+        or ""
+    )
+    if api_key == "NOKEY":
+        api_key = ""
 
     models = []
     headers = {"User-Agent": "AlpacaWeb/1.0"}
@@ -170,6 +178,131 @@ def fetch_live_instance_models(instance):
                     return models
         except Exception:
             pass
+
+    elif inst_type == "gemini" or "generativelanguage.googleapis.com" in host:
+        # First try Google Gemini native models endpoint if API key exists
+        if api_key:
+            target_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            try:
+                req = urllib.request.Request(target_url, headers=headers, method="GET")
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    for m in data.get("models", []):
+                        methods = m.get("supportedGenerationMethods", [])
+                        desc = (m.get("description") or "").lower()
+                        if "generatecontent" in [str(x).lower() for x in methods] and "deprecated" not in desc:
+                            raw_name = m.get("name", "")
+                            model_id = raw_name[7:] if raw_name.startswith("models/") else raw_name
+                            display_name = m.get("displayName") or model_id
+                            in_tokens = m.get("inputTokenLimit")
+                            ctx_str = f"{in_tokens:,} tokens" if in_tokens else "1,048,576 tokens"
+                            models.append(
+                                {
+                                    "id": model_id,
+                                    "name": display_name,
+                                    "provider": "Google Gemini",
+                                    "voice": "af_heart",
+                                    "context": ctx_str,
+                                    "tag": model_id,
+                                    "family": "Gemini",
+                                    "capabilities": ["vision", "reasoning", "code"],
+                                }
+                            )
+                    if models:
+                        return models
+            except Exception:
+                pass
+
+        # Try Google Gemini OpenAI-compatible /v1beta/openai/models
+        target_url = "https://generativelanguage.googleapis.com/v1beta/openai/models"
+        try:
+            req = urllib.request.Request(target_url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for m in data.get("data", []) or data.get("models", []):
+                    raw_id = m.get("id") or m.get("name")
+                    if raw_id:
+                        model_id = raw_id[7:] if raw_id.startswith("models/") else raw_id
+                        models.append(
+                            {
+                                "id": model_id,
+                                "name": m.get("name", model_id),
+                                "provider": "Google Gemini",
+                                "voice": "af_heart",
+                                "context": "1,048,576 tokens",
+                                "tag": model_id,
+                                "family": "Gemini",
+                                "capabilities": ["vision", "reasoning", "code"],
+                            }
+                        )
+                if models:
+                    return models
+        except Exception:
+            pass
+
+        # Robust curated fallback list of active Gemini models
+        return [
+            {
+                "id": "gemini-3.8-flash",
+                "name": "Gemini 3.8 Flash",
+                "provider": "Google Gemini",
+                "voice": "af_heart",
+                "context": "1,048,576 tokens",
+                "tag": "gemini-3.8-flash",
+                "family": "Gemini",
+                "capabilities": ["vision", "reasoning", "code"],
+            },
+            {
+                "id": "gemini-flash-latest",
+                "name": "Gemini Flash (Latest)",
+                "provider": "Google Gemini",
+                "voice": "af_heart",
+                "context": "1,048,576 tokens",
+                "tag": "gemini-flash-latest",
+                "family": "Gemini",
+                "capabilities": ["vision", "reasoning", "code"],
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "name": "Gemini 2.5 Pro",
+                "provider": "Google Gemini",
+                "voice": "af_heart",
+                "context": "2,097,152 tokens",
+                "tag": "gemini-2.5-pro",
+                "family": "Gemini",
+                "capabilities": ["vision", "reasoning", "code"],
+            },
+            {
+                "id": "gemini-2.0-flash",
+                "name": "Gemini 2.0 Flash",
+                "provider": "Google Gemini",
+                "voice": "af_heart",
+                "context": "1,048,576 tokens",
+                "tag": "gemini-2.0-flash",
+                "family": "Gemini",
+                "capabilities": ["vision", "reasoning", "code"],
+            },
+            {
+                "id": "gemini-1.5-flash",
+                "name": "Gemini 1.5 Flash",
+                "provider": "Google Gemini",
+                "voice": "af_heart",
+                "context": "1,048,576 tokens",
+                "tag": "gemini-1.5-flash",
+                "family": "Gemini",
+                "capabilities": ["vision", "reasoning", "code"],
+            },
+            {
+                "id": "gemini-1.5-pro",
+                "name": "Gemini 1.5 Pro",
+                "provider": "Google Gemini",
+                "voice": "af_heart",
+                "context": "2,097,152 tokens",
+                "tag": "gemini-1.5-pro",
+                "family": "Gemini",
+                "capabilities": ["vision", "reasoning", "code"],
+            },
+        ]
 
     else:
         # OpenAI, OpenRouter, vLLM, TGI, or custom OpenAI-compatible server

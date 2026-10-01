@@ -1,6 +1,6 @@
 import unittest
 from main import create_app
-from models import db, Instance
+from models import db
 
 
 class InstanceTestCase(unittest.TestCase):

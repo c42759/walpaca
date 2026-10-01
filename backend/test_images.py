@@ -1,5 +1,7 @@
 import unittest
+
 from routes.api import clean_base64_image
+
 
 class ImageHandlingTestCase(unittest.TestCase):
     def test_clean_base64_image_with_data_uri(self):
@@ -13,6 +15,7 @@ class ImageHandlingTestCase(unittest.TestCase):
 
     def test_clean_base64_image_empty(self):
         self.assertEqual(clean_base64_image(""), "")
+
 
 if __name__ == "__main__":
     unittest.main()

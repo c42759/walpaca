@@ -21,7 +21,7 @@ def get_chats():
     if folder_id is not None:
         if folder_id.lower() in ("none", "null", ""):
             query = query.filter(
-                (Chat.folder == None) | (Chat.folder == "none") | (Chat.folder == "")
+                (Chat.folder is None) | (Chat.folder == "none") | (Chat.folder == "")
             )
         else:
             query = query.filter_by(folder=folder_id)

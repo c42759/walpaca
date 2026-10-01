@@ -1933,6 +1933,15 @@ export default function ChatPage() {
 		const inst = instances.find((i) => i.id === instId);
 		if (inst) {
 			const instName = inst.properties?.name || inst.type;
+			if (inst.type === 'gemini' || inst.properties?.url?.includes('generativelanguage.googleapis.com')) {
+				setInstanceModelsList([
+					{ id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', provider: 'Google Gemini', voice: 'af_heart', context: '1,048,576 tokens' },
+					{ id: 'gemini-flash-latest', name: 'Gemini Flash (Latest)', provider: 'Google Gemini', voice: 'af_heart', context: '1,048,576 tokens' },
+					{ id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', provider: 'Google Gemini', voice: 'af_heart', context: '1,048,576 tokens' },
+					{ id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', provider: 'Google Gemini', voice: 'af_heart', context: '1,048,576 tokens' },
+				]);
+				return;
+			}
 			setInstanceModelsList([
 				{ id: `${inst.id}-m1`, name: `${instName} Model 1`, provider: inst.type, voice: 'af_heart', context: '8,192 tokens' },
 				{ id: `${inst.id}-m2`, name: `${instName} Model 2`, provider: inst.type, voice: 'am_adam', context: '16,384 tokens' },
@@ -2182,7 +2191,7 @@ export default function ChatPage() {
 			defaultUrl = 'https://api.openai.com/v1';
 		} else if (typeLabel.includes('Gemini')) {
 			defaultName = 'Google Gemini';
-			defaultUrl = 'https://generativelanguage.googleapis.com';
+			defaultUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
 		} else if (typeLabel.includes('Anthropic')) {
 			defaultName = 'Anthropic Claude';
 			defaultUrl = 'https://api.anthropic.com';
@@ -3202,6 +3211,13 @@ export default function ChatPage() {
 
 						try {
 							const parsed = JSON.parse(dataStr);
+							if (parsed.error) {
+								const errText = parsed.error;
+								fullResponseText = errText;
+								setMessages((prev) =>
+									prev.map((m) => (m.id === assistantMsgId || m.id === parsed.id ? { ...m, content: errText } : m)),
+								);
+							}
 							if (parsed.id) {
 								const serverId = parsed.id;
 								currentAssistantMsgId = serverId;

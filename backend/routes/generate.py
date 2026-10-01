@@ -434,25 +434,31 @@ def generate_response(chat_id=None):
     if chat_id:
         chat = Chat.query.get(chat_id)
         if chat:
-            db_msg = Message(
-                id=generate_uuid(),
-                chat_id=chat_id,
-                role="assistant",
-                model=model,
-                content=" **LLM still processing.**",
-                date_time=current_alpaca_timestamp(),
-            )
+            db_msg = Message(id=generate_uuid(),
+                             chat_id=chat_id,
+                             role="assistant",
+                             model=model,
+                             content=" **LLM still processing.**",
+                             date_time=current_alpaca_timestamp())
             db.session.add(db_msg)
             db.session.commit()
             message_id = db_msg.id
 
-    instance = (
-        Instance.query.get(instance_id) if instance_id else Instance.query.first()
-    )
+    instance = Instance.query.get(instance_id) if instance_id else Instance.query.first()
     props = instance.get_properties() if instance else {}
     inst_type = (instance.type if instance else "ollama").lower()
     host = props.get("url") or props.get("host") or props.get("endpoint") or ""
-    api_key = props.get("apiKey") or props.get("api_key") or props.get("key") or ""
+
+    api_key = (
+        props.get("apiKey")
+        or props.get("api_key")
+        or props.get("key")
+        or props.get("api")
+        or ""
+    )
+
+    if api_key == "NOKEY":
+        api_key = ""
 
     if not host:
         if inst_type == "ollama":
@@ -461,10 +467,32 @@ def generate_response(chat_id=None):
             host = "https://openrouter.ai/api/v1"
         elif inst_type == "openai":
             host = "https://api.openai.com/v1"
+        elif inst_type == "gemini":
+            host = "https://generativelanguage.googleapis.com/v1beta/openai"
+        elif inst_type == "groq":
+            host = "https://api.groq.com/openai/v1"
+        elif inst_type == "together":
+            host = "https://api.together.xyz/v1"
+        elif inst_type == "deepseek":
+            host = "https://api.deepseek.com"
         else:
             host = "http://localhost:8000/v1"
 
     host = host.rstrip("/")
+
+    # Normalize Google Gemini host
+    if inst_type == "gemini" or "generativelanguage.googleapis.com" in host:
+        if not host.endswith("/openai"):
+            if host.endswith("/v1beta"):
+                host = f"{host}/openai"
+            elif "v1beta" not in host:
+                host = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+    # Normalize dummy model IDs for Gemini
+    if (inst_type == "gemini" or "generativelanguage.googleapis.com" in host) and (
+        "-m1" in model or "-m2" in model or not model
+    ):
+        model = "gemini-3.8-flash"
 
     headers = {"Content-Type": "application/json", "User-Agent": "Walpaca/1.0"}
 
@@ -473,18 +501,23 @@ def generate_response(chat_id=None):
 
     if not messages and prompt:
         user_msg = {"role": "user", "content": prompt}
+
         if data.get("images"):
             user_msg["images"] = [
                 clean_base64_image(img)
                 for img in data.get("images")
                 if clean_base64_image(img)
             ]
+
         messages_payload = [user_msg]
+
     elif messages:
         messages_payload = []
+
         for m in messages:
             m_copy = dict(m)
             atts = m_copy.get("attachments", [])
+
             if atts:
                 img_atts = [
                     a
@@ -498,12 +531,14 @@ def generate_response(chat_id=None):
                         )
                     )
                 ]
+
                 if img_atts and not m_copy.get("images"):
                     m_copy["images"] = [
                         clean_base64_image(a.get("content", ""))
                         for a in img_atts
                         if clean_base64_image(a.get("content", ""))
                     ]
+
                 doc_atts = [
                     a
                     for a in atts
@@ -517,31 +552,42 @@ def generate_response(chat_id=None):
                 ]
                 if doc_atts:
                     doc_blocks = []
+
                     for da in doc_atts:
                         name = da.get("name", "document")
                         att_type = da.get("type", "plain_text")
                         content = da.get("content", "")
+
                         if content:
                             doc_blocks.append(
                                 f"```{name} ({att_type})\n{content}\n```"
                             )
+
                     if doc_blocks:
                         m_copy["content"] = (
                             m_copy.get("content", "")
                             + "\n\n"
                             + "\n\n".join(doc_blocks)
                         ).strip()
+
             if "images" in m_copy:
                 m_copy["images"] = [
                     clean_base64_image(img)
                     for img in m_copy["images"]
                     if clean_base64_image(img)
                 ]
+
             messages_payload.append(m_copy)
+
     else:
         messages_payload = [{"role": "user", "content": "Hello"}]
 
     if inst_type != "ollama":
+        while messages_payload and messages_payload[-1].get("role") != "user":
+            messages_payload.pop()
+        if not messages_payload:
+            messages_payload = [{"role": "user", "content": prompt or "Hello"}]
+
         formatted_messages = []
         for m in messages_payload:
             m_copy = dict(m)
@@ -764,7 +810,7 @@ def generate_response(chat_id=None):
                 if host.endswith("/chat/completions")
                 else (
                     f"{host}/chat/completions"
-                    if host.endswith("/v1")
+                    if host.endswith("/v1") or host.endswith("/openai")
                     else f"{host}/v1/chat/completions"
                 )
             )
@@ -773,8 +819,28 @@ def generate_response(chat_id=None):
                 "messages": messages_payload,
                 "stream": True,
             }
-            if options:
-                payload["options"] = options
+            # Only send valid top-level OpenAI/Gemini parameters, NOT options dictionary
+            temp = (
+                data.get("temperature")
+                if data.get("temperature") is not None
+                else props.get("temperature")
+            )
+            if temp is not None:
+                try:
+                    payload["temperature"] = float(temp)
+                except (ValueError, TypeError):
+                    pass
+            max_tok = (
+                data.get("max_tokens")
+                or props.get("max_tokens")
+                or data.get("num_predict")
+            )
+            if max_tok is not None:
+                try:
+                    payload["max_tokens"] = int(max_tok)
+                except (ValueError, TypeError):
+                    pass
+
             req = urllib.request.Request(
                 target_url,
                 data=json.dumps(payload).encode("utf-8"),
@@ -888,9 +954,54 @@ def generate_response(chat_id=None):
                         daemon=True,
                     ).start()
                     return
-            except Exception as e:
+            except urllib.error.HTTPError as e:
+                err_detail = ""
+                try:
+                    err_body = e.read().decode("utf-8", errors="replace")
+                    err_json = json.loads(err_body)
+                    if isinstance(err_json, dict) and "error" in err_json:
+                        sub_err = err_json["error"]
+                        if isinstance(sub_err, dict):
+                            err_detail = sub_err.get("message") or str(sub_err)
+                        else:
+                            err_detail = str(sub_err)
+                    else:
+                        err_detail = err_body[:300]
+                except Exception:
+                    err_detail = str(e)
+
+                msg_text = f"Upstream API error ({e.code}): {err_detail}"
+                if message_id:
+                    try:
+                        m_record = Message.query.get(message_id)
+                        if m_record and (
+                            not m_record.content
+                            or m_record.content.strip() == "**LLM still processing.**"
+                        ):
+                            m_record.content = msg_text
+                            db.session.commit()
+                    except Exception:
+                        pass
                 err_payload = {
-                    "error": f"Failed streaming from LLM instance: {str(e)}",
+                    "error": msg_text,
+                    "done": True,
+                }
+                yield f"data: {json.dumps(err_payload)}\n\n"
+            except Exception as e:
+                msg_text = f"Failed streaming from LLM instance: {str(e)}"
+                if message_id:
+                    try:
+                        m_record = Message.query.get(message_id)
+                        if m_record and (
+                            not m_record.content
+                            or m_record.content.strip() == "**LLM still processing.**"
+                        ):
+                            m_record.content = msg_text
+                            db.session.commit()
+                    except Exception:
+                        pass
+                err_payload = {
+                    "error": msg_text,
                     "done": True,
                 }
                 yield f"data: {json.dumps(err_payload)}\n\n"

@@ -9,9 +9,9 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 def get_lorebook_dir():
-    """Ensure lorebook directory exists and return absolute path.""" 
+    """Ensure lorebook directory exists and return absolute path."""
     target_dir = os.getenv(
-        "LOREBOOK_DIR_PATH", os.path.join(BASE_DIR, "app/lorebook") 
+        "LOREBOOK_DIR_PATH", os.path.join(BASE_DIR, "app/lorebook")
     )
 
     os.makedirs(target_dir, exist_ok=True)

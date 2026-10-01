@@ -7,6 +7,7 @@ import { getApiUrl } from '@/lib/api';
 import { getCharacterName } from '@/lib/characterUtils';
 import { SettingsSidebar, SettingsCategory } from '@/components/settings/SettingsSidebar';
 import { SettingsHelpSidebar } from '@/components/settings/SettingsHelpSidebar';
+import { EditIcon, TrashIcon } from '@/components/icons/Icons';
 
 export default function InstancesSettingsPage() {
 	const {
@@ -79,7 +80,7 @@ export default function InstancesSettingsPage() {
 			defaultUrl = 'https://api.openai.com/v1';
 		} else if (typeLabel.includes('Gemini')) {
 			defaultName = 'Google Gemini';
-			defaultUrl = 'https://generativelanguage.googleapis.com';
+			defaultUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
 		} else if (typeLabel.includes('Anthropic')) {
 			defaultName = 'Anthropic Claude';
 			defaultUrl = 'https://api.anthropic.com';
@@ -249,6 +250,15 @@ export default function InstancesSettingsPage() {
 			return;
 		}
 		const instName = inst.properties?.name || inst.type;
+		if (inst.type === 'gemini' || inst.properties?.url?.includes('generativelanguage.googleapis.com')) {
+			setInstanceModelsList([
+				{ id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', provider: 'Google Gemini', voice: 'af_heart', context: '1,048,576 tokens' },
+				{ id: 'gemini-flash-latest', name: 'Gemini Flash (Latest)', provider: 'Google Gemini', voice: 'af_heart', context: '1,048,576 tokens' },
+				{ id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', provider: 'Google Gemini', voice: 'af_heart', context: '1,048,576 tokens' },
+				{ id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', provider: 'Google Gemini', voice: 'af_heart', context: '1,048,576 tokens' },
+			]);
+			return;
+		}
 		setInstanceModelsList([
 			{ id: `${inst.id}-m1`, name: `${instName} Model 1`, provider: inst.type, voice: 'af_heart', context: '8,192 tokens' },
 			{ id: `${inst.id}-m2`, name: `${instName} Model 2`, provider: inst.type, voice: 'am_adam', context: '16,384 tokens' },
@@ -320,7 +330,10 @@ export default function InstancesSettingsPage() {
 					comment: b.name,
 					name: b.name,
 					content: b.description,
-					keys: b.tags.split(',').map((t) => t.trim()).filter(Boolean),
+					keys: b.tags
+						.split(',')
+						.map((t) => t.trim())
+						.filter(Boolean),
 					enabled: true,
 				})),
 			},
@@ -369,10 +382,11 @@ export default function InstancesSettingsPage() {
 						{/* View 1: List */}
 						{instanceSubView === 'list' && (
 							<div className='space-y-6 animate-in fade-in duration-200'>
-								<div className='flex items-center justify-between'>
+								{/* Header */}
+								<div className='flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs'>
 									<div>
-										<h3 className='text-2xl font-bold text-[#202022]'>Manage Instances</h3>
-										<p className='text-sm text-[#7a7d90] mt-1'>
+										<h3 className='text-xl font-bold text-[#202022] tracking-tight'>Manage Instances</h3>
+										<p className='text-sm text-[#7a7d90] mt-1 font-medium'>
 											Configure local server connections, cloud API backends, and proxy endpoints.
 										</p>
 									</div>
@@ -413,9 +427,7 @@ export default function InstancesSettingsPage() {
 											>
 												<div>
 													<div className='flex items-center justify-between mb-2'>
-														<h4 className='text-base font-bold text-[#202022]'>
-															{inst.properties?.name || inst.type}
-														</h4>
+														<h4 className='text-base font-bold text-[#202022]'>{inst.properties?.name || inst.type}</h4>
 														<span className='px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#eaecf9] text-[#7678ed]'>
 															{inst.type}
 														</span>
@@ -438,20 +450,14 @@ export default function InstancesSettingsPage() {
 															className='p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9]'
 															title='Edit'
 														>
-															<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-																<path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' />
-																<path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' />
-															</svg>
+															<EditIcon className='w-4 h-4' />
 														</button>
 														<button
 															onClick={() => handleDeleteInstance(inst.id)}
 															className='p-1.5 text-[#7a7d90] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50'
 															title='Delete'
 														>
-															<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-																<polyline points='3 6 5 6 21 6' />
-																<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
-															</svg>
+															<TrashIcon className='w-4 h-4' />
 														</button>
 													</div>
 												</div>
@@ -662,9 +668,7 @@ export default function InstancesSettingsPage() {
 										</svg>
 									</button>
 									<div>
-										<h3 className='text-2xl font-bold text-[#202022]'>
-											Edit Model — {editingModel.name || editingModel.id}
-										</h3>
+										<h3 className='text-2xl font-bold text-[#202022]'>Edit Model — {editingModel.name || editingModel.id}</h3>
 										<p className='text-xs text-[#7a7d90] mt-0.5'>Configure persona details and TTS voice</p>
 									</div>
 								</div>

@@ -683,8 +683,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 						<div>
 							<h3 className='text-xl font-bold text-[#202022] tracking-tight'>Manage Persona Templates</h3>
 							<p className='text-sm text-[#7a7d90] mt-1 font-medium'>
-								Create, view, and edit reusable AI character personas stored as JSON files in the{' '}
-								<code className='bg-[#eaecf9] px-1.5 py-0.5 rounded text-[#7678ed] font-mono border border-[#7678ed]/20'>personas</code> folder.
+								Create, view, and edit reusable AI character personas stored as JSON files in the personas folder.
 							</p>
 						</div>
 

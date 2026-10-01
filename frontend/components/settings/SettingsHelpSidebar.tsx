@@ -74,6 +74,28 @@ export const SettingsHelpSidebar: React.FC<SettingsHelpSidebarProps> = ({
 				</>
 			)}
 
+			{activeSettingsCategory === 'manage-model-preferences' && (
+				<>
+					<WidgetSimple
+						title='Model Personas'
+						content={
+							<p className='text-sm text-[#8e90a6]'>
+								Model preferences bind custom character profiles, voice settings, and avatars to specific model IDs.
+							</p>
+						}
+					/>
+
+					<WidgetSimple
+						title='Instance Association'
+						content={
+							<p className='text-sm text-[#8e90a6]'>
+								Each card displays the hosting instance providing the model (e.g. Ollama, Google Gemini, OpenAI).
+							</p>
+						}
+					/>
+				</>
+			)}
+
 			{activeSettingsCategory === 'preferences' && (
 				<>
 					<WidgetSimple

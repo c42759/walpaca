@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import patch, MagicMock
 from main import create_app
-from models import db, Instance, OnlineInstanceModelList
+from models import db, Instance
 
 
 class LiveInstanceModelsTestCase(unittest.TestCase):
