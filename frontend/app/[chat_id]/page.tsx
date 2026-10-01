@@ -730,7 +730,7 @@ const highlightCodeTokens = (code: string, lang?: string): React.ReactNode => {
 		}
 
 		elements.push(
-			<span key={offset} className={colorClass}>
+			<span key={offset} className={`${colorClass} font-mono`}>
 				{match}
 			</span>,
 		);
@@ -790,7 +790,9 @@ const CodeBlock = ({ code, language }: { code: string; language?: string }) => {
 				</button>
 			</div>
 
-			<div className='p-4 overflow-x-auto text-sm font-mono leading-relaxed whitespace-pre-wrap'>{highlightCodeTokens(code, language)}</div>
+			<pre className='p-4 overflow-x-auto text-sm font-mono leading-relaxed whitespace-pre-wrap select-text'>
+				<code className='font-mono'>{highlightCodeTokens(code, language)}</code>
+			</pre>
 		</div>
 	);
 };

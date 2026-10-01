@@ -184,13 +184,15 @@ export const DocumentAttachmentCard: React.FC<DocumentAttachmentCardProps> = ({
 			</div>
 
 			{expanded && (
-				<div
+				<pre
 					className={`p-3 border-t text-xs font-mono overflow-x-auto max-h-60 leading-relaxed whitespace-pre-wrap select-text ${
 						isSelf ? 'bg-black/30 border-white/15 text-white/90' : 'bg-[#1e1e24] border-[#e2e5f1] text-[#f8f8f2]'
 					}`}
 				>
-					{highlightCodeTokens ? highlightCodeTokens(attachment.content || '', extension) : attachment.content || ''}
-				</div>
+					<code className='font-mono'>
+						{highlightCodeTokens ? highlightCodeTokens(attachment.content || '', extension) : attachment.content || ''}
+					</code>
+				</pre>
 			)}
 		</div>
 	);

@@ -8,13 +8,13 @@
   --alpaca-border: #e8ebf3;
   --alpaca-bubble: #f2f4f8;
   --font-sans: var(--font-poppins), sans-serif;
-  --font-mono: var(--font-poppins), sans-serif;
+  --font-mono: var(--font-roboto-mono), 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-serif: var(--font-poppins), sans-serif;
 }
 
 @theme inline {
   --font-sans: var(--font-poppins), sans-serif;
-  --font-mono: var(--font-poppins), sans-serif;
+  --font-mono: var(--font-roboto-mono), 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-serif: var(--font-poppins), sans-serif;
   --color-alpaca-dark: #202022;
   --color-alpaca-primary: #7678ed;
@@ -33,10 +33,6 @@ button,
 input,
 select,
 textarea,
-pre,
-code,
-kbd,
-samp,
 div,
 span,
 p,
@@ -47,10 +43,22 @@ h3,
 h4,
 h5,
 h6,
-.font-mono,
 .font-sans,
 .font-serif {
   font-family: var(--font-poppins), sans-serif !important;
+}
+
+pre,
+code,
+kbd,
+samp,
+.font-mono,
+pre *,
+code *,
+kbd *,
+samp *,
+.font-mono * {
+  font-family: var(--font-mono) !important;
 }
 
 html {

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Poppins } from 'next/font/google';
+import { Poppins, Roboto_Mono } from 'next/font/google';
 import './globals.css';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { AppShell } from '../components/layout/AppShell';
@@ -8,6 +8,13 @@ const poppins = Poppins({
 	variable: '--font-poppins',
 	subsets: ['latin'],
 	weight: ['300', '400', '500', '600', '700', '800', '900'],
+	display: 'swap',
+});
+
+const robotoMono = Roboto_Mono({
+	variable: '--font-roboto-mono',
+	subsets: ['latin'],
+	weight: ['400', '500', '600', '700'],
 	display: 'swap',
 });
 
@@ -38,7 +45,7 @@ export default function RootLayout({
 	children: React.ReactNode;
 }>) {
 	return (
-		<html lang='en' className={`${poppins.variable} font-sans h-full`}>
+		<html lang='en' className={`${poppins.variable} ${robotoMono.variable} font-sans h-full`}>
 			<head>
 				<script
 					dangerouslySetInnerHTML={{
