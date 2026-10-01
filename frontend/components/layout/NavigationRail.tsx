@@ -56,7 +56,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
 
 	const handleNavigateSettings = () => {
 		setCurrentView('settings');
-		router.push('/settings');
+		router.push('/settings/import');
 	};
 
 	const handleLogoClick = () => {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDownIcon } from '../icons/Icons';
 
-export const WidgetSimple: React.FC<{ title: string; content: React.ReactNode }> = ({ title, content, className = '' }) => {
+export const WidgetSimple: React.FC<{ title: string; content: React.ReactNode; className?: string }> = ({ title, content, className = '' }) => {
 	return (
 		<div className={`bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7] ${className}`}>
 			{/* Card Header */}
@@ -27,7 +27,7 @@ export const WidgetWithCustomHeader: React.FC<{ header: React.ReactNode; content
 	);
 };
 
-export const WidgetToggle: React.FC<{ header: string; content: React.ReactNode }> = ({ header, content }) => {
+export const WidgetToggle: React.FC<{ header: React.ReactNode; content: React.ReactNode }> = ({ header, content }) => {
 	const [isExpanded, setIsExpanded] = useState(false);
 
 	return (

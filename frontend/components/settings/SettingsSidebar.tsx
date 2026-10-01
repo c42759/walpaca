@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 export type SettingsCategory = 'import-chat' | 'manage-instances' | 'preferences' | 'manage-lorebook' | 'manage-personas' | 'about-walpaca';
 
@@ -37,7 +37,23 @@ const defaultGetAvatarColor = (name: string): string => {
 
 export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettingsCategory, setActiveSettingsCategory, setCurrentView }) => {
 	const router = useRouter();
+	const pathname = usePathname();
 	const [searchQuery, setSearchQuery] = useState('');
+
+	const currentActive: SettingsCategory =
+		pathname === '/settings/about'
+			? 'about-walpaca'
+			: pathname === '/settings/instances'
+				? 'manage-instances'
+				: pathname === '/settings/lorebook'
+					? 'manage-lorebook'
+					: pathname === '/settings/personas'
+						? 'manage-personas'
+						: pathname === '/settings/preferences'
+							? 'preferences'
+							: pathname === '/settings/import'
+								? 'import-chat'
+								: activeSettingsCategory;
 
 	const categories: Array<{
 		id: SettingsCategory;
@@ -134,6 +150,21 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
 		return c.label.toLowerCase().includes(q) || c.description.toLowerCase().includes(q);
 	});
 
+	const categoryRouteMap: Record<SettingsCategory, string> = {
+		'import-chat': '/settings/import',
+		'manage-instances': '/settings/instances',
+		'manage-lorebook': '/settings/lorebook',
+		'manage-personas': '/settings/personas',
+		'preferences': '/settings/preferences',
+		'about-walpaca': '/settings/about',
+	};
+
+	const handleCategoryClick = (catId: SettingsCategory) => {
+		setActiveSettingsCategory(catId);
+		const target = categoryRouteMap[catId] || '/settings/import';
+		router.push(target);
+	};
+
 	const handleBackToChat = () => {
 		if (setCurrentView) {
 			setCurrentView('chat');
@@ -173,13 +204,13 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
 			{/* Category List */}
 			<div className='flex-1 overflow-y-auto px-3 space-y-1.5 custom-scrollbar pb-4'>
 				{filteredCategories.map((cat) => {
-					const isActive = activeSettingsCategory === cat.id;
+					const isActive = (currentActive || activeSettingsCategory) === cat.id;
 
 					return (
 						<div
 							key={cat.id}
 							draggable={true}
-							onClick={() => setActiveSettingsCategory(cat.id)}
+							onClick={() => handleCategoryClick(cat.id)}
 							className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all`}
 						>
 							{/* Avatar */}
