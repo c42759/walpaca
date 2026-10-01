@@ -1937,7 +1937,7 @@ export default function ChatPage() {
 
 	const handleConfirmDuplicateChat = async () => {
 		setIsDuplicateModalOpen(false);
-		const targetChat = chatItems.find((c) => c.id === activeChatId);
+		const targetChat = chatItems.find((c) => c.id === activeChatId) || activeChat;
 		if (!targetChat) return;
 
 		const newId = `chat-${Date.now()}`;
@@ -1952,6 +1952,7 @@ export default function ChatPage() {
 
 		setChatItems((prev) => [newChatObj, ...prev]);
 		setActiveChatId(newId);
+		setActiveChat(newChatObj);
 		if (typeof window !== 'undefined') {
 			window.history.pushState(null, '', `/${newId}`);
 		}
@@ -2608,6 +2609,7 @@ export default function ChatPage() {
 		return Array.from(map.values());
 	};
 	const [activeChatId, setActiveChatId] = useState<string>(routeChatId || '');
+	const [activeChat, setActiveChat] = useState<ChatItem | null>(null);
 	const [searchQuery, setSearchQuery] = useState<string>('');
 	const [inputText, setInputText] = useState<string>('');
 	const [expandedSection, setExpandedSection] = useState<string>('photos');
@@ -2616,9 +2618,9 @@ export default function ChatPage() {
 
 	const handleOpenRenameModal = () => {
 		setIsChatContextMenuOpen(false);
-		const activeChat = chatItems.find((c) => c.id === activeChatId);
-		if (activeChat) {
-			setRenameInputVal(activeChat.name);
+		const currentChat = chatItems.find((c) => c.id === activeChatId) || activeChat;
+		if (currentChat) {
+			setRenameInputVal(currentChat.name);
 			setIsRenameModalOpen(true);
 		}
 	};
@@ -2636,6 +2638,7 @@ export default function ChatPage() {
 		setIsRenameModalOpen(false);
 
 		setChatItems((prev) => prev.map((c) => (c.id === activeChatId ? { ...c, name: trimmed } : c)));
+		setActiveChat((prev) => (prev ? { ...prev, name: trimmed } : null));
 
 		try {
 			await fetch(`${API_URL}/chats/${activeChatId}`, {
@@ -2655,6 +2658,7 @@ export default function ChatPage() {
 
 		setChatItems(remaining);
 		setActiveChatId(remaining.length > 0 ? remaining[0].id : '');
+		setActiveChat(remaining.length > 0 ? remaining[0] : null);
 
 		try {
 			await fetch(`${API_URL}/chats/${deletedId}`, {
@@ -2676,7 +2680,7 @@ export default function ChatPage() {
 			return;
 		}
 
-		const currentChat = chatItems.find((c) => c.id === activeChatId);
+		const currentChat = chatItems.find((c) => c.id === activeChatId) || activeChat;
 		const chatTitle = currentChat?.name || 'Chat';
 		const safeTitle = chatTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
 		let fileContent = '';
@@ -2831,6 +2835,8 @@ export default function ChatPage() {
 			const res = await fetch(`${API_URL}/chats/${chatId}`);
 			if (res.ok) {
 				const data: BackendChat = await res.json();
+				const mapped = mapBackendChatToChatItem(data);
+				setActiveChat(mapped);
 				const rawMsgs = Array.isArray(data.messages) ? data.messages : [];
 				setMessages(rawMsgs.map((m) => mapBackendMsgToMessage(m, modelPreferences)));
 			} else {
@@ -2875,6 +2881,7 @@ export default function ChatPage() {
 		if (activeChatId) {
 			fetchChatMessages(activeChatId);
 		} else {
+			setActiveChat(null);
 			setMessages([]);
 		}
 	}, [activeChatId]);
@@ -3001,6 +3008,7 @@ export default function ChatPage() {
 				const mapped = mapBackendChatToChatItem(created);
 				setChatItems((prev) => [mapped, ...prev]);
 				setActiveChatId(created.id);
+				setActiveChat(mapped);
 				if (typeof window !== 'undefined') {
 					window.history.pushState(null, '', `/${created.id}`);
 				}
@@ -3014,6 +3022,7 @@ export default function ChatPage() {
 				};
 				setChatItems((prev) => [localChat, ...prev]);
 				setActiveChatId(localChat.id);
+				setActiveChat(localChat);
 				if (typeof window !== 'undefined') {
 					window.history.pushState(null, '', `/${localChat.id}`);
 				}
@@ -3028,6 +3037,7 @@ export default function ChatPage() {
 			};
 			setChatItems((prev) => [localChat, ...prev]);
 			setActiveChatId(localChat.id);
+			setActiveChat(localChat);
 			if (typeof window !== 'undefined') {
 				window.history.pushState(null, '', `/${localChat.id}`);
 			}
@@ -3347,8 +3357,8 @@ export default function ChatPage() {
 							{/* 3. MAIN CHAT AREA (WHITE) */}
 							{/* ========================================================= */}
 							{(() => {
-								const activeChat = chatItems.find((c) => c.id === activeChatId);
-								if (!activeChatId || !activeChat) {
+								const activeChatObj = chatItems.find((c) => c.id === activeChatId) || activeChat;
+								if (!activeChatId || !activeChatObj) {
 									return <ChatEmptyState />;
 								}
 
@@ -3356,7 +3366,7 @@ export default function ChatPage() {
 									<section className='flex-1 flex flex-col bg-white overflow-hidden'>
 										{/* Header */}
 										<ChatHeader
-											title={activeChat.name}
+											title={activeChatObj.name}
 											onOpenRename={handleOpenRenameModal}
 											onOpenDuplicate={handleOpenDuplicateModal}
 											onOpenExport={handleOpenExportModal}
@@ -3419,7 +3429,7 @@ export default function ChatPage() {
 							{/* ========================================================= */}
 							{/* 4. RIGHT INFO DRAWER (#f9fafc) */}
 							{/* ========================================================= */}
-							{activeChatId && chatItems.some((c) => c.id === activeChatId) ? (
+							{activeChatId && (chatItems.some((c) => c.id === activeChatId) || activeChat?.id === activeChatId) ? (
 								<aside className='w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0'>
 									{/* Context Card */}
 									{(() => {
