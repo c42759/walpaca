@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 
 export interface ChatFolder {
 	id: string;
@@ -39,14 +40,37 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
 	setFolderContextMenu,
 	setIsCreatingFolder,
 }) => {
+	const router = useRouter();
+	const pathname = usePathname();
+	const isSettings = pathname.startsWith('/settings') || currentView === 'settings';
 	const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
+
+	const handleNavigateChatTab = (tab: string) => {
+		setActiveTab(tab);
+		setCurrentView('chat');
+		if (pathname.startsWith('/settings')) {
+			router.push('/');
+		}
+	};
+
+	const handleNavigateSettings = () => {
+		setCurrentView('settings');
+		router.push('/settings');
+	};
+
+	const handleLogoClick = () => {
+		handleGoToRoot();
+		if (pathname.startsWith('/settings')) {
+			router.push('/');
+		}
+	};
 
 	return (
 		<aside className='w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#2d2d30]'>
 			{/* Top Alpaca Prism Logo */}
 			<div className='flex flex-col items-center gap-8 w-full'>
 				<div
-					onClick={handleGoToRoot}
+					onClick={handleLogoClick}
 					className='w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity'
 				>
 					<img src='/icon-white.svg' alt='Walpaca' className='w-9 h-9 object-contain' />
@@ -56,10 +80,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
 				<nav className='flex flex-col items-center gap-3 w-full overflow-y-auto max-h-[calc(100vh-220px)] px-1'>
 					{/* No Folder tab */}
 					<button
-						onClick={() => {
-							setActiveTab('none');
-							setCurrentView('chat');
-						}}
+						onClick={() => handleNavigateChatTab('none')}
 						onDragOver={(e) => {
 							e.preventDefault();
 							e.dataTransfer.dropEffect = 'move';
@@ -76,7 +97,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
 						className={`w-full py-3 px-1 rounded-2xl flex flex-col items-center gap-1.5 transition-all relative cursor-pointer ${
 							dragOverFolderTarget === 'none'
 								? 'bg-[#7678ed]/30 border-2 border-[#7678ed] text-white scale-105 shadow-lg'
-								: (activeTab === 'none' || activeTab === 'all') && currentView === 'chat'
+								: (activeTab === 'none' || activeTab === 'all') && !isSettings
 									? 'bg-[#2e2f33] text-white shadow-inner'
 									: 'text-[#8b8d97] hover:text-white'
 						}`}
@@ -101,15 +122,12 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
 
 					{/* Dynamic Folders from /api/folders */}
 					{folders.map((folder) => {
-						const isActive = activeTab === folder.id && currentView === 'chat';
+						const isActive = activeTab === folder.id && !isSettings;
 						const isDragOver = dragOverFolderTarget === folder.id;
 						return (
 							<button
 								key={folder.id}
-								onClick={() => {
-									setActiveTab(folder.id);
-									setCurrentView('chat');
-								}}
+								onClick={() => handleNavigateChatTab(folder.id)}
 								onContextMenu={(e) => {
 									e.preventDefault();
 									e.stopPropagation();
@@ -187,9 +205,9 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
 
 			{/* Bottom Settings */}
 			<button
-				onClick={() => setCurrentView('settings')}
-				className={`invisiblew-full py-3 rounded-2xl flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-					currentView === 'settings' ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
+				onClick={handleNavigateSettings}
+				className={`w-full py-3 rounded-2xl flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+					isSettings ? 'bg-[#2e2f33] text-white shadow-inner' : 'text-[#8b8d97] hover:text-white'
 				}`}
 				title='Settings'
 			>
