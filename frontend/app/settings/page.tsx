@@ -1,16 +1,18 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @next/next/no-img-element */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore, InstanceItem, ModelPreference } from '@/store/useAppStore';
 import { getApiUrl } from '@/lib/api';
 import { parseImportContent } from '@/lib/importUtils';
-import { getCharacterName, getModelAvatarPicture } from '@/lib/characterUtils';
+import { getCharacterName } from '@/lib/characterUtils';
 
 import { SettingsSidebar, SettingsCategory } from '@/components/settings/SettingsSidebar';
 import { SettingsHelpSidebar } from '@/components/settings/SettingsHelpSidebar';
-import { ManageLorebookPanel, LorebookTemplate } from '@/components/settings/ManageLorebookPanel';
-import { ManagePersonasPanel, PersonaTemplate } from '@/components/settings/ManagePersonasPanel';
+import { ManageLorebookPanel } from '@/components/settings/ManageLorebookPanel';
+import { ManagePersonasPanel, PersonaTemplate, LorebookTemplate } from '@/components/settings/ManagePersonasPanel';
 
 export default function SettingsPage() {
 	const router = useRouter();
@@ -151,11 +153,9 @@ export default function SettingsPage() {
 	const [instFormShowMetadata, setInstFormShowMetadata] = useState<boolean>(false);
 	const [instFormAllowSsl, setInstFormAllowSsl] = useState<boolean>(false);
 	const [instFormOverrideParams, setInstFormOverrideParams] = useState<boolean>(true);
-	const [isOverrideAccordionOpen, setIsOverrideAccordionOpen] = useState<boolean>(true);
 	const [instFormTemp, setInstFormTemp] = useState<number>(0.7);
 	const [instFormSeed, setInstFormSeed] = useState<number>(0);
 	const [instFormNumCtx, setInstFormNumCtx] = useState<number>(16384);
-	const [instFormKeepAlivePreset, setInstFormKeepAlivePreset] = useState<string>('Set Timer');
 	const [instFormKeepAliveMinutes, setInstFormKeepAliveMinutes] = useState<number>(5);
 
 	// Edit Model State
@@ -178,20 +178,31 @@ export default function SettingsPage() {
 	useEffect(() => {
 		fetchInstances();
 		fetchModelPreferences();
+
+		let isMounted = true;
+		(async () => {
+			try {
+				const [lbRes, perRes] = await Promise.all([
+					fetch(`${getApiUrl()}/lorebook`),
+					fetch(`${getApiUrl()}/personas`),
+				]);
+				if (lbRes.ok && isMounted) {
+					const data = await lbRes.json();
+					setLorebookTemplates(Array.isArray(data) ? data : []);
+				}
+				if (perRes.ok && isMounted) {
+					const data = await perRes.json();
+					setPersonaTemplates(Array.isArray(data) ? data : []);
+				}
+			} catch (err) {
+				console.warn('Initial settings load error:', err);
+			}
+		})();
+
+		return () => {
+			isMounted = false;
+		};
 	}, [fetchInstances, fetchModelPreferences]);
-
-	useEffect(() => {
-		if (activeSettingsCategory === 'manage-lorebook') {
-			fetchLorebookTemplates();
-		}
-	}, [activeSettingsCategory]);
-
-	useEffect(() => {
-		if (activeSettingsCategory === 'manage-personas') {
-			fetchPersonaTemplates();
-			fetchLorebookTemplates();
-		}
-	}, [activeSettingsCategory]);
 
 	// Handlers: Instances
 	const handleOpenAddInstanceModal = () => {
@@ -242,11 +253,9 @@ export default function SettingsPage() {
 		setInstFormShowMetadata(false);
 		setInstFormAllowSsl(false);
 		setInstFormOverrideParams(true);
-		setIsOverrideAccordionOpen(true);
 		setInstFormTemp(0.7);
 		setInstFormSeed(0);
 		setInstFormNumCtx(16384);
-		setInstFormKeepAlivePreset('Set Timer');
 		setInstFormKeepAliveMinutes(5);
 
 		setInstanceSubView('form');
@@ -284,7 +293,6 @@ export default function SettingsPage() {
 		setInstFormShowMetadata(Boolean(inst.properties?.show_response_metadata));
 		setInstFormAllowSsl(Boolean(inst.properties?.allow_self_signed_ssl));
 		setInstFormOverrideParams(inst.properties?.override_parameters ?? true);
-		setIsOverrideAccordionOpen(true);
 		setInstFormTemp(inst.properties?.temperature ?? 0.7);
 		setInstFormSeed(inst.properties?.seed ?? 0);
 		setInstFormNumCtx(inst.properties?.num_ctx ?? 16384);

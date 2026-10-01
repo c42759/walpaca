@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export const getCharacterName = (char?: any): string | undefined => {
 	if (!char) return undefined;
 	if (char.data && char.data.name && String(char.data.name).trim()) {

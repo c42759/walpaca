@@ -324,508 +324,523 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
   };
 
   return (
-    <div className='animate-in fade-in duration-200 pb-8'>
-      {personaViewMode === 'editor' ? (
-        <form onSubmit={handleSavePersonaTemplate} className='space-y-6'>
-          {/* Header Bar */}
-          <div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4'>
-            <div className='flex items-center gap-3'>
-              <button
-                type='button'
-                onClick={() => setPersonaViewMode('list')}
-                className='p-2 rounded-xl bg-[#f0f2fb] hover:bg-[#eaecf9] text-[#7678ed] transition-all cursor-pointer'
-                title='Back to Personas List'
-              >
-                <ChevronIcon direction='left' className='w-5 h-5' />
-              </button>
-              <div>
-                <h3 className='text-xl font-bold text-[#202022] tracking-tight'>
-                  {editingPersonaTemplate ? `Edit Persona: ${editingPersonaTemplate.name}` : 'Create Persona Template'}
-                </h3>
-                <p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>
-                  Configure identity, audio, context size, system prompts, greetings, sampler settings, and lorebook characters.
-                </p>
-              </div>
-            </div>
+		<div className='animate-in fade-in duration-200 pb-8'>
+			{personaViewMode === 'editor' ? (
+				<form onSubmit={handleSavePersonaTemplate} className='space-y-6'>
+					{/* Header Bar */}
+					<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4'>
+						<div className='flex items-center gap-3'>
+							<button
+								type='button'
+								onClick={() => setPersonaViewMode('list')}
+								className='p-2 rounded-xl bg-[#f0f2fb] hover:bg-[#eaecf9] text-[#7678ed] transition-all cursor-pointer'
+								title='Back to Personas List'
+							>
+								<ChevronIcon direction='left' className='w-5 h-5' />
+							</button>
+							<div>
+								<h3 className='text-xl font-bold text-[#202022] tracking-tight'>
+									{editingPersonaTemplate ? `Edit Persona: ${editingPersonaTemplate.name}` : 'Create Persona Template'}
+								</h3>
+								<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>
+									Configure identity, audio, context size, system prompts, greetings, sampler settings, and lorebook characters.
+								</p>
+							</div>
+						</div>
 
-            <div className='flex items-center gap-3 shrink-0'>
-              <Button type='button' variant='outline' onClick={() => setPersonaViewMode('list')}>
-                Cancel
-              </Button>
-              <Button type='submit' variant='primary' isLoading={personaSaving} disabled={!personaFormName.trim()}>
-                Save Persona
-              </Button>
-            </div>
-          </div>
+						<div className='flex items-center gap-3 shrink-0'>
+							<Button type='button' variant='outline' onClick={() => setPersonaViewMode('list')}>
+								Cancel
+							</Button>
+							<Button type='submit' variant='primary' isLoading={personaSaving} disabled={!personaFormName.trim()}>
+								Save Persona
+							</Button>
+						</div>
+					</div>
 
-          {/* 1. Identity & Audio Card */}
-          <div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
-            <h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2'>
-              1. Identity & Audio Settings
-            </h4>
+					{/* 1. Identity & Audio Card */}
+					<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+						<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2'>
+							1. Identity & Audio Settings
+						</h4>
 
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              <Input
-                label='Persona / Character Name *'
-                value={personaFormName}
-                onChange={(e) => setPersonaFormName(e.target.value)}
-                placeholder='e.g. Sora Assistant'
-                required
-              />
-              <div className='space-y-1.5'>
-                <label className='block text-xs font-bold text-[#5d6075]'>Default TTS Voice</label>
-                <select
-                  value={personaFormVoice}
-                  onChange={(e) => setPersonaFormVoice(e.target.value)}
-                  className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all cursor-pointer'
-                >
-                  <option value='af_heart'>af_heart (Female Warm)</option>
-                  <option value='af_bella'>af_bella (Female Expressive)</option>
-                  <option value='af_sky'>af_sky (Female Soft)</option>
-                  <option value='am_adam'>am_adam (Male Deep)</option>
-                  <option value='am_michael'>am_michael (Male Smooth)</option>
-                </select>
-              </div>
-            </div>
+						<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+							<Input
+								label='Persona / Character Name *'
+								value={personaFormName}
+								onChange={(e) => setPersonaFormName(e.target.value)}
+								placeholder='e.g. Sora Assistant'
+								required
+							/>
+							<div className='space-y-1.5'>
+								<label className='block text-xs font-bold text-[#5d6075]'>Default TTS Voice</label>
+								<select
+									value={personaFormVoice}
+									onChange={(e) => setPersonaFormVoice(e.target.value)}
+									className='w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all cursor-pointer'
+								>
+									<option value='af_heart'>af_heart (Female Warm)</option>
+									<option value='af_bella'>af_bella (Female Expressive)</option>
+									<option value='af_sky'>af_sky (Female Soft)</option>
+									<option value='am_adam'>am_adam (Male Deep)</option>
+									<option value='am_michael'>am_michael (Male Smooth)</option>
+								</select>
+							</div>
+						</div>
 
-            <div className='space-y-4'>
-              <label className='block text-xs font-bold text-[#5d6075] mb-1'>Persona Avatar Image</label>
-              <div className='flex items-center gap-4 bg-[#f9fafc] p-4 rounded-xl border border-[#e8ebf3]'>
-                <div className='w-16 h-16 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/30 overflow-hidden flex items-center justify-center shrink-0 shadow-sm relative group'>
-                  {personaAvatarPreview || personaFormPicture ? (
-                    <img src={personaAvatarPreview || personaFormPicture || ''} alt='Avatar Preview' className='w-full h-full object-cover' />
-                  ) : (
-                    <span className='text-2xl'>🎭</span>
-                  )}
-                  {isUploadingPersonaAvatar && (
-                    <div className='absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold'>
-                      Converting...
-                    </div>
-                  )}
-                </div>
+						<div className='space-y-4'>
+							<label className='block text-xs font-bold text-[#5d6075] mb-1'>Persona Avatar Image</label>
+							<div className='flex items-center gap-4 bg-[#f9fafc] p-4 rounded-xl border border-[#e8ebf3]'>
+								<div className='w-16 h-16 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/30 overflow-hidden flex items-center justify-center shrink-0 shadow-sm relative group'>
+									{personaAvatarPreview || personaFormPicture ? (
+										<img
+											src={personaAvatarPreview || personaFormPicture || ''}
+											alt='Avatar Preview'
+											className='w-full h-full object-cover'
+										/>
+									) : (
+										<span className='text-2xl'>🎭</span>
+									)}
+									{isUploadingPersonaAvatar && (
+										<div className='absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold'>
+											Converting...
+										</div>
+									)}
+								</div>
 
-                <div className='flex-1 space-y-1.5'>
-                  <label className='inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold cursor-pointer transition-all shadow-xs'>
-                    <span>{isUploadingPersonaAvatar ? 'Uploading & Converting...' : 'Choose Image File...'}</span>
-                    <input type='file' accept='image/*' onChange={handlePersonaAvatarFileChange} className='hidden' />
-                  </label>
-                  <p className='text-[11px] text-[#7a7d90]'>
-                    Select an image file (.png, .jpg, .webp). Backend converts to base64 automatically and displays immediately.
-                  </p>
-                </div>
-              </div>
-            </div>
+								<div className='flex-1 space-y-1.5'>
+									<label className='inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold cursor-pointer transition-all shadow-xs'>
+										<span>{isUploadingPersonaAvatar ? 'Uploading & Converting...' : 'Choose Image File...'}</span>
+										<input type='file' accept='image/*' onChange={handlePersonaAvatarFileChange} className='hidden' />
+									</label>
+									<p className='text-[11px] text-[#7a7d90]'>
+										Select an image file (.png, .jpg, .webp). Backend converts to base64 automatically and displays immediately.
+									</p>
+								</div>
+							</div>
+						</div>
 
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-              <Input
-                label='Avatar Image Data URI / URL'
-                value={personaFormPicture}
-                onChange={(e) => {
-                  setPersonaFormPicture(e.target.value);
-                  setPersonaAvatarPreview(e.target.value);
-                }}
-                placeholder='data:image/... or https://...'
-              />
-              <Input
-                label='Context Window Size (tokens)'
-                type='number'
-                value={personaFormNumCtx}
-                onChange={(e) => setPersonaFormNumCtx(Number(e.target.value) || 8192)}
-                placeholder='8192'
-              />
-            </div>
-          </div>
+						<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+							<Input
+								label='Avatar Image Data URI / URL'
+								value={personaFormPicture}
+								onChange={(e) => {
+									setPersonaFormPicture(e.target.value);
+									setPersonaAvatarPreview(e.target.value);
+								}}
+								placeholder='data:image/... or https://...'
+							/>
+							<Input
+								label='Context Window Size (tokens)'
+								type='number'
+								value={personaFormNumCtx}
+								onChange={(e) => setPersonaFormNumCtx(Number(e.target.value) || 8192)}
+								placeholder='8192'
+							/>
+						</div>
+					</div>
 
-          {/* 2. Prompts & Personality Card */}
-          <div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
-            <h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2'>
-              2. Personality & System Prompts
-            </h4>
-            <Textarea
-              label='Description / Personality Bio'
-              rows={3}
-              value={personaFormDescription}
-              onChange={(e) => setPersonaFormDescription(e.target.value)}
-              placeholder='Brief backstory, role, personality traits, and overall character tone...'
-            />
-            <Textarea
-              label='Scenario / Context'
-              rows={2}
-              value={personaFormScenario}
-              onChange={(e) => setPersonaFormScenario(e.target.value)}
-              placeholder='Current setting or environment (e.g. Modern office, futuristic space station...)'
-            />
-            <Textarea
-              label='System Instructions / Main System Prompt'
-              rows={4}
-              value={personaFormSystemPrompt}
-              onChange={(e) => setPersonaFormSystemPrompt(e.target.value)}
-              placeholder='Core system prompt directing AI behavior, output constraints, formatting, etc.'
-              className='font-mono'
-            />
-            <Textarea
-              label='Post-History Instructions (Suffix)'
-              rows={2}
-              value={personaFormPostHistoryInstructions}
-              onChange={(e) => setPersonaFormPostHistoryInstructions(e.target.value)}
-              placeholder='Instructions injected at the very end of chat history...'
-            />
-          </div>
+					{/* 2. Prompts & Personality Card */}
+					<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+						<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2'>
+							2. Personality & System Prompts
+						</h4>
+						<Textarea
+							label='Description / Personality Bio'
+							rows={3}
+							value={personaFormDescription}
+							onChange={(e) => setPersonaFormDescription(e.target.value)}
+							placeholder='Brief backstory, role, personality traits, and overall character tone...'
+						/>
+						<Textarea
+							label='Scenario / Context'
+							rows={2}
+							value={personaFormScenario}
+							onChange={(e) => setPersonaFormScenario(e.target.value)}
+							placeholder='Current setting or environment (e.g. Modern office, futuristic space station...)'
+						/>
+						<Textarea
+							label='System Instructions / Main System Prompt'
+							rows={4}
+							value={personaFormSystemPrompt}
+							onChange={(e) => setPersonaFormSystemPrompt(e.target.value)}
+							placeholder='Core system prompt directing AI behavior, output constraints, formatting, etc.'
+							className='font-mono'
+						/>
+						<Textarea
+							label='Post-History Instructions (Suffix)'
+							rows={2}
+							value={personaFormPostHistoryInstructions}
+							onChange={(e) => setPersonaFormPostHistoryInstructions(e.target.value)}
+							placeholder='Instructions injected at the very end of chat history...'
+						/>
+					</div>
 
-          {/* 3. Greetings Card */}
-          <div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
-            <div className='flex items-center justify-between border-b border-[#e8ebf3] pb-2'>
-              <h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider'>
-                3. Greetings & Opening Messages
-              </h4>
-              <Button type='button' variant='secondary' size='sm' onClick={handleAddPersonaGreeting}>
-                + Add Alt Greeting
-              </Button>
-            </div>
+					{/* 3. Greetings Card */}
+					<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+						<div className='flex items-center justify-between border-b border-[#e8ebf3] pb-2'>
+							<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider'>3. Greetings & Opening Messages</h4>
+							<Button type='button' variant='secondary' size='sm' onClick={handleAddPersonaGreeting}>
+								+ Add Alt Greeting
+							</Button>
+						</div>
 
-            <Textarea
-              label='First Message (Primary Greeting)'
-              rows={2}
-              value={personaFormFirstMes}
-              onChange={(e) => setPersonaFormFirstMes(e.target.value)}
-              placeholder='First message spoken by character when starting a chat session...'
-            />
+						<Textarea
+							label='First Message (Primary Greeting)'
+							rows={2}
+							value={personaFormFirstMes}
+							onChange={(e) => setPersonaFormFirstMes(e.target.value)}
+							placeholder='First message spoken by character when starting a chat session...'
+						/>
 
-            {personaFormAlternateGreetings.length > 0 && (
-              <div className='space-y-2.5 pt-2'>
-                <label className='block text-xs font-bold text-[#5d6075]'>Alternative Greetings</label>
-                {personaFormAlternateGreetings.map((greeting, idx) => (
-                  <div key={idx} className='flex items-center gap-2'>
-                    <input
-                      type='text'
-                      value={greeting}
-                      onChange={(e) => handleUpdatePersonaGreeting(idx, e.target.value)}
-                      placeholder={`Alt Greeting #${idx + 1}...`}
-                      className='flex-1 bg-white border border-[#e8ebf3] text-[#202022] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#7678ed]'
-                    />
-                    <button
-                      type='button'
-                      onClick={() => handleRemovePersonaGreeting(idx)}
-                      className='p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all cursor-pointer'
-                      title='Remove'
-                    >
-                      <TrashIcon className='w-4 h-4' />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+						{personaFormAlternateGreetings.length > 0 && (
+							<div className='space-y-2.5 pt-2'>
+								<label className='block text-xs font-bold text-[#5d6075]'>Alternative Greetings</label>
+								{personaFormAlternateGreetings.map((greeting, idx) => (
+									<div key={idx} className='flex items-center gap-2'>
+										<input
+											type='text'
+											value={greeting}
+											onChange={(e) => handleUpdatePersonaGreeting(idx, e.target.value)}
+											placeholder={`Alt Greeting #${idx + 1}...`}
+											className='flex-1 bg-white border border-[#e8ebf3] text-[#202022] rounded-xl px-3.5 py-2 text-sm outline-none focus:border-[#7678ed]'
+										/>
+										<button
+											type='button'
+											onClick={() => handleRemovePersonaGreeting(idx)}
+											className='p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all cursor-pointer'
+											title='Remove'
+										>
+											<TrashIcon className='w-4 h-4' />
+										</button>
+									</div>
+								))}
+							</div>
+						)}
+					</div>
 
-          {/* 4. Generation Settings & Samplers */}
-          <div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
-            <h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2'>
-              4. Generation Settings & Samplers
-            </h4>
-            <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3'>
-              <div>
-                <label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Temperature</label>
-                <input
-                  type='number'
-                  step='0.05'
-                  value={personaFormTemperature}
-                  onChange={(e) => setPersonaFormTemperature(parseFloat(e.target.value) || 0.7)}
-                  className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
-                />
-              </div>
-              <div>
-                <label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Top P</label>
-                <input
-                  type='number'
-                  step='0.05'
-                  value={personaFormTopP}
-                  onChange={(e) => setPersonaFormTopP(parseFloat(e.target.value) || 0.9)}
-                  className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
-                />
-              </div>
-              <div>
-                <label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Top K</label>
-                <input
-                  type='number'
-                  value={personaFormTopK}
-                  onChange={(e) => setPersonaFormTopK(parseInt(e.target.value, 10) || 40)}
-                  className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
-                />
-              </div>
-              <div>
-                <label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Rep. Penalty</label>
-                <input
-                  type='number'
-                  step='0.05'
-                  value={personaFormRepeatPenalty}
-                  onChange={(e) => setPersonaFormRepeatPenalty(parseFloat(e.target.value) || 1.1)}
-                  className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
-                />
-              </div>
-              <div>
-                <label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Pres. Penalty</label>
-                <input
-                  type='number'
-                  step='0.1'
-                  value={personaFormPresencePenalty}
-                  onChange={(e) => setPersonaFormPresencePenalty(parseFloat(e.target.value) || 0.0)}
-                  className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
-                />
-              </div>
-              <div>
-                <label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Freq. Penalty</label>
-                <input
-                  type='number'
-                  step='0.1'
-                  value={personaFormFrequencyPenalty}
-                  onChange={(e) => setPersonaFormFrequencyPenalty(parseFloat(e.target.value) || 0.0)}
-                  className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
-                />
-              </div>
-            </div>
-          </div>
+					{/* 4. Generation Settings & Samplers */}
+					<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+						<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2'>
+							4. Generation Settings & Samplers
+						</h4>
+						<div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3'>
+							<div>
+								<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Temperature</label>
+								<input
+									type='number'
+									step='0.05'
+									value={personaFormTemperature}
+									onChange={(e) => setPersonaFormTemperature(parseFloat(e.target.value) || 0.7)}
+									className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+								/>
+							</div>
+							<div>
+								<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Top P</label>
+								<input
+									type='number'
+									step='0.05'
+									value={personaFormTopP}
+									onChange={(e) => setPersonaFormTopP(parseFloat(e.target.value) || 0.9)}
+									className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+								/>
+							</div>
+							<div>
+								<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Top K</label>
+								<input
+									type='number'
+									value={personaFormTopK}
+									onChange={(e) => setPersonaFormTopK(parseInt(e.target.value, 10) || 40)}
+									className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+								/>
+							</div>
+							<div>
+								<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Rep. Penalty</label>
+								<input
+									type='number'
+									step='0.05'
+									value={personaFormRepeatPenalty}
+									onChange={(e) => setPersonaFormRepeatPenalty(parseFloat(e.target.value) || 1.1)}
+									className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+								/>
+							</div>
+							<div>
+								<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Pres. Penalty</label>
+								<input
+									type='number'
+									step='0.1'
+									value={personaFormPresencePenalty}
+									onChange={(e) => setPersonaFormPresencePenalty(parseFloat(e.target.value) || 0.0)}
+									className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+								/>
+							</div>
+							<div>
+								<label className='block text-[11px] font-bold text-[#5d6075] mb-1'>Freq. Penalty</label>
+								<input
+									type='number'
+									step='0.1'
+									value={personaFormFrequencyPenalty}
+									onChange={(e) => setPersonaFormFrequencyPenalty(parseFloat(e.target.value) || 0.0)}
+									className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]'
+								/>
+							</div>
+						</div>
+					</div>
 
-          {/* 5. Embedded Character Lorebook */}
-          <div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
-            <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#e8ebf3] pb-3'>
-              <div>
-                <h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider'>
-                  5. Embedded Character Lorebook & World Info
-                </h4>
-                <p className='text-xs text-[#7a7d90] mt-0.5'>
-                  Manage lorebook entries for this persona or copy entries from your saved Lorebook templates.
-                </p>
-              </div>
-              <div className='flex items-center gap-2 shrink-0'>
-                {lorebookTemplates.length > 0 && (
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        handleCopyLorebookTemplateToPersona(e.target.value);
-                        e.target.value = '';
-                      }
-                    }}
-                    className='bg-[#eaecf9] text-[#7678ed] border border-[#7678ed]/20 rounded-xl px-3 py-1.5 text-xs font-bold outline-none cursor-pointer'
-                  >
-                    <option value=''>+ Copy from Lorebook...</option>
-                    {lorebookTemplates.map((l) => (
-                      <option key={l.filename} value={l.filename}>
-                        {l.name} ({l.filename})
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <Button type='button' variant='primary' size='sm' onClick={handleAddPersonaLorebookEntry}>
-                  + Add Entry
-                </Button>
-              </div>
-            </div>
+					{/* 5. Embedded Character Lorebook */}
+					<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
+						<div className='flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#e8ebf3] pb-3'>
+							<div>
+								<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider'>5. Embedded Character Lorebook & World Info</h4>
+								<p className='text-xs text-[#7a7d90] mt-0.5'>
+									Manage lorebook entries for this persona or copy entries from your saved Lorebook templates.
+								</p>
+							</div>
+							<div className='flex items-center gap-2 shrink-0'>
+								{lorebookTemplates.length > 0 && (
+									<select
+										onChange={(e) => {
+											if (e.target.value) {
+												handleCopyLorebookTemplateToPersona(e.target.value);
+												e.target.value = '';
+											}
+										}}
+										className='bg-[#eaecf9] text-[#7678ed] border border-[#7678ed]/20 rounded-xl px-3 py-1.5 text-xs font-bold outline-none cursor-pointer'
+									>
+										<option value=''>+ Copy from Lorebook...</option>
+										{lorebookTemplates.map((l) => (
+											<option key={l.filename} value={l.filename}>
+												{l.name} ({l.filename})
+											</option>
+										))}
+									</select>
+								)}
+								<Button type='button' variant='primary' size='sm' onClick={handleAddPersonaLorebookEntry}>
+									+ Add Entry
+								</Button>
+							</div>
+						</div>
 
-            {personaFormLorebookEntries.length === 0 ? (
-              <div className='p-6 text-center text-[#8e90a6] text-xs italic bg-[#f9fafc] rounded-xl border border-dashed border-[#e8ebf3]'>
-                No lorebook entries in this persona. Click "+ Add Entry" or select a Lorebook template above to copy entries.
-              </div>
-            ) : (
-              <div className='space-y-4'>
-                {personaFormLorebookEntries.map((entry, idx) => (
-                  <div key={idx} className='p-4 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] space-y-3 relative group'>
-                    <div className='flex items-center justify-between gap-3'>
-                      <div className='flex items-center gap-2 flex-1'>
-                        <input
-                          type='text'
-                          value={entry.name}
-                          onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'name', e.target.value)}
-                          placeholder='Entry Title / Character Name...'
-                          className='font-bold text-xs text-[#202022] bg-white border border-[#e8ebf3] rounded-lg px-3 py-1.5 outline-none focus:border-[#7678ed]'
-                        />
-                        <label className='flex items-center gap-1.5 text-xs text-[#5d6075] cursor-pointer shrink-0'>
-                          <input
-                            type='checkbox'
-                            checked={entry.enabled}
-                            onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'enabled', e.target.checked)}
-                            className='accent-[#7678ed]'
-                          />
-                          <span>Active</span>
-                        </label>
-                      </div>
-                      <button
-                        type='button'
-                        onClick={() => handleRemovePersonaLorebookEntry(idx)}
-                        className='p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg transition-all cursor-pointer'
-                        title='Delete Entry'
-                      >
-                        <TrashIcon className='w-4 h-4' />
-                      </button>
-                    </div>
+						{personaFormLorebookEntries.length === 0 ? (
+							<div className='p-6 text-center text-[#8e90a6] text-xs italic bg-[#f9fafc] rounded-xl border border-dashed border-[#e8ebf3]'>
+								No lorebook entries in this persona. Click "+ Add Entry" or select a Lorebook template above to copy entries.
+							</div>
+						) : (
+							<div className='space-y-4'>
+								{personaFormLorebookEntries.map((entry, idx) => (
+									<div key={idx} className='p-4 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] space-y-3 relative group'>
+										<div className='flex items-center justify-between gap-3'>
+											<div className='flex items-center gap-2 flex-1'>
+												<input
+													type='text'
+													value={entry.name}
+													onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'name', e.target.value)}
+													placeholder='Entry Title / Character Name...'
+													className='font-bold text-xs text-[#202022] bg-white border border-[#e8ebf3] rounded-lg px-3 py-1.5 outline-none focus:border-[#7678ed]'
+												/>
+												<label className='flex items-center gap-1.5 text-xs text-[#5d6075] cursor-pointer shrink-0'>
+													<input
+														type='checkbox'
+														checked={entry.enabled}
+														onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'enabled', e.target.checked)}
+														className='accent-[#7678ed]'
+													/>
+													<span>Active</span>
+												</label>
+											</div>
+											<button
+												type='button'
+												onClick={() => handleRemovePersonaLorebookEntry(idx)}
+												className='p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg transition-all cursor-pointer'
+												title='Delete Entry'
+											>
+												<TrashIcon className='w-4 h-4' />
+											</button>
+										</div>
 
-                    <div>
-                      <label className='block text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mb-1'>Trigger Keywords</label>
-                      <input
-                        type='text'
-                        value={entry.keys}
-                        onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'keys', e.target.value)}
-                        placeholder='name, car, city, lore...'
-                        className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-lg px-3 py-1.5 text-xs font-mono outline-none focus:border-[#7678ed]'
-                      />
-                    </div>
+										<div>
+											<label className='block text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mb-1'>Trigger Keywords</label>
+											<input
+												type='text'
+												value={entry.keys}
+												onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'keys', e.target.value)}
+												placeholder='name, car, city, lore...'
+												className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-lg px-3 py-1.5 text-xs font-mono outline-none focus:border-[#7678ed]'
+											/>
+										</div>
 
-                    <div>
-                      <label className='block text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mb-1'>Content / Lore Information</label>
-                      <textarea
-                        rows={2}
-                        value={entry.content}
-                        onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'content', e.target.value)}
-                        placeholder='Detailed lore, background story, or memory entries...'
-                        className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#7678ed] resize-y'
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </form>
-      ) : (
-        <div className='space-y-6'>
-          {/* Header */}
-          <div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4'>
-            <div>
-              <h3 className='text-xl font-bold text-[#202022] tracking-tight'>Manage Persona Templates</h3>
-              <p className='text-sm text-[#7a7d90] mt-1 font-medium'>
-                Create, view, and edit reusable AI character personas stored as JSON files in the <code className='bg-[#eaecf9] px-1.5 py-0.5 rounded text-[#7678ed] font-mono border border-[#7678ed]/20'>personas</code> folder.
-              </p>
-            </div>
-            <Button variant='primary' onClick={handleOpenCreatePersonaEditor} icon={<PlusIcon className='w-4 h-4' />}>
-              Add Persona Template
-            </Button>
-          </div>
+										<div>
+											<label className='block text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mb-1'>
+												Content / Lore Information
+											</label>
+											<textarea
+												rows={2}
+												value={entry.content}
+												onChange={(e) => handleUpdatePersonaLorebookEntry(idx, 'content', e.target.value)}
+												placeholder='Detailed lore, background story, or memory entries...'
+												className='w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#7678ed] resize-y'
+											/>
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+					</div>
+				</form>
+			) : (
+				<div className='space-y-6'>
+					{/* Header */}
+					<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4'>
+						<div>
+							<h3 className='text-xl font-bold text-[#202022] tracking-tight'>Manage Persona Templates</h3>
+							<p className='text-sm text-[#7a7d90] mt-1 font-medium'>
+								Create, view, and edit reusable AI character personas stored as JSON files in the{' '}
+								<code className='bg-[#eaecf9] px-1.5 py-0.5 rounded text-[#7678ed] font-mono border border-[#7678ed]/20'>personas</code> folder.
+							</p>
+						</div>
 
-          {/* Search Bar */}
-          <div className='relative'>
-            <input
-              type='text'
-              value={personaSearchQuery}
-              onChange={(e) => setPersonaSearchQuery(e.target.value)}
-              placeholder='Search persona templates by name, description, or system prompt...'
-              className='w-full bg-white border border-[#e8ebf3] rounded-2xl pl-11 pr-4 py-3 text-sm text-[#202022] placeholder-[#a0a3b5] outline-none focus:border-[#7678ed] transition-all shadow-xs'
-            />
-            <SearchIcon className='absolute left-4 top-3.5 text-[#a0a3b5] w-4 h-4' />
-          </div>
+						<button
+							onClick={handleOpenCreatePersonaEditor}
+							className='p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl transition-all shadow-sm flex items-center justify-center cursor-pointer'
+							title='Add Instance'
+						>
+							<PlusIcon className='w-5 h-5' />
+						</button>
+					</div>
 
-          {/* Cards Grid */}
-          {isPersonaLoading ? (
-            <div className='p-12 text-center text-[#7a7d90] font-medium animate-pulse bg-white rounded-2xl border border-[#e8ebf3]'>
-              Loading persona templates...
-            </div>
-          ) : (() => {
-            const filtered = personaTemplates.filter((p) => {
-              const q = personaSearchQuery.toLowerCase().trim();
-              if (!q) return true;
-              const nameMatch = p.name.toLowerCase().includes(q);
-              const fileMatch = p.filename.toLowerCase().includes(q);
-              const descMatch = (p.description || '').toLowerCase().includes(q);
-              const sysMatch = (p.system_prompt || '').toLowerCase().includes(q);
-              return nameMatch || fileMatch || descMatch || sysMatch;
-            });
+					{/* Search Bar */}
+					<div className='relative'>
+						<input
+							type='text'
+							value={personaSearchQuery}
+							onChange={(e) => setPersonaSearchQuery(e.target.value)}
+							placeholder='Search persona templates by name, description, or system prompt...'
+							className='w-full bg-white border border-[#e8ebf3] rounded-2xl pl-11 pr-4 py-3 text-sm text-[#202022] placeholder-[#a0a3b5] outline-none focus:border-[#7678ed] transition-all shadow-xs'
+						/>
+						<SearchIcon className='absolute left-4 top-3.5 text-[#a0a3b5] w-4 h-4' />
+					</div>
 
-            if (filtered.length === 0) {
-              return (
-                <div className='p-12 text-center bg-white rounded-2xl border border-[#e8ebf3] space-y-3'>
-                  <h4 className='font-bold text-[#202022] text-base'>No persona templates found</h4>
-                  <p className='text-xs text-[#7a7d90] max-w-sm mx-auto'>
-                    {personaSearchQuery ? 'No templates match your search filter.' : 'No persona JSON files exist in the personas directory.'}
-                  </p>
-                  {!personaSearchQuery && (
-                    <Button variant='primary' size='sm' onClick={handleOpenCreatePersonaEditor}>
-                      Create Persona Template
-                    </Button>
-                  )}
-                </div>
-              );
-            }
+					{/* Cards Grid */}
+					{isPersonaLoading ? (
+						<div className='p-12 text-center text-[#7a7d90] font-medium animate-pulse bg-white rounded-2xl border border-[#e8ebf3]'>
+							Loading persona templates...
+						</div>
+					) : (
+						(() => {
+							const filtered = personaTemplates.filter((p) => {
+								const q = personaSearchQuery.toLowerCase().trim();
+								if (!q) return true;
+								const nameMatch = p.name.toLowerCase().includes(q);
+								const fileMatch = p.filename.toLowerCase().includes(q);
+								const descMatch = (p.description || '').toLowerCase().includes(q);
+								const sysMatch = (p.system_prompt || '').toLowerCase().includes(q);
+								return nameMatch || fileMatch || descMatch || sysMatch;
+							});
 
-            return (
-              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                {filtered.map((tmpl) => (
-                  <div key={tmpl.filename} className='p-5 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs flex flex-col justify-between space-y-4 hover:border-[#7678ed]/40 transition-all'>
-                    <div className='space-y-3'>
-                      <div className='flex items-start gap-3.5'>
-                        <div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 overflow-hidden flex items-center justify-center shrink-0 shadow-xs'>
-                          {tmpl.picture ? (
-                            <img src={tmpl.picture} alt={tmpl.name} className='w-full h-full object-cover' />
-                          ) : (
-                            <span className='text-xl'>🎭</span>
-                          )}
-                        </div>
-                        <div className='flex-1 min-w-0'>
-                          <h4 className='font-bold text-[#202022] text-base leading-snug truncate'>{tmpl.name}</h4>
-                          <span className='text-[11px] font-mono text-[#a0a3b5] block mt-0.5'>{tmpl.filename}</span>
-                        </div>
-                      </div>
+							if (filtered.length === 0) {
+								return (
+									<div className='p-12 text-center bg-white rounded-2xl border border-[#e8ebf3] space-y-3'>
+										<h4 className='font-bold text-[#202022] text-base'>No persona templates found</h4>
+										<p className='text-xs text-[#7a7d90] max-w-sm mx-auto'>
+											{personaSearchQuery
+												? 'No templates match your search filter.'
+												: 'No persona JSON files exist in the personas directory.'}
+										</p>
+										{!personaSearchQuery && (
+											<Button variant='primary' size='sm' onClick={handleOpenCreatePersonaEditor}>
+												Create Persona Template
+											</Button>
+										)}
+									</div>
+								);
+							}
 
-                      {tmpl.description && (
-                        <p className='text-xs text-[#404252] font-medium leading-relaxed line-clamp-2'>
-                          {tmpl.description}
-                        </p>
-                      )}
+							return (
+								<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+									{filtered.map((tmpl) => (
+										<div
+											key={tmpl.filename}
+											className='p-5 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs flex flex-col justify-between space-y-4 hover:border-[#7678ed]/40 transition-all'
+										>
+											<div className='space-y-3'>
+												<div className='flex items-start gap-3.5'>
+													<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 overflow-hidden flex items-center justify-center shrink-0 shadow-xs'>
+														{tmpl.picture ? (
+															<img src={tmpl.picture} alt={tmpl.name} className='w-full h-full object-cover' />
+														) : (
+															<span className='text-xl'>🎭</span>
+														)}
+													</div>
+													<div className='flex-1 min-w-0'>
+														<h4 className='font-bold text-[#202022] text-base leading-snug truncate'>{tmpl.name}</h4>
+														<span className='text-[11px] font-mono text-[#a0a3b5] block mt-0.5'>{tmpl.filename}</span>
+													</div>
+												</div>
 
-                      {tmpl.system_prompt && (
-                        <div>
-                          <span className='text-[11px] font-bold text-[#a0a3b5] uppercase tracking-wider block mb-1'>System Instructions</span>
-                          <p className='text-xs text-[#404252] bg-[#f9fafc] p-2.5 rounded-xl border border-[#e8ebf3] line-clamp-3 font-mono leading-relaxed whitespace-pre-wrap'>
-                            {tmpl.system_prompt}
-                          </p>
-                        </div>
-                      )}
+												{tmpl.description && (
+													<p className='text-xs text-[#404252] font-medium leading-relaxed line-clamp-2'>{tmpl.description}</p>
+												)}
 
-                      <div className='flex flex-wrap items-center gap-2 pt-1 text-xs text-[#7a7d90] font-medium'>
-                        <Badge variant='primary'>Voice: {tmpl.voice || 'af_heart'}</Badge>
-                        {tmpl.num_ctx && <Badge variant='secondary'>{tmpl.num_ctx} tokens</Badge>}
-                        {tmpl.character_book?.entries && tmpl.character_book.entries.length > 0 && (
-                          <Badge variant='success'>📚 {tmpl.character_book.entries.length} Lorebook entries</Badge>
-                        )}
-                      </div>
-                    </div>
+												{tmpl.system_prompt && (
+													<div>
+														<span className='text-[11px] font-bold text-[#a0a3b5] uppercase tracking-wider block mb-1'>
+															System Instructions
+														</span>
+														<p className='text-xs text-[#404252] bg-[#f9fafc] p-2.5 rounded-xl border border-[#e8ebf3] line-clamp-3 font-mono leading-relaxed whitespace-pre-wrap'>
+															{tmpl.system_prompt}
+														</p>
+													</div>
+												)}
 
-                    <div className='pt-3 border-t border-[#e8ebf3] flex items-center justify-between gap-2'>
-                      <Button
-                        size='sm'
-                        variant='primary'
-                        onClick={() => {
-                          setApplyPersonaModalTemplate(tmpl);
-                          setApplyPersonaSelectedModelId('');
-                        }}
-                        icon={<CheckIcon className='w-3.5 h-3.5' />}
-                      >
-                        Apply to Model
-                      </Button>
+												<div className='flex flex-wrap items-center gap-2 pt-1 text-xs text-[#7a7d90] font-medium'>
+													<Badge variant='primary'>Voice: {tmpl.voice || 'af_heart'}</Badge>
+													{tmpl.num_ctx && <Badge variant='secondary'>{tmpl.num_ctx} tokens</Badge>}
+													{tmpl.character_book?.entries && tmpl.character_book.entries.length > 0 && (
+														<Badge variant='success'>📚 {tmpl.character_book.entries.length} Lorebook entries</Badge>
+													)}
+												</div>
+											</div>
 
-                      <div className='flex items-center gap-2'>
-                        <Button
-                          size='sm'
-                          variant='secondary'
-                          onClick={() => handleOpenEditPersonaEditor(tmpl)}
-                          icon={<EditIcon className='w-3.5 h-3.5' />}
-                        >
-                          Edit Page
-                        </Button>
-                        <Button
-                          size='sm'
-                          variant='danger'
-                          onClick={() => setDeletingPersonaTemplate(tmpl)}
-                          icon={<TrashIcon className='w-3.5 h-3.5' />}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
-      )}
-    </div>
+											<div className='pt-3 border-t border-[#e8ebf3] flex items-center justify-between gap-2'>
+												<Button
+													size='sm'
+													variant='primary'
+													onClick={() => {
+														setApplyPersonaModalTemplate(tmpl);
+														setApplyPersonaSelectedModelId('');
+													}}
+													icon={<CheckIcon className='w-3.5 h-3.5' />}
+												>
+													Apply to Model
+												</Button>
+
+												<div className='flex items-center gap-2'>
+													<Button
+														size='sm'
+														variant='secondary'
+														onClick={() => handleOpenEditPersonaEditor(tmpl)}
+														icon={<EditIcon className='w-3.5 h-3.5' />}
+													>
+														Edit Page
+													</Button>
+													<Button
+														size='sm'
+														variant='danger'
+														onClick={() => setDeletingPersonaTemplate(tmpl)}
+														icon={<TrashIcon className='w-3.5 h-3.5' />}
+													>
+														Delete
+													</Button>
+												</div>
+											</div>
+										</div>
+									))}
+								</div>
+							);
+						})()
+					)}
+				</div>
+			)}
+		</div>
   );
 };
