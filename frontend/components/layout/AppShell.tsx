@@ -12,6 +12,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 		setActiveTab,
 		folders,
 		fetchFolders,
+		fetchAppPreferences,
 		draggedChatId,
 		setFolderContextMenu,
 		setIsCreatingFolder,
@@ -19,7 +20,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
 	useEffect(() => {
 		fetchFolders();
-	}, [fetchFolders]);
+		fetchAppPreferences();
+	}, [fetchFolders, fetchAppPreferences]);
 
 	return (
 		<main className='topo-bg min-h-screen w-screen flex justify-center font-sans antialiased text-[#202022] box-border'>

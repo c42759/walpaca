@@ -7,6 +7,7 @@ preferences_bp = Blueprint("preferences", __name__)
 DEFAULT_PREFERENCES = {
     "auto_play_voice": False,
     "desktop_notifications": True,
+    "play_sound_notification": True,
     "auto_scroll": True,
     "default_audio_output": "default",
 }

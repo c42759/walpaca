@@ -14,6 +14,14 @@ export interface ModelPreference {
   character?: Record<string, any>;
 }
 
+export interface AppPreferences {
+  auto_play_voice: boolean;
+  desktop_notifications: boolean;
+  play_sound_notification?: boolean;
+  auto_scroll: boolean;
+  default_audio_output: string;
+}
+
 export interface InstanceProperties {
   name: string;
   url: string;
@@ -101,11 +109,17 @@ interface AppStoreState {
   instanceModelsMap: Record<string, InstanceModel[]>;
   instanceModelsLoading: Record<string, boolean>;
 
+  // Global Application Preferences
+  appPreferences: AppPreferences;
+  appPreferencesLoaded: boolean;
+  appPreferencesLoading: boolean;
+
   // Actions & Cache Fetchers
   fetchFolders: (force?: boolean) => Promise<NavigationFolder[]>;
   fetchInstances: (force?: boolean) => Promise<InstanceItem[]>;
   fetchModelPreferences: (force?: boolean) => Promise<Record<string, ModelPreference>>;
   fetchInstanceModels: (instanceId: string, force?: boolean) => Promise<InstanceModel[]>;
+  fetchAppPreferences: (force?: boolean) => Promise<AppPreferences>;
 
   // Direct Mutators for Instant UI Sync & Invalidation
   setInstances: (instances: InstanceItem[]) => void;
@@ -113,6 +127,7 @@ interface AppStoreState {
   setModelPreference: (id: string, pref: ModelPreference) => void;
   removeModelPreference: (id: string) => void;
   setInstanceModels: (instanceId: string, models: InstanceModel[]) => void;
+  setAppPreferences: (prefs: Partial<AppPreferences>) => void;
 
   invalidateInstances: () => void;
   invalidateModelPreferences: () => void;
@@ -187,6 +202,16 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   instanceModelsMap: {},
   instanceModelsLoading: {},
+
+  appPreferences: {
+    auto_play_voice: false,
+    desktop_notifications: true,
+    play_sound_notification: true,
+    auto_scroll: true,
+    default_audio_output: 'default',
+  },
+  appPreferencesLoaded: false,
+  appPreferencesLoading: false,
 
   fetchFolders: async (force = false) => {
     const { folders, foldersLoaded, foldersLoading } = get();
@@ -366,4 +391,34 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     }),
 
   invalidateFolders: () => set({ foldersLoaded: false }),
+
+  fetchAppPreferences: async (force = false) => {
+    const { appPreferences, appPreferencesLoaded, appPreferencesLoading } = get();
+    if (appPreferencesLoaded && !force) {
+      return appPreferences;
+    }
+    if (appPreferencesLoading) {
+      return appPreferences;
+    }
+
+    set({ appPreferencesLoading: true });
+    try {
+      const res = await fetch(`${getApiUrl()}/preferences`);
+      if (res.ok) {
+        const data = await res.json();
+        const merged = { ...get().appPreferences, ...data };
+        set({ appPreferences: merged, appPreferencesLoaded: true, appPreferencesLoading: false });
+        return merged;
+      }
+    } catch (err) {
+      console.warn("Zustand: Could not fetch preferences from backend:", err);
+    }
+    set({ appPreferencesLoaded: true, appPreferencesLoading: false });
+    return get().appPreferences;
+  },
+
+  setAppPreferences: (prefs) =>
+    set((state) => ({
+      appPreferences: { ...state.appPreferences, ...prefs },
+    })),
 }));

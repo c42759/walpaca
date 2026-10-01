@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAppStore, registerGoToRootHandler, registerDropChatToFolderHandler } from '@/store/useAppStore';
 import { getApiUrl } from '@/lib/api';
+import { applyAudioOutputDevice } from '@/lib/audioUtils';
 
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
@@ -293,11 +294,13 @@ const autoResizeTextarea = (el: HTMLTextAreaElement | null) => {
 	}
 };
 
-const playNotificationSound = () => {
+const playNotificationSound = async () => {
 	if (typeof window === 'undefined') return;
 	try {
 		const audio = new Audio('/universfield-new-notification-036-485897.mp3');
 		audio.volume = 0.6;
+		const defaultOutput = useAppStore.getState().appPreferences?.default_audio_output;
+		await applyAudioOutputDevice(audio, defaultOutput);
 		audio.play().catch((err) => {
 			console.warn('Notification sound playback prevented or failed:', err);
 		});
@@ -875,6 +878,7 @@ export default function ChatPage() {
 	const params = useParams<{ chat_id?: string }>();
 	const routeChatId = params?.chat_id;
 	const messagesEndRef = useRef<HTMLDivElement>(null);
+	const isGeneratingRef = useRef<boolean>(false);
 	const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const [selectedAttachments, setSelectedAttachments] = useState<SelectedAttachment[]>([]);
@@ -947,6 +951,8 @@ export default function ChatPage() {
 	const {
 		instances,
 		modelPreferences,
+		appPreferences,
+		fetchAppPreferences,
 		fetchInstances,
 		fetchModelPreferences,
 		fetchInstanceModels,
@@ -2479,6 +2485,8 @@ export default function ChatPage() {
 			const audioUrl = URL.createObjectURL(blob);
 			const audio = new Audio(audioUrl);
 			audioRef.current = audio;
+			const defaultOutput = useAppStore.getState().appPreferences?.default_audio_output;
+			await applyAudioOutputDevice(audio, defaultOutput);
 
 			await new Promise<void>((resolve) => {
 				audio.onended = () => {
@@ -2558,6 +2566,8 @@ export default function ChatPage() {
 		const audioUrl = URL.createObjectURL(blob);
 		const audio = new Audio(audioUrl);
 		audioRef.current = audio;
+		const defaultOutput = useAppStore.getState().appPreferences?.default_audio_output;
+		await applyAudioOutputDevice(audio, defaultOutput);
 
 		await new Promise<void>((resolve) => {
 			audio.onended = () => {
@@ -2856,6 +2866,7 @@ export default function ChatPage() {
 		fetchFolders();
 		fetchModelPreferences();
 		fetchInstances();
+		fetchAppPreferences();
 	}, []);
 
 	useEffect(() => {
@@ -2890,6 +2901,10 @@ export default function ChatPage() {
 
 	useEffect(() => {
 		if (activeChatId) {
+			const prefs = useAppStore.getState().appPreferences;
+			if (isGeneratingRef.current && !prefs?.auto_scroll) {
+				return;
+			}
 			messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
 		}
 	}, [messages, activeChatId]);
@@ -3150,8 +3165,10 @@ export default function ChatPage() {
 		setMessages((prev) => [...prev, assistantMsg]);
 
 		let fullResponseText = '';
+		let currentAssistantMsgId = assistantMsgId;
 		const genUrl = activeChatId ? `${API_URL}/chats/${activeChatId}/generate` : `${API_URL}/generate`;
 
+		isGeneratingRef.current = true;
 		try {
 			const genRes = await fetch(genUrl, {
 				method: 'POST',
@@ -3187,6 +3204,7 @@ export default function ChatPage() {
 							const parsed = JSON.parse(dataStr);
 							if (parsed.id) {
 								const serverId = parsed.id;
+								currentAssistantMsgId = serverId;
 								setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, id: serverId } : m)));
 							}
 							if (parsed.thinking) {
@@ -3261,10 +3279,71 @@ export default function ChatPage() {
 						}
 					}
 				}
-				playNotificationSound();
+				const currentPrefs = useAppStore.getState().appPreferences;
+
+				if (currentPrefs?.play_sound_notification !== false) {
+					playNotificationSound();
+				}
+
+				if (currentPrefs?.desktop_notifications && typeof window !== 'undefined' && 'Notification' in window) {
+					const isWindowUnfocused = typeof document !== 'undefined' && (document.hidden || !document.hasFocus());
+					if (isWindowUnfocused) {
+						const fireDesktopNotification = () => {
+							try {
+								const prefKey = (selectedChatModelId || '').toLowerCase();
+								const modelPref =
+									modelPreferences[selectedChatModelId || ''] ||
+									modelPreferences[prefKey] ||
+									Object.values(modelPreferences).find((p) => p.id?.toLowerCase() === prefKey);
+								const assistantTitle = modelPref?.name || selectedChatModelId || 'Walpaca Assistant';
+								const snippet = fullResponseText.trim().replace(/\s+/g, ' ').slice(0, 140);
+								const avatarIcon = getModelAvatarPicture(modelPref);
+								const n = new Notification(assistantTitle, {
+									body: snippet || 'Finished delivering response.',
+									icon: avatarIcon,
+								});
+								n.onclick = () => {
+									window.focus();
+									n.close();
+								};
+							} catch (e) {
+								console.warn('Desktop notification error:', e);
+							}
+						};
+
+						if (Notification.permission === 'granted') {
+							fireDesktopNotification();
+						} else if (Notification.permission === 'default') {
+							Notification.requestPermission().then((perm) => {
+								if (perm === 'granted') {
+									fireDesktopNotification();
+								}
+							});
+						}
+					}
+				}
+
+				if (currentPrefs?.auto_scroll) {
+					messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+					setTimeout(() => {
+						messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+					}, 100);
+				}
+
+				if (currentPrefs?.auto_play_voice && fullResponseText.trim()) {
+					const prefKey = (selectedChatModelId || '').toLowerCase();
+					const modelPref =
+						modelPreferences[selectedChatModelId || ''] ||
+						modelPreferences[prefKey] ||
+						Object.values(modelPreferences).find((p) => p.id?.toLowerCase() === prefKey);
+					const currentVoice = modelPref?.voice || 'af_heart';
+					handlePlayTTS(currentAssistantMsgId, fullResponseText, currentVoice);
+				}
 			}
 		} catch (err) {
 			console.warn('Error during LLM response generation:', err);
+		} finally {
+			isGeneratingRef.current = false;
 		}
 	};
 

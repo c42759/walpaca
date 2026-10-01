@@ -9,44 +9,81 @@ import { SettingsHelpSidebar } from '@/components/settings/SettingsHelpSidebar';
 interface PreferencesData {
 	auto_play_voice: boolean;
 	desktop_notifications: boolean;
+	play_sound_notification?: boolean;
 	auto_scroll: boolean;
 	default_audio_output: string;
 }
 
+interface AudioDeviceOption {
+	deviceId: string;
+	label: string;
+}
+
 export default function PreferencesSettingsPage() {
-	const { setCurrentView } = useAppStore();
+	const { setCurrentView, appPreferences, fetchAppPreferences, setAppPreferences } = useAppStore();
 	const [activeSettingsCategory, setActiveSettingsCategory] = useState<SettingsCategory>('preferences');
 
-	const [preferences, setPreferences] = useState<PreferencesData>({
-		auto_play_voice: false,
-		desktop_notifications: true,
-		auto_scroll: true,
-		default_audio_output: 'default',
-	});
-
-	const [isLoading, setIsLoading] = useState<boolean>(true);
+	const [preferences, setPreferences] = useState<PreferencesData>(appPreferences);
+	const [isLoading, setIsLoading] = useState<boolean>(false);
 	const [saveStatus, setSaveStatus] = useState<string>('');
+	const [audioDevices, setAudioDevices] = useState<AudioDeviceOption[]>([]);
 
-	// Load preferences from API
+	// Load preferences from API & store
 	useEffect(() => {
 		let isMounted = true;
 		(async () => {
+			setIsLoading(true);
 			try {
-				const res = await fetch(`${getApiUrl()}/preferences`);
-				if (res.ok) {
-					const data = await res.json();
-					if (isMounted) {
-						setPreferences((prev) => ({ ...prev, ...data }));
-					}
+				const data = await fetchAppPreferences(true);
+				if (isMounted && data) {
+					setPreferences(data);
 				}
 			} catch (err) {
 				console.warn('Could not load preferences:', err);
 			} finally {
-				if (isMounted) {
-					setIsLoading(false);
-				}
+				if (isMounted) setIsLoading(false);
 			}
 		})();
+
+		return () => {
+			isMounted = false;
+		};
+	}, [fetchAppPreferences]);
+
+	// Enumerate audio output devices
+	useEffect(() => {
+		let isMounted = true;
+
+		const updateAudioOutputs = async () => {
+			if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+				return;
+			}
+			try {
+				const devices = await navigator.mediaDevices.enumerateDevices();
+				const outputs = devices
+					.filter((d) => d.kind === 'audiooutput')
+					.map((d, index) => ({
+						deviceId: d.deviceId,
+						label: d.label || (d.deviceId === 'default' ? 'System Default Speaker' : `Audio Device ${index + 1}`),
+					}));
+
+				if (isMounted) {
+					setAudioDevices(outputs);
+				}
+			} catch (err) {
+				console.warn('Could not enumerate audio output devices:', err);
+			}
+		};
+
+		updateAudioOutputs();
+
+		if (typeof navigator !== 'undefined' && navigator.mediaDevices?.addEventListener) {
+			navigator.mediaDevices.addEventListener('devicechange', updateAudioOutputs);
+			return () => {
+				isMounted = false;
+				navigator.mediaDevices.removeEventListener('devicechange', updateAudioOutputs);
+			};
+		}
 
 		return () => {
 			isMounted = false;
@@ -54,8 +91,15 @@ export default function PreferencesSettingsPage() {
 	}, []);
 
 	const handleUpdatePreference = async (key: keyof PreferencesData, value: boolean | string) => {
+		if (key === 'desktop_notifications' && value === true && typeof window !== 'undefined' && 'Notification' in window) {
+			if (Notification.permission === 'default') {
+				Notification.requestPermission();
+			}
+		}
+
 		const updated = { ...preferences, [key]: value };
 		setPreferences(updated);
+		setAppPreferences({ [key]: value });
 		setSaveStatus('Saving...');
 
 		try {
@@ -65,6 +109,8 @@ export default function PreferencesSettingsPage() {
 				body: JSON.stringify({ [key]: value }),
 			});
 			if (res.ok) {
+				const saved = await res.json();
+				setAppPreferences(saved);
 				setSaveStatus('Preferences saved');
 				setTimeout(() => setSaveStatus(''), 2000);
 			} else {
@@ -151,6 +197,22 @@ export default function PreferencesSettingsPage() {
 
 							<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
 								<div>
+									<h4 className='text-base font-bold text-[#202022]'>Play Sound Notification</h4>
+									<p className='text-xs text-[#8e90a6] mt-0.5'>
+										Play an audio chime when assistant finishes delivering response.
+									</p>
+								</div>
+								<input
+									type='checkbox'
+									disabled={isLoading}
+									checked={preferences.play_sound_notification !== false}
+									onChange={(e) => handleUpdatePreference('play_sound_notification', e.target.checked)}
+									className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer disabled:opacity-50'
+								/>
+							</div>
+
+							<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
+								<div>
 									<h4 className='text-base font-bold text-[#202022]'>Auto-scroll during generation</h4>
 									<p className='text-xs text-[#8e90a6] mt-0.5'>
 										Keep chat window scrolled to the latest incoming message tokens.
@@ -169,12 +231,27 @@ export default function PreferencesSettingsPage() {
 								<h4 className='text-base font-bold text-[#202022]'>Default Audio Output Device</h4>
 								<select
 									disabled={isLoading}
-									value={preferences.default_audio_output}
+									value={preferences.default_audio_output || 'default'}
 									onChange={(e) => handleUpdatePreference('default_audio_output', e.target.value)}
 									className='w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-2xl px-4 py-3 text-sm text-[#202022] font-semibold outline-none focus:border-[#7678ed] transition-all cursor-pointer disabled:opacity-50'
 								>
 									<option value='default'>System Default Speaker</option>
-									<option value='headphones'>Headphones / Headset</option>
+									{audioDevices
+										.filter((d) => d.deviceId !== 'default')
+										.map((d) => (
+											<option key={d.deviceId} value={d.deviceId}>
+												{d.label}
+											</option>
+										))}
+									{preferences.default_audio_output &&
+										preferences.default_audio_output !== 'default' &&
+										!audioDevices.some((d) => d.deviceId === preferences.default_audio_output) && (
+											<option value={preferences.default_audio_output}>
+												{preferences.default_audio_output === 'headphones'
+													? 'Headphones / Headset (Saved)'
+													: `Saved Device (${preferences.default_audio_output.slice(0, 10)}...) [Disconnected]`}
+											</option>
+										)}
 								</select>
 							</div>
 						</div>
