@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 
 export interface ChatItem {
 	id: string;
@@ -66,6 +67,7 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
 	setDragOverFolderTarget,
 	getAvatarColor = defaultGetAvatarColor,
 }) => {
+	const router = useRouter();
 	const filteredChats = chatItems.filter((chat) => {
 		const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase());
 		const matchesFolder =
@@ -141,7 +143,10 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
 								setDraggedChatId(null);
 								setDragOverFolderTarget(null);
 							}}
-							onClick={() => setActiveChatId(chat.id)}
+							onClick={() => {
+								setActiveChatId(chat.id);
+								router.push(`/${chat.id}`);
+							}}
 							className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-grab active:cursor-grabbing transition-all ${
 								isBeingDragged ? 'opacity-40 scale-95 border-2 border-dashed border-[#7678ed]' : ''
 							} ${isSelected ? 'bg-[#edeffb] shadow-[0_2px_8px_rgba(118,120,237,0.08)]' : 'hover:bg-[#f2f4fa]'}`}
