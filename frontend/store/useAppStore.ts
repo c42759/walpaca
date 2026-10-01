@@ -20,6 +20,7 @@ export interface AppPreferences {
   play_sound_notification?: boolean;
   auto_scroll: boolean;
   default_audio_output: string;
+  active_instance_id?: string | null;
 }
 
 export interface InstanceProperties {

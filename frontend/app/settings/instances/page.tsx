@@ -7,7 +7,7 @@ import { getApiUrl } from '@/lib/api';
 import { getCharacterName } from '@/lib/characterUtils';
 import { SettingsSidebar, SettingsCategory } from '@/components/settings/SettingsSidebar';
 import { SettingsHelpSidebar } from '@/components/settings/SettingsHelpSidebar';
-import { EditIcon, TrashIcon } from '@/components/icons/Icons';
+import { EditIcon, TrashIcon, CheckIcon } from '@/components/icons/Icons';
 
 export default function InstancesSettingsPage() {
 	const {
@@ -19,6 +19,9 @@ export default function InstancesSettingsPage() {
 		setModelPreference: setStoreModelPreference,
 		fetchInstanceModels,
 		setCurrentView,
+		appPreferences,
+		fetchAppPreferences,
+		setAppPreferences,
 	} = useAppStore();
 
 	const [activeSettingsCategory, setActiveSettingsCategory] = useState<SettingsCategory>('manage-instances');
@@ -59,7 +62,8 @@ export default function InstancesSettingsPage() {
 	useEffect(() => {
 		fetchInstances();
 		fetchModelPreferences();
-	}, [fetchInstances, fetchModelPreferences]);
+		fetchAppPreferences();
+	}, [fetchInstances, fetchModelPreferences, fetchAppPreferences]);
 
 	// Handlers: Instances
 	const handleOpenAddInstanceModal = () => {
@@ -158,8 +162,36 @@ export default function InstancesSettingsPage() {
 		setInstanceSubView('form');
 	};
 
+	const handleActivateInstance = async (id: string) => {
+		setAppPreferences({ active_instance_id: id });
+		try {
+			await fetch(`${getApiUrl()}/preferences`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ active_instance_id: id }),
+			});
+			fetchAppPreferences(true);
+		} catch (err) {
+			console.warn('Could not activate instance:', err);
+		}
+	};
+
 	const handleDeleteInstance = async (id: string) => {
-		setStoreInstances(instances.filter((item) => item.id !== id));
+		const remaining = instances.filter((item) => item.id !== id);
+		setStoreInstances(remaining);
+		if (appPreferences.active_instance_id === id) {
+			const newActiveId = remaining[0]?.id || null;
+			setAppPreferences({ active_instance_id: newActiveId });
+			try {
+				await fetch(`${getApiUrl()}/preferences`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ active_instance_id: newActiveId }),
+				});
+			} catch (err) {
+				console.warn('Could not update active instance preference after delete:', err);
+			}
+		}
 		try {
 			await fetch(`${getApiUrl()}/instances/${id}`, { method: 'DELETE' });
 			fetchInstances(true);
@@ -420,49 +452,80 @@ export default function InstancesSettingsPage() {
 									</div>
 								) : (
 									<div className='grid grid-cols-1 md:grid-cols-1 gap-4'>
-										{instances.map((inst) => (
-											<div
-												key={inst.id}
-												className='p-5 rounded-2xl bg-white border border-[#e8ebf3] hover:border-[#7678ed]/40 transition-all shadow-xs flex flex-col justify-between'
-											>
-												<div>
-													<div className='flex items-center justify-between mb-2'>
-														<h4 className='text-base font-bold text-[#202022]'>{inst.properties?.name || inst.type}</h4>
-														<span className='px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#eaecf9] text-[#7678ed]'>
-															{inst.type}
-														</span>
-													</div>
-													<p className='text-xs text-[#8e90a6] font-mono truncate mb-4'>
-														{inst.properties?.url || 'http://0.0.0.0:11434'}
-													</p>
-												</div>
+										{instances.map((inst) => {
+											const isActive = appPreferences.active_instance_id
+												? appPreferences.active_instance_id === inst.id
+												: instances[0]?.id === inst.id;
 
-												<div className='flex items-center justify-between pt-3 border-t border-[#e8ebf3] gap-2'>
-													<button
-														onClick={() => handleManageInstanceModels(inst)}
-														className='px-3 py-1.5 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] text-xs font-semibold transition-all'
-													>
-														Models
-													</button>
-													<div className='flex items-center gap-1'>
-														<button
-															onClick={() => handleOpenEditInstanceModal(inst)}
-															className='p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9]'
-															title='Edit'
-														>
-															<EditIcon className='w-4 h-4' />
-														</button>
-														<button
-															onClick={() => handleDeleteInstance(inst.id)}
-															className='p-1.5 text-[#7a7d90] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50'
-															title='Delete'
-														>
-															<TrashIcon className='w-4 h-4' />
-														</button>
+											return (
+												<div
+													key={inst.id}
+													className={`p-5 rounded-2xl bg-white border transition-all shadow-xs flex flex-col justify-between ${
+														isActive ? 'border-[#7678ed] ring-2 ring-[#7678ed]/10' : 'border-[#e8ebf3] hover:border-[#7678ed]/40'
+													}`}
+												>
+													<div>
+														<div className='flex items-center justify-between mb-2'>
+															<div className='flex items-center gap-2'>
+																<h4 className='text-base font-bold text-[#202022]'>{inst.properties?.name || inst.type}</h4>
+																{isActive && (
+																	<span className='px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 flex items-center gap-1'>
+																		<span className='w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse'></span>
+																		Active
+																	</span>
+																)}
+															</div>
+															<span className='px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#eaecf9] text-[#7678ed]'>
+																{inst.type}
+															</span>
+														</div>
+														<p className='text-xs text-[#8e90a6] font-mono truncate mb-4'>
+															{inst.properties?.url || 'http://0.0.0.0:11434'}
+														</p>
+													</div>
+
+													<div className='flex items-center justify-between pt-3 border-t border-[#e8ebf3] gap-2'>
+														<div className='flex items-center gap-2'>
+															<button
+																onClick={() => handleManageInstanceModels(inst)}
+																className='px-3 py-1.5 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] text-xs font-semibold transition-all cursor-pointer'
+															>
+																Models
+															</button>
+															{isActive ? (
+																<span className='px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold inline-flex items-center gap-1.5'>
+																	<CheckIcon className='w-3.5 h-3.5' />
+																	Active
+																</span>
+															) : (
+																<button
+																	onClick={() => handleActivateInstance(inst.id)}
+																	className='px-3 py-1.5 rounded-xl bg-[#f0f2fb] hover:bg-[#7678ed] hover:text-white text-[#5d6075] text-xs font-semibold transition-all cursor-pointer'
+																>
+																	Activate
+																</button>
+															)}
+														</div>
+														<div className='flex items-center gap-1'>
+															<button
+																onClick={() => handleOpenEditInstanceModal(inst)}
+																className='p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9]'
+																title='Edit'
+															>
+																<EditIcon className='w-4 h-4' />
+															</button>
+															<button
+																onClick={() => handleDeleteInstance(inst.id)}
+																className='p-1.5 text-[#7a7d90] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50'
+																title='Delete'
+															>
+																<TrashIcon className='w-4 h-4' />
+															</button>
+														</div>
 													</div>
 												</div>
-											</div>
-										))}
+											);
+										})}
 									</div>
 								)}
 							</div>

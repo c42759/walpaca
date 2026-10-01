@@ -2,6 +2,7 @@
   "auto_play_voice": false,
   "desktop_notifications": false,
   "play_sound_notification": true,
-  "auto_scroll": false,
-  "default_audio_output": ""
+  "auto_scroll": true,
+  "default_audio_output": "",
+  "active_instance_id": ""
 }

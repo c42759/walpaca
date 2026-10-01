@@ -10,6 +10,7 @@ DEFAULT_PREFERENCES = {
     "play_sound_notification": True,
     "auto_scroll": True,
     "default_audio_output": "default",
+    "active_instance_id": None,
 }
 
 
