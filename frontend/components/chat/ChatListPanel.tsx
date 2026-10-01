@@ -147,7 +147,7 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
 								setActiveChatId(chat.id);
 								router.push(`/${chat.id}`);
 							}}
-							className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-grab active:cursor-grabbing transition-all ${
+							className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer active:cursor-grabbing transition-all ${
 								isBeingDragged ? 'opacity-40 scale-95 border-2 border-dashed border-[#7678ed]' : ''
 							} ${isSelected ? 'bg-[#edeffb] shadow-[0_2px_8px_rgba(118,120,237,0.08)]' : 'hover:bg-[#f2f4fa]'}`}
 						>
@@ -175,7 +175,7 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
 									<span className='text-sm text-[#8e90a6] font-medium shrink-0'>{chat.time}</span>
 								</div>
 								<div className='flex items-center justify-between gap-1'>
-									<p className={`text-base truncate ${isSelected ? 'text-[#7678ed] font-medium' : 'text-[#7a7d90]'}`}>
+									<p className={`text-xs truncate ${isSelected ? 'text-[#7678ed] font-medium' : 'text-[#7a7d90]'}`}>
 										{chat.lastMessage}
 									</p>
 
