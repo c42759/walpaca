@@ -1951,7 +1951,9 @@ export default function ChatPage() {
 
 		setChatItems((prev) => [newChatObj, ...prev]);
 		setActiveChatId(newId);
-		router.push(`/${newId}`);
+		if (typeof window !== 'undefined') {
+			window.history.pushState(null, '', `/${newId}`);
+		}
 
 		try {
 			await fetch(`${API_URL}/chats`, {
@@ -2873,6 +2875,17 @@ export default function ChatPage() {
 	}, [activeTab]);
 
 	useEffect(() => {
+		const handlePopState = () => {
+			const path = window.location.pathname.replace(/^\//, '');
+			if (path && path !== 'settings') {
+				setActiveChatId(path);
+			}
+		};
+		window.addEventListener('popstate', handlePopState);
+		return () => window.removeEventListener('popstate', handlePopState);
+	}, []);
+
+	useEffect(() => {
 		if (routeChatId) {
 			setActiveChatId(routeChatId);
 		}
@@ -2880,13 +2893,15 @@ export default function ChatPage() {
 
 	useEffect(() => {
 		if (!routeChatId && chatItems.length > 0 && !activeChatId) {
-			router.replace(`/${chatItems[0].id}`);
+			setActiveChatId(chatItems[0].id);
+			if (typeof window !== 'undefined') {
+				window.history.replaceState(null, '', `/${chatItems[0].id}`);
+			}
 		}
-	}, [routeChatId, chatItems, activeChatId, router]);
+	}, [routeChatId, chatItems, activeChatId]);
 
 	useEffect(() => {
 		if (activeChatId) {
-			setMessages([]);
 			fetchChatMessages(activeChatId);
 		} else {
 			setMessages([]);
@@ -3015,6 +3030,9 @@ export default function ChatPage() {
 				const mapped = mapBackendChatToChatItem(created);
 				setChatItems((prev) => [mapped, ...prev]);
 				setActiveChatId(created.id);
+				if (typeof window !== 'undefined') {
+					window.history.pushState(null, '', `/${created.id}`);
+				}
 			} else {
 				const localChat: ChatItem = {
 					id: `chat-${Date.now()}`,
@@ -3025,6 +3043,9 @@ export default function ChatPage() {
 				};
 				setChatItems((prev) => [localChat, ...prev]);
 				setActiveChatId(localChat.id);
+				if (typeof window !== 'undefined') {
+					window.history.pushState(null, '', `/${localChat.id}`);
+				}
 			}
 		} catch (err) {
 			const localChat: ChatItem = {
@@ -3036,6 +3057,9 @@ export default function ChatPage() {
 			};
 			setChatItems((prev) => [localChat, ...prev]);
 			setActiveChatId(localChat.id);
+			if (typeof window !== 'undefined') {
+				window.history.pushState(null, '', `/${localChat.id}`);
+			}
 		}
 	};
 
