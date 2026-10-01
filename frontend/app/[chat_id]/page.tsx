@@ -955,6 +955,7 @@ export default function ChatPage() {
 		setActiveTab,
 		folders,
 		setFolders,
+		fetchFolders,
 		draggedChatId,
 		setDraggedChatId,
 		folderContextMenu,
@@ -2804,27 +2805,6 @@ export default function ChatPage() {
 	const [messages, setMessages] = useState<Message[]>([]);
 
 	const API_URL = getApiUrl();
-
-	const fetchFolders = async () => {
-		try {
-			const res = await fetch(`${API_URL}/folders`);
-			if (res.ok) {
-				const data = await res.json();
-				if (Array.isArray(data) && data.length > 0) {
-					setFolders(data);
-					return;
-				}
-			}
-		} catch (err) {
-			console.warn('Could not fetch folders from backend, fallback to initial default folders:', err);
-		}
-		setFolders([
-			{ id: 'work', name: 'Work' },
-			{ id: 'friends', name: 'Friends' },
-			{ id: 'news', name: 'News' },
-			{ id: 'archive', name: 'Archive' },
-		]);
-	};
 
 	const fetchChats = async (folderId?: string) => {
 		try {

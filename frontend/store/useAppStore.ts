@@ -76,6 +76,8 @@ interface AppStoreState {
   setActiveTab: (tab: string) => void;
 
   folders: NavigationFolder[];
+  foldersLoaded: boolean;
+  foldersLoading: boolean;
   setFolders: (folders: NavigationFolder[] | ((prev: NavigationFolder[]) => NavigationFolder[])) => void;
 
   draggedChatId: string | null;
@@ -100,6 +102,7 @@ interface AppStoreState {
   instanceModelsLoading: Record<string, boolean>;
 
   // Actions & Cache Fetchers
+  fetchFolders: (force?: boolean) => Promise<NavigationFolder[]>;
   fetchInstances: (force?: boolean) => Promise<InstanceItem[]>;
   fetchModelPreferences: (force?: boolean) => Promise<Record<string, ModelPreference>>;
   fetchInstanceModels: (instanceId: string, force?: boolean) => Promise<InstanceModel[]>;
@@ -114,6 +117,7 @@ interface AppStoreState {
   invalidateInstances: () => void;
   invalidateModelPreferences: () => void;
   invalidateInstanceModels: (instanceId?: string) => void;
+  invalidateFolders: () => void;
 }
 
 // Static non-reactive registry for shell navigation handlers
@@ -156,9 +160,12 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   folders: [],
+  foldersLoaded: false,
+  foldersLoading: false,
   setFolders: (folders) =>
     set((state) => ({
       folders: typeof folders === 'function' ? folders(state.folders) : folders,
+      foldersLoaded: true,
     })),
 
   draggedChatId: null,
@@ -180,6 +187,38 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
   instanceModelsMap: {},
   instanceModelsLoading: {},
+
+  fetchFolders: async (force = false) => {
+    const { folders, foldersLoaded, foldersLoading } = get();
+    if (foldersLoaded && !force) {
+      return folders;
+    }
+    if (foldersLoading) {
+      return folders;
+    }
+
+    set({ foldersLoading: true });
+    try {
+      const res = await fetch(`${getApiUrl()}/folders`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          set({ folders: data, foldersLoaded: true, foldersLoading: false });
+          return data;
+        }
+      }
+    } catch (err) {
+      console.warn("Zustand: Could not fetch folders from backend, fallback to initial default folders:", err);
+    }
+    const defaultFolders = [
+      { id: 'work', name: 'Work' },
+      { id: 'friends', name: 'Friends' },
+      { id: 'news', name: 'News' },
+      { id: 'archive', name: 'Archive' },
+    ];
+    set({ folders: defaultFolders, foldersLoaded: true, foldersLoading: false });
+    return defaultFolders;
+  },
 
   fetchInstances: async (force = false) => {
     const { instances, instancesLoaded, instancesLoading } = get();
@@ -325,4 +364,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       }
       return { instanceModelsMap: {} };
     }),
+
+  invalidateFolders: () => set({ foldersLoaded: false }),
 }));

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationRail } from './NavigationRail';
 import { useAppStore, triggerGoToRoot, triggerDropChatToFolder } from '../../store/useAppStore';
 
@@ -11,10 +11,15 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 		activeTab,
 		setActiveTab,
 		folders,
+		fetchFolders,
 		draggedChatId,
 		setFolderContextMenu,
 		setIsCreatingFolder,
 	} = useAppStore();
+
+	useEffect(() => {
+		fetchFolders();
+	}, [fetchFolders]);
 
 	return (
 		<main className='topo-bg min-h-screen w-screen flex justify-center font-sans antialiased text-[#202022] box-border'>
