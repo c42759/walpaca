@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { getApiUrl } from "../lib/api";
 
@@ -42,6 +42,14 @@ interface Message {
   reactions?: { emoji: string; count: number }[];
   image?: string;
   attachments?: MessageAttachment[];
+}
+
+interface LorebookTemplate {
+  filename: string;
+  name: string;
+  keys: string[];
+  content: string;
+  error?: string;
 }
 
 interface ChatItem {
@@ -899,8 +907,134 @@ export default function AlpacaWebPage() {
   const [newChatTitleInput, setNewChatTitleInput] = useState<string>("New Chat");
   const [currentView, setCurrentView] = useState<"chat" | "settings">("chat");
   const [activeSettingsCategory, setActiveSettingsCategory] = useState<
-    "import-chat" | "manage-instances" | "preferences" | "about-walpaca"
+    "import-chat" | "manage-instances" | "preferences" | "manage-lorebook" | "about-walpaca"
   >("import-chat");
+
+  // --- Manage Lorebook State & Handlers ---
+  const [lorebookTemplates, setLorebookTemplates] = useState<LorebookTemplate[]>([]);
+  const [isLorebookLoading, setIsLorebookLoading] = useState<boolean>(false);
+  const [lorebookSearchQuery, setLorebookSearchQuery] = useState<string>("");
+  const [isLorebookModalOpen, setIsLorebookModalOpen] = useState<boolean>(false);
+  const [editingLorebookTemplate, setEditingLorebookTemplate] = useState<LorebookTemplate | null>(null);
+  const [lorebookFormName, setLorebookFormName] = useState<string>("");
+  const [lorebookFormKeys, setLorebookFormKeys] = useState<string>("");
+  const [lorebookFormContent, setLorebookFormContent] = useState<string>("");
+  const [lorebookFormFilename, setLorebookFormFilename] = useState<string>("");
+  const [lorebookSaving, setLorebookSaving] = useState<boolean>(false);
+
+  const fetchLorebookTemplates = useCallback(async () => {
+    setIsLorebookLoading(true);
+    try {
+      const res = await fetch(`${getApiUrl()}/lorebook`);
+      if (res.ok) {
+        const data = await res.json();
+        setLorebookTemplates(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error("Failed fetching lorebook templates:", err);
+    } finally {
+      setIsLorebookLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLorebookTemplates();
+  }, [fetchLorebookTemplates]);
+
+  useEffect(() => {
+    if (currentView === "settings" && activeSettingsCategory === "manage-lorebook") {
+      fetchLorebookTemplates();
+    }
+  }, [currentView, activeSettingsCategory, fetchLorebookTemplates]);
+
+  const handleOpenCreateLorebookModal = () => {
+    setEditingLorebookTemplate(null);
+    setLorebookFormName("");
+    setLorebookFormKeys("");
+    setLorebookFormContent("");
+    setLorebookFormFilename("");
+    setIsLorebookModalOpen(true);
+  };
+
+  const handleOpenEditLorebookModal = (template: LorebookTemplate) => {
+    setEditingLorebookTemplate(template);
+    setLorebookFormName(template.name);
+    setLorebookFormKeys(Array.isArray(template.keys) ? template.keys.join(", ") : "");
+    setLorebookFormContent(template.content || "");
+    setLorebookFormFilename(template.filename);
+    setIsLorebookModalOpen(true);
+  };
+
+  const handleSaveLorebookTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lorebookFormName.trim()) return;
+
+    setLorebookSaving(true);
+    try {
+      const keysArray = lorebookFormKeys
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean);
+
+      const payload: any = {
+        name: lorebookFormName.trim(),
+        keys: keysArray,
+        content: lorebookFormContent,
+      };
+
+      let url = `${getApiUrl()}/lorebook`;
+      let method = "POST";
+
+      if (editingLorebookTemplate) {
+        url = `${getApiUrl()}/lorebook/${encodeURIComponent(editingLorebookTemplate.filename)}`;
+        method = "PUT";
+      } else if (lorebookFormFilename.trim()) {
+        payload.filename = lorebookFormFilename.trim();
+      }
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setIsLorebookModalOpen(false);
+        fetchLorebookTemplates();
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed saving lorebook template");
+      }
+    } catch (err: any) {
+      console.error("Error saving lorebook template:", err);
+      alert(err.message || "Error saving template");
+    } finally {
+      setLorebookSaving(false);
+    }
+  };
+
+  const [deletingLorebookTemplate, setDeletingLorebookTemplate] = useState<LorebookTemplate | null>(null);
+
+  const handleConfirmDeleteLorebookTemplate = async () => {
+    if (!deletingLorebookTemplate) return;
+
+    try {
+      const filename = deletingLorebookTemplate.filename;
+      const res = await fetch(`${getApiUrl()}/lorebook/${encodeURIComponent(filename)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setDeletingLorebookTemplate(null);
+        fetchLorebookTemplates();
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed deleting template");
+      }
+    } catch (err: any) {
+      console.error("Error deleting template:", err);
+      alert(err.message || "Error deleting template");
+    }
+  };
 
   // --- Instances Management State & Handlers ---
   const [instanceSubView, setInstanceSubView] = useState<"list" | "select-type" | "form" | "instance-models" | "edit-model">("list");
@@ -2847,7 +2981,10 @@ export default function AlpacaWebPage() {
 				<aside className='w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#2d2d30]'>
 					{/* Top Alpaca Prism Logo */}
 					<div className='flex flex-col items-center gap-8 w-full'>
-						<div onClick={handleGoToRoot} className='w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity'>
+						<div
+							onClick={handleGoToRoot}
+							className='w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity'
+						>
 							<img src='/icon-white.svg' alt='Walpaca' className='w-9 h-9 object-contain' />
 						</div>
 
@@ -2855,7 +2992,10 @@ export default function AlpacaWebPage() {
 						<nav className='flex flex-col items-center gap-3 w-full overflow-y-auto max-h-[calc(100vh-220px)] px-1'>
 							{/* No Folder tab */}
 							<button
-								onClick={() => { setActiveTab('none'); setCurrentView('chat'); }}
+								onClick={() => {
+									setActiveTab('none');
+									setCurrentView('chat');
+								}}
 								onDragOver={(e) => {
 									e.preventDefault();
 									e.dataTransfer.dropEffect = 'move';
@@ -2873,8 +3013,8 @@ export default function AlpacaWebPage() {
 									dragOverFolderTarget === 'none'
 										? 'bg-[#7678ed]/30 border-2 border-[#7678ed] text-white scale-105 shadow-lg'
 										: (activeTab === 'none' || activeTab === 'all') && currentView === 'chat'
-										? 'bg-[#2e2f33] text-white shadow-inner'
-										: 'text-[#8b8d97] hover:text-white'
+											? 'bg-[#2e2f33] text-white shadow-inner'
+											: 'text-[#8b8d97] hover:text-white'
 								}`}
 								title='No Folder'
 							>
@@ -2902,7 +3042,10 @@ export default function AlpacaWebPage() {
 								return (
 									<button
 										key={folder.id}
-										onClick={() => { setActiveTab(folder.id); setCurrentView('chat'); }}
+										onClick={() => {
+											setActiveTab(folder.id);
+											setCurrentView('chat');
+										}}
 										onContextMenu={(e) => {
 											e.preventDefault();
 											e.stopPropagation();
@@ -2930,8 +3073,8 @@ export default function AlpacaWebPage() {
 											isDragOver
 												? 'bg-[#7678ed]/30 border-2 border-[#7678ed] text-white scale-105 shadow-lg'
 												: isActive
-												? 'bg-[#2e2f33] text-white shadow-inner'
-												: 'text-[#8b8d97] hover:text-white'
+													? 'bg-[#2e2f33] text-white shadow-inner'
+													: 'text-[#8b8d97] hover:text-white'
 										}`}
 										title={`${folder.name} (Right-click for options)`}
 									>
@@ -3017,7 +3160,16 @@ export default function AlpacaWebPage() {
 												id: 'import-chat',
 												label: 'Import Chat',
 												icon: (
-													<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+													<svg
+														width='18'
+														height='18'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
 														<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
 														<polyline points='17 8 12 3 7 8' />
 														<line x1='12' y1='3' x2='12' y2='15' />
@@ -3025,10 +3177,38 @@ export default function AlpacaWebPage() {
 												),
 											},
 											{
+												id: 'manage-lorebook',
+												label: 'Manage Lorebook',
+												icon: (
+													<svg
+														width='18'
+														height='18'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
+														<path d='M4 19.5A2.5 2.5 0 0 1 6.5 17H20' />
+														<path d='M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z' />
+													</svg>
+												),
+											},
+											{
 												id: 'manage-instances',
 												label: 'Manage Instances',
 												icon: (
-													<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+													<svg
+														width='18'
+														height='18'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
 														<rect x='2' y='2' width='20' height='8' rx='2' ry='2' />
 														<rect x='2' y='14' width='20' height='8' rx='2' ry='2' />
 														<line x1='6' y1='6' x2='6.01' y2='6' />
@@ -3040,7 +3220,16 @@ export default function AlpacaWebPage() {
 												id: 'preferences',
 												label: 'Preferences',
 												icon: (
-													<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+													<svg
+														width='18'
+														height='18'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
 														<line x1='4' y1='21' x2='4' y2='14' />
 														<line x1='4' y1='10' x2='4' y2='3' />
 														<line x1='12' y1='21' x2='12' y2='12' />
@@ -3057,7 +3246,16 @@ export default function AlpacaWebPage() {
 												id: 'about-walpaca',
 												label: 'About Walpaca',
 												icon: (
-													<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+													<svg
+														width='18'
+														height='18'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
 														<circle cx='12' cy='12' r='10' />
 														<line x1='12' y1='16' x2='12' y2='12' />
 														<line x1='12' y1='8' x2='12.01' y2='8' />
@@ -3088,7 +3286,16 @@ export default function AlpacaWebPage() {
 									onClick={() => setCurrentView('chat')}
 									className='w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] font-semibold text-sm transition-all cursor-pointer shadow-xs'
 								>
-									<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<svg
+										width='16'
+										height='16'
+										viewBox='0 0 24 24'
+										fill='none'
+										stroke='currentColor'
+										strokeWidth='2.2'
+										strokeLinecap='round'
+										strokeLinejoin='round'
+									>
 										<line x1='19' y1='12' x2='5' y2='12' />
 										<polyline points='12 19 5 12 12 5' />
 									</svg>
@@ -3103,7 +3310,16 @@ export default function AlpacaWebPage() {
 										<div className='space-y-6 animate-in fade-in duration-200'>
 											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex items-center gap-3.5'>
 												<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 text-[#7678ed] flex items-center justify-center shrink-0 shadow-xs'>
-													<svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+													<svg
+														width='24'
+														height='24'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
 														<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
 														<polyline points='17 8 12 3 7 8' />
 														<line x1='12' y1='3' x2='12' y2='15' />
@@ -3111,7 +3327,9 @@ export default function AlpacaWebPage() {
 												</div>
 												<div>
 													<h3 className='text-2xl font-bold text-[#202022] tracking-tight'>Import Chat</h3>
-													<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>Import conversation logs, JSON backups, Markdown transcripts, or text exports.</p>
+													<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>
+														Import conversation logs, JSON backups, Markdown transcripts, or text exports.
+													</p>
 												</div>
 											</div>
 
@@ -3125,16 +3343,35 @@ export default function AlpacaWebPage() {
 											/>
 
 											<div
-												onDragOver={(e) => { e.preventDefault(); setIsDraggingImport(true); }}
-												onDragLeave={(e) => { e.preventDefault(); setIsDraggingImport(false); }}
-												onDrop={(e) => { e.preventDefault(); setIsDraggingImport(false); handleImportFiles(e.dataTransfer.files); }}
+												onDragOver={(e) => {
+													e.preventDefault();
+													setIsDraggingImport(true);
+												}}
+												onDragLeave={(e) => {
+													e.preventDefault();
+													setIsDraggingImport(false);
+												}}
+												onDrop={(e) => {
+													e.preventDefault();
+													setIsDraggingImport(false);
+													handleImportFiles(e.dataTransfer.files);
+												}}
 												onClick={() => importFileInputRef.current?.click()}
 												className={`border-2 border-dashed ${
 													isDraggingImport ? 'border-[#7678ed] bg-[#eaecf9]/40' : 'border-[#7678ed]/40 hover:border-[#7678ed]'
 												} rounded-3xl p-10 bg-white hover:bg-[#f3f4fd] transition-all flex flex-col items-center justify-center text-center cursor-pointer group shadow-xs`}
 											>
 												<div className='w-16 h-16 rounded-2xl bg-[#eaecf9] group-hover:bg-[#7678ed] group-hover:text-white text-[#7678ed] flex items-center justify-center mb-4 transition-colors shadow-sm'>
-													<svg width='28' height='28' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+													<svg
+														width='28'
+														height='28'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
 														<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
 														<polyline points='17 8 12 3 7 8' />
 														<line x1='12' y1='3' x2='12' y2='15' />
@@ -3149,10 +3386,16 @@ export default function AlpacaWebPage() {
 												) : (
 													<>
 														<h4 className='text-base font-bold text-[#202022] mb-1'>Drop chat export files here</h4>
-														<p className='text-xs text-[#8e90a6] mb-4'>Supports Walpaca JSON (.json), ChatGPT export (.json), Claude export (.json), Markdown (.md), and Plain Text (.txt)</p>
+														<p className='text-xs text-[#8e90a6] mb-4'>
+															Supports Walpaca JSON (.json), ChatGPT export (.json), Claude export (.json), Markdown (.md), and
+															Plain Text (.txt)
+														</p>
 														<button
 															type='button'
-															onClick={(e) => { e.stopPropagation(); importFileInputRef.current?.click(); }}
+															onClick={(e) => {
+																e.stopPropagation();
+																importFileInputRef.current?.click();
+															}}
 															className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md shadow-[#7678ed]/20 cursor-pointer'
 														>
 															Browse Files
@@ -3171,24 +3414,36 @@ export default function AlpacaWebPage() {
 												<h5 className='text-base font-bold text-[#202022] pb-3 border-b border-[#e8ebf3]'>Supported Import Formats</h5>
 												<div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-[#404252]'>
 													<div className='p-3.5 rounded-2xl bg-[#f9fafc] border border-[#e8ebf3] flex items-start gap-3'>
-														<div className='w-8 h-8 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-mono font-bold text-xs border border-[#7678ed]/20'>JSON</div>
+														<div className='w-8 h-8 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-mono font-bold text-xs border border-[#7678ed]/20'>
+															JSON
+														</div>
 														<div>
 															<div className='font-bold text-[#202022] text-sm'>Walpaca / ChatGPT / Claude</div>
-															<div className='text-[#7a7d90] mt-0.5'>Import native Walpaca JSON backups, ChatGPT exported archives, or Claude chat exports.</div>
+															<div className='text-[#7a7d90] mt-0.5'>
+																Import native Walpaca JSON backups, ChatGPT exported archives, or Claude chat exports.
+															</div>
 														</div>
 													</div>
 													<div className='p-3.5 rounded-2xl bg-[#f9fafc] border border-[#e8ebf3] flex items-start gap-3'>
-														<div className='w-8 h-8 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-mono font-bold text-xs border border-[#7678ed]/20'>MD</div>
+														<div className='w-8 h-8 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-mono font-bold text-xs border border-[#7678ed]/20'>
+															MD
+														</div>
 														<div>
 															<div className='font-bold text-[#202022] text-sm'>Markdown &amp; Obsidian</div>
-															<div className='text-[#7a7d90] mt-0.5'>Import standard Markdown headers or Obsidian callout archives.</div>
+															<div className='text-[#7a7d90] mt-0.5'>
+																Import standard Markdown headers or Obsidian callout archives.
+															</div>
 														</div>
 													</div>
 													<div className='p-3.5 rounded-2xl bg-[#f9fafc] border border-[#e8ebf3] flex items-start gap-3'>
-														<div className='w-8 h-8 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-mono font-bold text-xs border border-[#7678ed]/20'>TXT</div>
+														<div className='w-8 h-8 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-mono font-bold text-xs border border-[#7678ed]/20'>
+															TXT
+														</div>
 														<div>
 															<div className='font-bold text-[#202022] text-sm'>Plain Text Transcripts</div>
-															<div className='text-[#7a7d90] mt-0.5'>Import timestamped conversation logs or clean text transcripts.</div>
+															<div className='text-[#7a7d90] mt-0.5'>
+																Import timestamped conversation logs or clean text transcripts.
+															</div>
 														</div>
 													</div>
 												</div>
@@ -3204,7 +3459,9 @@ export default function AlpacaWebPage() {
 													<div className='flex items-center justify-between'>
 														<div>
 															<h3 className='text-2xl font-bold text-[#202022]'>Manage Instances</h3>
-															<p className='text-sm text-[#7a7d90] mt-1'>Configure local server connections, cloud API backends, and proxy endpoints.</p>
+															<p className='text-sm text-[#7a7d90] mt-1'>
+																Configure local server connections, cloud API backends, and proxy endpoints.
+															</p>
 														</div>
 														<button
 															onClick={handleOpenAddInstanceModal}
@@ -3237,12 +3494,15 @@ export default function AlpacaWebPage() {
 													) : (
 														<div className='space-y-3.5'>
 															{instances.map((inst) => {
-																const name = inst.properties?.name || "Instance";
-																const url = inst.properties?.url || "http://0.0.0.0:11434";
-																const typeLabel = inst.type === "ollama" ? "Ollama (External)" : inst.type;
+																const name = inst.properties?.name || 'Instance';
+																const url = inst.properties?.url || 'http://0.0.0.0:11434';
+																const typeLabel = inst.type === 'ollama' ? 'Ollama (External)' : inst.type;
 
 																return (
-																	<div key={inst.id} className='p-4 rounded-2xl border border-[#e8ebf3] bg-[#f9fafc] flex items-center justify-between hover:border-[#7678ed]/40 transition-all'>
+																	<div
+																		key={inst.id}
+																		className='p-4 rounded-2xl border border-[#e8ebf3] bg-[#f9fafc] flex items-center justify-between hover:border-[#7678ed]/40 transition-all'
+																	>
 																		<div className='flex items-center gap-3.5'>
 																			<div className='w-10 h-10 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center font-bold text-base shrink-0'>
 																				⚡
@@ -3264,7 +3524,16 @@ export default function AlpacaWebPage() {
 																				className='p-2 text-[#7678ed] hover:bg-[#eaecf9] rounded-2xl transition-colors cursor-pointer'
 																				title='Manage Models'
 																			>
-																				<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<svg
+																					width='18'
+																					height='18'
+																					viewBox='0 0 24 24'
+																					fill='none'
+																					stroke='currentColor'
+																					strokeWidth='2'
+																					strokeLinecap='round'
+																					strokeLinejoin='round'
+																				>
 																					<path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' />
 																					<circle cx='9' cy='7' r='4' />
 																					<path d='M22 21v-2a4 4 0 0 0-3-3.87' />
@@ -3276,7 +3545,16 @@ export default function AlpacaWebPage() {
 																				className='p-2 text-[#7678ed] hover:bg-[#eaecf9] rounded-2xl transition-colors cursor-pointer'
 																				title='Edit Instance'
 																			>
-																				<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<svg
+																					width='18'
+																					height='18'
+																					viewBox='0 0 24 24'
+																					fill='none'
+																					stroke='currentColor'
+																					strokeWidth='2'
+																					strokeLinecap='round'
+																					strokeLinejoin='round'
+																				>
 																					<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
 																				</svg>
 																			</button>
@@ -3285,7 +3563,16 @@ export default function AlpacaWebPage() {
 																				className='p-2 text-[#ff4d4f] hover:bg-[#fff0f0] rounded-2xl transition-colors cursor-pointer'
 																				title='Delete Instance'
 																			>
-																				<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<svg
+																					width='18'
+																					height='18'
+																					viewBox='0 0 24 24'
+																					fill='none'
+																					stroke='currentColor'
+																					strokeWidth='2'
+																					strokeLinecap='round'
+																					strokeLinejoin='round'
+																				>
 																					<polyline points='3 6 5 6 21 6' />
 																					<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
 																				</svg>
@@ -3308,7 +3595,16 @@ export default function AlpacaWebPage() {
 															className='p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer'
 															title='Back to Instances'
 														>
-															<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+															<svg
+																width='20'
+																height='20'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='currentColor'
+																strokeWidth='2.2'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+															>
 																<line x1='19' y1='12' x2='5' y2='12' />
 																<polyline points='12 19 5 12 12 5' />
 															</svg>
@@ -3321,16 +3617,61 @@ export default function AlpacaWebPage() {
 
 													<div className='grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2'>
 														{[
-															{ label: "Ollama", tag: "Local / Remote", desc: "Local or remote AI instance not managed by Walpaca", icon: "🦙" },
-															{ label: "Ollama (Cloud)", tag: "Cloud API", desc: "Ollama server hosted on cloud infrastructure", icon: "☁️" },
-															{ label: "OpenAI ChatGPT", tag: "Cloud API", desc: "Official OpenAI GPT-4o & ChatGPT API endpoint", icon: "🌐" },
-															{ label: "Google Gemini", tag: "Cloud API", desc: "Google Gemini Flash & Pro API model suite", icon: "✨" },
-															{ label: "Together AI", tag: "Cloud API", desc: "Together AI open-source model cloud platform", icon: "🤝" },
-															{ label: "Venice", tag: "Cloud API", desc: "Venice private uncensored inference network", icon: "🔒" },
-															{ label: "Deepseek", tag: "Cloud API", desc: "Deepseek Coder & Reasoner LLM endpoints", icon: "🧠" },
-															{ label: "Groq Cloud", tag: "Cloud API", desc: "Groq ultra-fast LPU inference engine", icon: "🚀" },
-															{ label: "Anthropic", tag: "Cloud API", desc: "Anthropic Claude 3.5 Sonnet & Haiku API", icon: "🎭" },
-															{ label: "OpenRouter AI", tag: "Cloud API", desc: "OpenRouter unified multi-provider routing API", icon: "🔀" },
+															{
+																label: 'Ollama',
+																tag: 'Local / Remote',
+																desc: 'Local or remote AI instance not managed by Walpaca',
+																icon: '🦙',
+															},
+															{
+																label: 'Ollama (Cloud)',
+																tag: 'Cloud API',
+																desc: 'Ollama server hosted on cloud infrastructure',
+																icon: '☁️',
+															},
+															{
+																label: 'OpenAI ChatGPT',
+																tag: 'Cloud API',
+																desc: 'Official OpenAI GPT-4o & ChatGPT API endpoint',
+																icon: '🌐',
+															},
+															{
+																label: 'Google Gemini',
+																tag: 'Cloud API',
+																desc: 'Google Gemini Flash & Pro API model suite',
+																icon: '✨',
+															},
+															{
+																label: 'Together AI',
+																tag: 'Cloud API',
+																desc: 'Together AI open-source model cloud platform',
+																icon: '🤝',
+															},
+															{
+																label: 'Venice',
+																tag: 'Cloud API',
+																desc: 'Venice private uncensored inference network',
+																icon: '🔒',
+															},
+															{
+																label: 'Deepseek',
+																tag: 'Cloud API',
+																desc: 'Deepseek Coder & Reasoner LLM endpoints',
+																icon: '🧠',
+															},
+															{ label: 'Groq Cloud', tag: 'Cloud API', desc: 'Groq ultra-fast LPU inference engine', icon: '🚀' },
+															{
+																label: 'Anthropic',
+																tag: 'Cloud API',
+																desc: 'Anthropic Claude 3.5 Sonnet & Haiku API',
+																icon: '🎭',
+															},
+															{
+																label: 'OpenRouter AI',
+																tag: 'Cloud API',
+																desc: 'OpenRouter unified multi-provider routing API',
+																icon: '🔀',
+															},
 														].map((provider) => (
 															<div
 																key={provider.label}
@@ -3369,7 +3710,16 @@ export default function AlpacaWebPage() {
 																className='p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer'
 																title='Back'
 															>
-																<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																<svg
+																	width='20'
+																	height='20'
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='currentColor'
+																	strokeWidth='2.2'
+																	strokeLinecap='round'
+																	strokeLinejoin='round'
+																>
 																	<line x1='19' y1='12' x2='5' y2='12' />
 																	<polyline points='12 19 5 12 12 5' />
 																</svg>
@@ -3379,11 +3729,22 @@ export default function AlpacaWebPage() {
 																	<h3 className='text-2xl font-bold text-[#202022]'>
 																		{editingInstanceId ? 'Edit Instance' : 'Create Instance'}
 																	</h3>
-																	<span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
-																		editingInstanceId ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-[#eaecf9] text-[#7678ed]'
-																	} flex items-center gap-1.5`}>
+																	<span
+																		className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+																			editingInstanceId
+																				? 'bg-amber-100 text-amber-800 border border-amber-300'
+																				: 'bg-[#eaecf9] text-[#7678ed]'
+																		} flex items-center gap-1.5`}
+																	>
 																		{editingInstanceId && (
-																			<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5'>
+																			<svg
+																				width='12'
+																				height='12'
+																				viewBox='0 0 24 24'
+																				fill='none'
+																				stroke='currentColor'
+																				strokeWidth='2.5'
+																			>
 																				<rect x='3' y='11' width='18' height='11' rx='2' ry='2' />
 																				<path d='M7 11V7a5 5 0 0 1 10 0v4' />
 																			</svg>
@@ -3406,7 +3767,16 @@ export default function AlpacaWebPage() {
 																className='p-2.5 rounded-2xl border border-[#e8ebf3] hover:bg-[#f4f6fc] text-[#5d6075] transition-all cursor-pointer flex items-center justify-center'
 																title='Cancel'
 															>
-																<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																<svg
+																	width='20'
+																	height='20'
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='currentColor'
+																	strokeWidth='2.2'
+																	strokeLinecap='round'
+																	strokeLinejoin='round'
+																>
 																	<line x1='18' y1='6' x2='6' y2='18' />
 																	<line x1='6' y1='6' x2='18' y2='18' />
 																</svg>
@@ -3417,7 +3787,16 @@ export default function AlpacaWebPage() {
 																className='p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl transition-all shadow-md shadow-[#7678ed]/20 cursor-pointer flex items-center justify-center'
 																title='Save Instance'
 															>
-																<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+																<svg
+																	width='20'
+																	height='20'
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='currentColor'
+																	strokeWidth='2.5'
+																	strokeLinecap='round'
+																	strokeLinejoin='round'
+																>
 																	<polyline points='20 6 9 17 4 12' />
 																</svg>
 															</button>
@@ -3426,7 +3805,7 @@ export default function AlpacaWebPage() {
 
 													{/* Dynamic Form Body */}
 													{(() => {
-														const isOllamaProvider = selectedInstanceType.startsWith("Ollama");
+														const isOllamaProvider = selectedInstanceType.startsWith('Ollama');
 														return (
 															<form onSubmit={handleSaveInstanceForm} className='space-y-6 text-sm max-w-3xl'>
 																{/* Card 1: Basic Information */}
@@ -3434,7 +3813,7 @@ export default function AlpacaWebPage() {
 																	<h4 className='font-bold text-base text-[#202022] border-b border-[#e8ebf3] pb-3 flex items-center justify-between'>
 																		<span>Basic Configuration</span>
 																		<span className='text-xs font-semibold px-2.5 py-1 rounded-full bg-[#eaecf9] text-[#7678ed]'>
-																			{isOllamaProvider ? "Ollama Server" : "Cloud Provider API"}
+																			{isOllamaProvider ? 'Ollama Server' : 'Cloud Provider API'}
 																		</span>
 																	</h4>
 
@@ -3442,7 +3821,16 @@ export default function AlpacaWebPage() {
 																	<div>
 																		<div className='flex items-center justify-between text-xs text-[#7a7d90] mb-1.5'>
 																			<label className='font-semibold text-[#202022]'>Name</label>
-																			<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																			<svg
+																				width='14'
+																				height='14'
+																				viewBox='0 0 24 24'
+																				fill='none'
+																				stroke='currentColor'
+																				strokeWidth='2'
+																				strokeLinecap='round'
+																				strokeLinejoin='round'
+																			>
 																				<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
 																			</svg>
 																		</div>
@@ -3460,7 +3848,7 @@ export default function AlpacaWebPage() {
 																		<div className='flex items-center justify-between text-xs text-[#7a7d90] mb-1.5'>
 																			<div className='flex items-center gap-1.5'>
 																				<label className='font-semibold text-[#202022]'>
-																					{isOllamaProvider ? "API Key (Optional)" : "API Key"}
+																					{isOllamaProvider ? 'API Key (Optional)' : 'API Key'}
 																				</label>
 																				{!isOllamaProvider && (
 																					<span className='text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 uppercase tracking-wider'>
@@ -3469,7 +3857,16 @@ export default function AlpacaWebPage() {
 																				)}
 																			</div>
 																			<div className='flex items-center gap-2'>
-																				<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<svg
+																					width='14'
+																					height='14'
+																					viewBox='0 0 24 24'
+																					fill='none'
+																					stroke='currentColor'
+																					strokeWidth='2'
+																					strokeLinecap='round'
+																					strokeLinejoin='round'
+																				>
 																					<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
 																				</svg>
 																				<button
@@ -3477,7 +3874,16 @@ export default function AlpacaWebPage() {
 																					onClick={() => setShowApiKeyText(!showApiKeyText)}
 																					className='text-[#7a7d90] hover:text-[#202022] transition-colors cursor-pointer'
 																				>
-																					<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																					<svg
+																						width='14'
+																						height='14'
+																						viewBox='0 0 24 24'
+																						fill='none'
+																						stroke='currentColor'
+																						strokeWidth='2'
+																						strokeLinecap='round'
+																						strokeLinejoin='round'
+																					>
 																						<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' />
 																						<circle cx='12' cy='12' r='3' />
 																					</svg>
@@ -3485,11 +3891,11 @@ export default function AlpacaWebPage() {
 																			</div>
 																		</div>
 																		<input
-																			type={showApiKeyText ? "text" : "password"}
+																			type={showApiKeyText ? 'text' : 'password'}
 																			value={instFormApiKey}
 																			onChange={(e) => setInstFormApiKey(e.target.value)}
 																			className='w-full bg-white border border-[#e8ebf3] rounded-2xl px-4 py-3 text-sm font-medium text-[#202022] outline-none focus:border-[#7678ed] transition-colors font-mono shadow-xs'
-																			placeholder={isOllamaProvider ? "Optional API Key" : "Enter Provider API Key"}
+																			placeholder={isOllamaProvider ? 'Optional API Key' : 'Enter Provider API Key'}
 																		/>
 																	</div>
 
@@ -3497,9 +3903,18 @@ export default function AlpacaWebPage() {
 																	<div>
 																		<div className='flex items-center justify-between text-xs text-[#7a7d90] mb-1.5'>
 																			<label className='font-semibold text-[#202022]'>
-																				{isOllamaProvider ? "Instance URL" : "API Base URL (Endpoint Override)"}
+																				{isOllamaProvider ? 'Instance URL' : 'API Base URL (Endpoint Override)'}
 																			</label>
-																			<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																			<svg
+																				width='14'
+																				height='14'
+																				viewBox='0 0 24 24'
+																				fill='none'
+																				stroke='currentColor'
+																				strokeWidth='2'
+																				strokeLinecap='round'
+																				strokeLinejoin='round'
+																			>
 																				<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
 																			</svg>
 																		</div>
@@ -3508,20 +3923,27 @@ export default function AlpacaWebPage() {
 																			value={instFormUrl}
 																			onChange={(e) => setInstFormUrl(e.target.value)}
 																			className='w-full bg-white border border-[#e8ebf3] rounded-2xl px-4 py-3 text-sm font-medium text-[#202022] outline-none focus:border-[#7678ed] transition-colors font-mono shadow-xs'
-																			placeholder={isOllamaProvider ? "http://0.0.0.0:11434" : "https://api.provider.com/v1"}
+																			placeholder={
+																				isOllamaProvider ? 'http://0.0.0.0:11434' : 'https://api.provider.com/v1'
+																			}
 																		/>
 																	</div>
 																</div>
 
 																{/* Card 2: Feature Toggles */}
 																<div className='bg-[#f9fafc] border border-[#e8ebf3] rounded-3xl p-6 space-y-5 shadow-xs'>
-																	<h4 className='font-bold text-base text-[#202022] border-b border-[#e8ebf3] pb-3'>Behavior & Security Toggles</h4>
+																	<h4 className='font-bold text-base text-[#202022] border-b border-[#e8ebf3] pb-3'>
+																		Behavior & Security Toggles
+																	</h4>
 
 																	{/* Thought Processing Toggle */}
 																	<div className='flex items-center justify-between gap-4'>
 																		<div>
 																			<h5 className='font-bold text-[#202022] text-sm'>Thought Processing</h5>
-																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Have compatible reasoning models think about their response before generating a message</p>
+																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																				Have compatible reasoning models think about their response before generating a
+																				message
+																			</p>
 																		</div>
 																		<label className='relative inline-flex items-center cursor-pointer shrink-0'>
 																			<input
@@ -3538,7 +3960,9 @@ export default function AlpacaWebPage() {
 																	<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
 																		<div>
 																			<h5 className='font-bold text-[#202022] text-sm'>Share Name</h5>
-																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Automatically share your name with the AI models</p>
+																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																				Automatically share your name with the AI models
+																			</p>
 																		</div>
 																		<select
 																			value={instFormShareName}
@@ -3555,7 +3979,9 @@ export default function AlpacaWebPage() {
 																	<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
 																		<div>
 																			<h5 className='font-bold text-[#202022] text-sm'>Show Response Metadata</h5>
-																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Add the option to show reply metadata in the message as an attachment</p>
+																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																				Add the option to show reply metadata in the message as an attachment
+																			</p>
 																		</div>
 																		<label className='relative inline-flex items-center cursor-pointer shrink-0'>
 																			<input
@@ -3572,8 +3998,12 @@ export default function AlpacaWebPage() {
 																	{isOllamaProvider && (
 																		<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
 																			<div>
-																				<h5 className='font-bold text-[#202022] text-sm'>Allow Self-Signed SSL Certificates</h5>
-																				<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Only use if you trust the server</p>
+																				<h5 className='font-bold text-[#202022] text-sm'>
+																					Allow Self-Signed SSL Certificates
+																				</h5>
+																				<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																					Only use if you trust the server
+																				</p>
 																			</div>
 																			<label className='relative inline-flex items-center cursor-pointer shrink-0'>
 																				<input
@@ -3593,7 +4023,9 @@ export default function AlpacaWebPage() {
 																	<div className='flex items-center justify-between gap-4'>
 																		<div>
 																			<h5 className='font-bold text-[#202022] text-sm'>Override Parameters</h5>
-																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>These parameters overrides the behavior of the instance and models</p>
+																			<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																				These parameters overrides the behavior of the instance and models
+																			</p>
 																		</div>
 																		<div className='flex items-center gap-3 shrink-0'>
 																			<label className='relative inline-flex items-center cursor-pointer'>
@@ -3619,7 +4051,7 @@ export default function AlpacaWebPage() {
 																					strokeWidth='2.5'
 																					strokeLinecap='round'
 																					strokeLinejoin='round'
-																					className={`transition-transform duration-200 ${isOverrideAccordionOpen ? "rotate-180" : ""}`}
+																					className={`transition-transform duration-200 ${isOverrideAccordionOpen ? 'rotate-180' : ''}`}
 																				>
 																					<path d='M6 9l6 6 6-6' />
 																				</svg>
@@ -3633,20 +4065,32 @@ export default function AlpacaWebPage() {
 																			<div className='flex items-center justify-between gap-4'>
 																				<div className='flex-1 min-w-0'>
 																					<h6 className='font-bold text-[#202022] text-sm'>Temperature</h6>
-																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Increasing the temperature will make the models answer more creatively</p>
+																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																						Increasing the temperature will make the models answer more creatively
+																					</p>
 																				</div>
 																				<div className='flex items-center gap-2 shrink-0 bg-white border border-[#e8ebf3] rounded-2xl p-1.5 shadow-xs'>
-																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>{instFormTemp.toFixed(2)}</span>
+																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>
+																						{instFormTemp.toFixed(2)}
+																					</span>
 																					<button
 																						type='button'
-																						onClick={() => setInstFormTemp((prev) => Math.max(0, parseFloat((prev - 0.05).toFixed(2))))}
+																						onClick={() =>
+																							setInstFormTemp((prev) =>
+																								Math.max(0, parseFloat((prev - 0.05).toFixed(2))),
+																							)
+																						}
 																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
 																					>
 																						-
 																					</button>
 																					<button
 																						type='button'
-																						onClick={() => setInstFormTemp((prev) => Math.min(2, parseFloat((prev + 0.05).toFixed(2))))}
+																						onClick={() =>
+																							setInstFormTemp((prev) =>
+																								Math.min(2, parseFloat((prev + 0.05).toFixed(2))),
+																							)
+																						}
 																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
 																					>
 																						+
@@ -3658,10 +4102,15 @@ export default function AlpacaWebPage() {
 																			<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
 																				<div className='flex-1 min-w-0'>
 																					<h6 className='font-bold text-[#202022] text-sm'>Seed</h6>
-																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Setting this to a specific number other than 0 will make the model generate the same text for the same prompt</p>
+																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																						Setting this to a specific number other than 0 will make the model
+																						generate the same text for the same prompt
+																					</p>
 																				</div>
 																				<div className='flex items-center gap-2 shrink-0 bg-white border border-[#e8ebf3] rounded-2xl p-1.5 shadow-xs'>
-																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>{instFormSeed}</span>
+																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>
+																						{instFormSeed}
+																					</span>
 																					<button
 																						type='button'
 																						onClick={() => setInstFormSeed((prev) => Math.max(0, prev - 1))}
@@ -3683,10 +4132,15 @@ export default function AlpacaWebPage() {
 																			<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
 																				<div className='flex-1 min-w-0'>
 																					<h6 className='font-bold text-[#202022] text-sm'>Context Window Size</h6>
-																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>Controls how many tokens (pieces of text) the model can process and remember at once</p>
+																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																						Controls how many tokens (pieces of text) the model can process and
+																						remember at once
+																					</p>
 																				</div>
 																				<div className='flex items-center gap-2 shrink-0 bg-white border border-[#e8ebf3] rounded-2xl p-1.5 shadow-xs'>
-																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>{instFormNumCtx}</span>
+																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>
+																						{instFormNumCtx}
+																					</span>
 																					<button
 																						type='button'
 																						onClick={() => setInstFormNumCtx((prev) => Math.max(1024, prev - 2048))}
@@ -3710,20 +4164,24 @@ export default function AlpacaWebPage() {
 																{/* Card 4: Keep Alive Settings (Ollama specific) */}
 																{isOllamaProvider && (
 																	<div className='bg-[#f9fafc] border border-[#e8ebf3] rounded-3xl p-6 space-y-5 shadow-xs'>
-																		<h4 className='font-bold text-base text-[#202022] border-b border-[#e8ebf3] pb-3'>Idle Keep Alive Settings</h4>
+																		<h4 className='font-bold text-base text-[#202022] border-b border-[#e8ebf3] pb-3'>
+																			Idle Keep Alive Settings
+																		</h4>
 
 																		<div className='flex items-center justify-between gap-4'>
 																			<div>
 																				<h5 className='font-bold text-[#202022] text-sm'>Keep Alive Presets</h5>
-																				<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>How the instance should handle idle models</p>
+																				<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																					How the instance should handle idle models
+																				</p>
 																			</div>
 																			<select
 																				value={instFormKeepAlivePreset}
 																				onChange={(e) => {
 																					const val = e.target.value;
 																					setInstFormKeepAlivePreset(val);
-																					if (val === "Indefinitely (-1)") setInstFormKeepAliveMinutes(-1);
-																					else if (val === "Immediate Unload (0)") setInstFormKeepAliveMinutes(0);
+																					if (val === 'Indefinitely (-1)') setInstFormKeepAliveMinutes(-1);
+																					else if (val === 'Immediate Unload (0)') setInstFormKeepAliveMinutes(0);
 																					else setInstFormKeepAliveMinutes(5);
 																				}}
 																				className='bg-white text-[#202022] text-xs font-semibold px-3.5 py-2.5 rounded-xl outline-none border border-[#e8ebf3] focus:border-[#7678ed] cursor-pointer shadow-xs'
@@ -3734,17 +4192,24 @@ export default function AlpacaWebPage() {
 																			</select>
 																		</div>
 
-																		{instFormKeepAlivePreset === "Set Timer" && (
+																		{instFormKeepAlivePreset === 'Set Timer' && (
 																			<div className='flex items-center justify-between gap-4 pt-4 border-t border-[#e8ebf3]'>
 																				<div className='flex-1 min-w-0'>
 																					<h6 className='font-bold text-[#202022] text-sm'>Minutes</h6>
-																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>The amount of time the instance should keep models loaded after they go idle</p>
+																					<p className='text-xs text-[#7a7d90] leading-snug mt-0.5'>
+																						The amount of time the instance should keep models loaded after they go
+																						idle
+																					</p>
 																				</div>
 																				<div className='flex items-center gap-2 shrink-0 bg-white border border-[#e8ebf3] rounded-2xl p-1.5 shadow-xs'>
-																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>{instFormKeepAliveMinutes}</span>
+																					<span className='font-mono font-bold text-sm text-[#202022] px-2.5'>
+																						{instFormKeepAliveMinutes}
+																					</span>
 																					<button
 																						type='button'
-																						onClick={() => setInstFormKeepAliveMinutes((prev) => Math.max(1, prev - 1))}
+																						onClick={() =>
+																							setInstFormKeepAliveMinutes((prev) => Math.max(1, prev - 1))
+																						}
 																						className='w-8 h-8 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] font-bold flex items-center justify-center cursor-pointer transition-all'
 																					>
 																						-
@@ -3776,7 +4241,16 @@ export default function AlpacaWebPage() {
 															className='p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer'
 															title='Back to Instances'
 														>
-															<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+															<svg
+																width='20'
+																height='20'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='currentColor'
+																strokeWidth='2.5'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+															>
 																<line x1='19' y1='12' x2='5' y2='12' />
 																<polyline points='12 19 5 12 12 5' />
 															</svg>
@@ -3793,7 +4267,7 @@ export default function AlpacaWebPage() {
 
 													{(() => {
 														const preferencesList = Array.from(
-															new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()
+															new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values(),
 														);
 
 														const unmatchedModels = instanceModelsList.filter(
@@ -3801,8 +4275,8 @@ export default function AlpacaWebPage() {
 																!preferencesList.some(
 																	(pref) =>
 																		pref.id.toLowerCase() === String(mod.id || '').toLowerCase() ||
-																		pref.id.toLowerCase() === String(mod.name || '').toLowerCase()
-																)
+																		pref.id.toLowerCase() === String(mod.name || '').toLowerCase(),
+																),
 														);
 
 														return (
@@ -3831,7 +4305,7 @@ export default function AlpacaWebPage() {
 																				const matchedModel = instanceModelsList.find(
 																					(mod) =>
 																						String(mod.id || '').toLowerCase() === pref.id.toLowerCase() ||
-																						String(mod.name || '').toLowerCase() === pref.id.toLowerCase()
+																						String(mod.name || '').toLowerCase() === pref.id.toLowerCase(),
 																				);
 
 																				const displayName =
@@ -3858,8 +4332,10 @@ export default function AlpacaWebPage() {
 																										className='w-36 h-36 rounded-2xl object-cover shadow-sm border-2 border-white transition-transform duration-200 hover:scale-[1.02]'
 																										onError={(e) => {
 																											e.currentTarget.style.display = 'none';
-																											const fallbackElem = e.currentTarget.nextElementSibling as HTMLElement;
-																											if (fallbackElem) fallbackElem.style.display = 'flex';
+																											const fallbackElem = e.currentTarget
+																												.nextElementSibling as HTMLElement;
+																											if (fallbackElem)
+																												fallbackElem.style.display = 'flex';
 																										}}
 																									/>
 																								) : null}
@@ -3873,7 +4349,10 @@ export default function AlpacaWebPage() {
 
 																							{/* Details */}
 																							<div>
-																								<h4 className='text-base font-bold text-[#202022] truncate' title={displayName}>
+																								<h4
+																									className='text-base font-bold text-[#202022] truncate'
+																									title={displayName}
+																								>
 																									{displayName}
 																								</h4>
 																								<p className='text-xs text-[#8e90a6] font-medium mt-0.5 truncate font-mono'>
@@ -3894,60 +4373,88 @@ export default function AlpacaWebPage() {
 																							</div>
 
 																							{/* Ollama / Model Specs Grid */}
-																							{matchedModel && (matchedModel.tag || matchedModel.family || matchedModel.parameter_size || matchedModel.quantization_level) && (
-																								<div className='bg-[#f8f9fc] border border-[#e8ebf3] rounded-2xl p-3 space-y-2 text-left text-xs'>
-																									<div className='grid grid-cols-2 gap-2'>
-																										<div>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Tag</span>
-																											<span className='font-mono font-bold text-[#202022] truncate block'>{matchedModel.tag || matchedModel.id}</span>
+																							{matchedModel &&
+																								(matchedModel.tag ||
+																									matchedModel.family ||
+																									matchedModel.parameter_size ||
+																									matchedModel.quantization_level) && (
+																									<div className='bg-[#f8f9fc] border border-[#e8ebf3] rounded-2xl p-3 space-y-2 text-left text-xs'>
+																										<div className='grid grid-cols-2 gap-2'>
+																											<div>
+																												<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																													Tag
+																												</span>
+																												<span className='font-mono font-bold text-[#202022] truncate block'>
+																													{matchedModel.tag || matchedModel.id}
+																												</span>
+																											</div>
+																											<div>
+																												<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																													Family
+																												</span>
+																												<span className='font-semibold text-[#202022] truncate block'>
+																													{matchedModel.family || '—'}
+																												</span>
+																											</div>
+																											<div>
+																												<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																													Parameter Size
+																												</span>
+																												<span className='font-semibold text-[#202022] truncate block'>
+																													{matchedModel.parameter_size || '—'}
+																												</span>
+																											</div>
+																											<div>
+																												<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																													Quantization Level
+																												</span>
+																												<span className='font-mono font-semibold text-[#202022] truncate block'>
+																													{matchedModel.quantization_level || '—'}
+																												</span>
+																											</div>
 																										</div>
-																										<div>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Family</span>
-																											<span className='font-semibold text-[#202022] truncate block'>{matchedModel.family || '—'}</span>
-																										</div>
-																										<div>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Parameter Size</span>
-																											<span className='font-semibold text-[#202022] truncate block'>{matchedModel.parameter_size || '—'}</span>
-																										</div>
-																										<div>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Quantization Level</span>
-																											<span className='font-mono font-semibold text-[#202022] truncate block'>{matchedModel.quantization_level || '—'}</span>
-																										</div>
-																									</div>
 
-																									{matchedModel.modified_at && (
-																										<div className='pt-1 border-t border-[#e8ebf3]'>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Modified At</span>
-																											<span className='font-mono text-[11px] text-[#5d6075] truncate block'>
-																												{typeof matchedModel.modified_at === 'string'
-																													? matchedModel.modified_at.replace('T', ' ').substring(0, 16)
-																													: matchedModel.modified_at}
-																											</span>
-																										</div>
-																									)}
-																								</div>
-																							)}
+																										{matchedModel.modified_at && (
+																											<div className='pt-1 border-t border-[#e8ebf3]'>
+																												<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																													Modified At
+																												</span>
+																												<span className='font-mono text-[11px] text-[#5d6075] truncate block'>
+																													{typeof matchedModel.modified_at ===
+																													'string'
+																														? matchedModel.modified_at
+																																.replace('T', ' ')
+																																.substring(0, 16)
+																														: matchedModel.modified_at}
+																												</span>
+																											</div>
+																										)}
+																									</div>
+																								)}
 
 																							{/* Capability Badges */}
-																							{matchedModel && Array.isArray(matchedModel.capabilities) && matchedModel.capabilities.length > 0 && (
-																								<div className='flex items-center justify-center gap-1.5 flex-wrap pt-1'>
-																									{matchedModel.capabilities.includes('code') && (
-																										<span className='px-2.5 py-1 bg-[#1e293b] text-[#93c5fd] rounded-xl text-[11px] font-bold flex items-center gap-1'>
-																											<span className='font-mono'>&lt;/&gt;</span> Code
-																										</span>
-																									)}
-																									{matchedModel.capabilities.includes('vision') && (
-																										<span className='px-2.5 py-1 bg-[#4c1d95] text-[#f472b6] rounded-xl text-[11px] font-bold flex items-center gap-1'>
-																											<span>👁</span> Vision
-																										</span>
-																									)}
-																									{matchedModel.capabilities.includes('reasoning') && (
-																										<span className='px-2.5 py-1 bg-[#581c87] text-[#c084fc] rounded-xl text-[11px] font-bold flex items-center gap-1'>
-																											<span>🧠</span> Reasoning
-																										</span>
-																									)}
-																								</div>
-																							)}
+																							{matchedModel &&
+																								Array.isArray(matchedModel.capabilities) &&
+																								matchedModel.capabilities.length > 0 && (
+																									<div className='flex items-center justify-center gap-1.5 flex-wrap pt-1'>
+																										{matchedModel.capabilities.includes('code') && (
+																											<span className='px-2.5 py-1 bg-[#1e293b] text-[#93c5fd] rounded-xl text-[11px] font-bold flex items-center gap-1'>
+																												<span className='font-mono'>&lt;/&gt;</span>{' '}
+																												Code
+																											</span>
+																										)}
+																										{matchedModel.capabilities.includes('vision') && (
+																											<span className='px-2.5 py-1 bg-[#4c1d95] text-[#f472b6] rounded-xl text-[11px] font-bold flex items-center gap-1'>
+																												<span>👁</span> Vision
+																											</span>
+																										)}
+																										{matchedModel.capabilities.includes('reasoning') && (
+																											<span className='px-2.5 py-1 bg-[#581c87] text-[#c084fc] rounded-xl text-[11px] font-bold flex items-center gap-1'>
+																												<span>🧠</span> Reasoning
+																											</span>
+																										)}
+																									</div>
+																								)}
 
 																							{/* Selected TTS Display */}
 																							<div className='bg-[#eaecf9]/50 border border-[#7678ed]/10 rounded-2xl px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-[#5d6075]'>
@@ -3961,10 +4468,23 @@ export default function AlpacaWebPage() {
 																						{/* Edit Model Button */}
 																						<button
 																							type='button'
-																							onClick={() => handleOpenEditModelModal(matchedModel || { id: pref.id, name: pref.id })}
+																							onClick={() =>
+																								handleOpenEditModelModal(
+																									matchedModel || { id: pref.id, name: pref.id },
+																								)
+																							}
 																							className='w-full py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-bold rounded-2xl transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer'
 																						>
-																							<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																							<svg
+																								width='14'
+																								height='14'
+																								viewBox='0 0 24 24'
+																								fill='none'
+																								stroke='currentColor'
+																								strokeWidth='2.2'
+																								strokeLinecap='round'
+																								strokeLinejoin='round'
+																							>
 																								<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
 																							</svg>
 																							Edit Model
@@ -4016,8 +4536,10 @@ export default function AlpacaWebPage() {
 																										className='w-36 h-36 rounded-2xl object-cover shadow-sm border-2 border-white transition-transform duration-200 hover:scale-[1.02]'
 																										onError={(e) => {
 																											e.currentTarget.style.display = 'none';
-																											const fallbackElem = e.currentTarget.nextElementSibling as HTMLElement;
-																											if (fallbackElem) fallbackElem.style.display = 'flex';
+																											const fallbackElem = e.currentTarget
+																												.nextElementSibling as HTMLElement;
+																											if (fallbackElem)
+																												fallbackElem.style.display = 'flex';
 																										}}
 																									/>
 																								) : null}
@@ -4031,11 +4553,15 @@ export default function AlpacaWebPage() {
 
 																							{/* Details */}
 																							<div>
-																								<h4 className='text-base font-bold text-[#202022] truncate' title={displayName}>
+																								<h4
+																									className='text-base font-bold text-[#202022] truncate'
+																									title={displayName}
+																								>
 																									{displayName}
 																								</h4>
 																								<p className='text-xs text-[#8e90a6] font-medium mt-0.5 truncate font-mono'>
-																									{mod.provider || selectedInstanceForModels.type} • {mod.context || '8k ctx'}
+																									{mod.provider || selectedInstanceForModels.type} •{' '}
+																									{mod.context || '8k ctx'}
 																								</p>
 																								<span className='inline-flex items-center gap-1 mt-2 px-3 py-0.5 bg-[#f0f2f5] text-[#5d6075] border border-[#e8ebf3] rounded-full text-[10px] font-bold uppercase tracking-wider'>
 																									No Preference
@@ -4043,33 +4569,56 @@ export default function AlpacaWebPage() {
 																							</div>
 
 																							{/* Ollama / Model Specs Grid */}
-																							{(mod.tag || mod.family || mod.parameter_size || mod.quantization_level) && (
+																							{(mod.tag ||
+																								mod.family ||
+																								mod.parameter_size ||
+																								mod.quantization_level) && (
 																								<div className='bg-[#f8f9fc] border border-[#e8ebf3] rounded-2xl p-3 space-y-2 text-left text-xs'>
 																									<div className='grid grid-cols-2 gap-2'>
 																										<div>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Tag</span>
-																											<span className='font-mono font-bold text-[#202022] truncate block'>{mod.tag || mod.id}</span>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																												Tag
+																											</span>
+																											<span className='font-mono font-bold text-[#202022] truncate block'>
+																												{mod.tag || mod.id}
+																											</span>
 																										</div>
 																										<div>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Family</span>
-																											<span className='font-semibold text-[#202022] truncate block'>{mod.family || '—'}</span>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																												Family
+																											</span>
+																											<span className='font-semibold text-[#202022] truncate block'>
+																												{mod.family || '—'}
+																											</span>
 																										</div>
 																										<div>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Parameter Size</span>
-																											<span className='font-semibold text-[#202022] truncate block'>{mod.parameter_size || '—'}</span>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																												Parameter Size
+																											</span>
+																											<span className='font-semibold text-[#202022] truncate block'>
+																												{mod.parameter_size || '—'}
+																											</span>
 																										</div>
 																										<div>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Quantization Level</span>
-																											<span className='font-mono font-semibold text-[#202022] truncate block'>{mod.quantization_level || '—'}</span>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																												Quantization Level
+																											</span>
+																											<span className='font-mono font-semibold text-[#202022] truncate block'>
+																												{mod.quantization_level || '—'}
+																											</span>
 																										</div>
 																									</div>
 
 																									{mod.modified_at && (
 																										<div className='pt-1 border-t border-[#e8ebf3]'>
-																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>Modified At</span>
+																											<span className='text-[10px] font-bold text-[#8e90a6] uppercase tracking-wider block'>
+																												Modified At
+																											</span>
 																											<span className='font-mono text-[11px] text-[#5d6075] truncate block'>
 																												{typeof mod.modified_at === 'string'
-																													? mod.modified_at.replace('T', ' ').substring(0, 16)
+																													? mod.modified_at
+																															.replace('T', ' ')
+																															.substring(0, 16)
 																													: mod.modified_at}
 																											</span>
 																										</div>
@@ -4113,7 +4662,16 @@ export default function AlpacaWebPage() {
 																							onClick={() => handleOpenEditModelModal(mod)}
 																							className='w-full py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-bold rounded-2xl transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer'
 																						>
-																							<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																							<svg
+																								width='14'
+																								height='14'
+																								viewBox='0 0 24 24'
+																								fill='none'
+																								stroke='currentColor'
+																								strokeWidth='2.2'
+																								strokeLinecap='round'
+																								strokeLinejoin='round'
+																							>
 																								<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
 																							</svg>
 																							Edit Model
@@ -4140,7 +4698,16 @@ export default function AlpacaWebPage() {
 															className='p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer'
 															title='Back to Manage Models'
 														>
-															<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+															<svg
+																width='20'
+																height='20'
+																viewBox='0 0 24 24'
+																fill='none'
+																stroke='currentColor'
+																strokeWidth='2.5'
+																strokeLinecap='round'
+																strokeLinejoin='round'
+															>
 																<line x1='19' y1='12' x2='5' y2='12' />
 																<polyline points='12 19 5 12 12 5' />
 															</svg>
@@ -4162,16 +4729,17 @@ export default function AlpacaWebPage() {
 														const matchedModel = instanceModelsList.find(
 															(mod) =>
 																String(mod.id || '').toLowerCase() === rawId.toLowerCase() ||
-																String(mod.name || '').toLowerCase() === rawId.toLowerCase()
+																String(mod.name || '').toLowerCase() === rawId.toLowerCase(),
 														);
-														const displayName = getCharacterName(pref?.character) || (pref as any)?.name || editingModel.name || editingModel.id;
+														const displayName =
+															getCharacterName(pref?.character) || (pref as any)?.name || editingModel.name || editingModel.id;
 														const displayPicture = getModelAvatarPicture(pref, editingModel);
 														const displayVoice = pref?.voice || editingModel.voice || 'af_heart';
 														const displayCtx = editModelNumCtx
 															? `${editModelNumCtx.toLocaleString()} tokens`
 															: pref?.num_ctx
-															? `${pref.num_ctx.toLocaleString()} tokens`
-															: editingModel.context || '8,192 tokens';
+																? `${pref.num_ctx.toLocaleString()} tokens`
+																: editingModel.context || '8,192 tokens';
 
 														return (
 															<div className='p-6 rounded-3xl border border-[#e8ebf3] bg-white flex flex-col md:flex-row items-center gap-6 shadow-sm'>
@@ -4232,17 +4800,26 @@ export default function AlpacaWebPage() {
 													})()}
 
 													{/* Main Form Below */}
-													<form onSubmit={handleSaveEditModel} className='space-y-8 bg-white border border-[#e8ebf3] rounded-3xl p-6 shadow-xs'>
+													<form
+														onSubmit={handleSaveEditModel}
+														className='space-y-8 bg-white border border-[#e8ebf3] rounded-3xl p-6 shadow-xs'
+													>
 														{/* 1. General Information */}
 														<div className='space-y-4'>
 															<div className='pb-2 border-b border-[#e8ebf3]'>
-																<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider'>General Information</h4>
-																<p className='text-xs text-[#7a7d90] mt-0.5'>Basic identity, context window, and voice configuration for this model.</p>
+																<h4 className='text-sm font-bold text-[#7678ed] uppercase tracking-wider'>
+																	General Information
+																</h4>
+																<p className='text-xs text-[#7a7d90] mt-0.5'>
+																	Basic identity, context window, and voice configuration for this model.
+																</p>
 															</div>
 
 															<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
 																<div>
-																	<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>Model / Character Name</label>
+																	<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>
+																		Model / Character Name
+																	</label>
 																	<input
 																		type='text'
 																		value={editModelName}
@@ -4280,7 +4857,9 @@ export default function AlpacaWebPage() {
 															</div>
 
 															<div>
-																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>First Message (Greeting)</label>
+																<label className='block text-xs font-bold text-[#5d6075] mb-1.5'>
+																	First Message (Greeting)
+																</label>
 																<textarea
 																	rows={2}
 																	value={editModelFirstMessage}
@@ -4296,7 +4875,9 @@ export default function AlpacaWebPage() {
 															<div className='flex items-center justify-between pb-2 border-b border-[#e8ebf3]'>
 																<div>
 																	<h4 className='text-base font-bold text-[#202022]'>Alternative Greetings</h4>
-																	<p className='text-xs text-[#7a7d90]'>Optional alternative opening lines for starting new chats.</p>
+																	<p className='text-xs text-[#7a7d90]'>
+																		Optional alternative opening lines for starting new chats.
+																	</p>
 																</div>
 																<button
 																	type='button'
@@ -4308,7 +4889,9 @@ export default function AlpacaWebPage() {
 															</div>
 
 															{editModelAlternateGreetings.length === 0 ? (
-																<p className='text-xs text-[#8e90a6] italic py-2 text-center'>No alternative greetings added.</p>
+																<p className='text-xs text-[#8e90a6] italic py-2 text-center'>
+																	No alternative greetings added.
+																</p>
 															) : (
 																<div className='space-y-3'>
 																	{editModelAlternateGreetings.map((greeting, idx) => (
@@ -4326,7 +4909,16 @@ export default function AlpacaWebPage() {
 																				className='p-2.5 text-red-500 hover:bg-red-50 rounded-2xl transition-all cursor-pointer'
 																				title='Remove Greeting'
 																			>
-																				<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																				<svg
+																					width='18'
+																					height='18'
+																					viewBox='0 0 24 24'
+																					fill='none'
+																					stroke='currentColor'
+																					strokeWidth='2'
+																					strokeLinecap='round'
+																					strokeLinejoin='round'
+																				>
 																					<polyline points='3 6 5 6 21 6' />
 																					<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
 																				</svg>
@@ -4342,7 +4934,9 @@ export default function AlpacaWebPage() {
 															<div className='flex items-center justify-between pb-2 border-b border-[#e8ebf3]'>
 																<div>
 																	<h4 className='text-base font-bold text-[#202022]'>Character Book</h4>
-																	<p className='text-xs text-[#7a7d90]'>Lore items, world facts, and keyword-triggered context memories.</p>
+																	<p className='text-xs text-[#7a7d90]'>
+																		Lore items, world facts, and keyword-triggered context memories.
+																	</p>
 																</div>
 																<button
 																	type='button'
@@ -4354,11 +4948,16 @@ export default function AlpacaWebPage() {
 															</div>
 
 															{editModelCharacterBook.length === 0 ? (
-																<p className='text-xs text-[#8e90a6] italic py-2 text-center'>No character book items defined.</p>
+																<p className='text-xs text-[#8e90a6] italic py-2 text-center'>
+																	No character book items defined.
+																</p>
 															) : (
 																<div className='space-y-4'>
 																	{editModelCharacterBook.map((item, idx) => (
-																		<div key={idx} className='bg-white p-5 rounded-2xl border border-[#e8ebf3] space-y-4 shadow-xs'>
+																		<div
+																			key={idx}
+																			className='bg-white p-5 rounded-2xl border border-[#e8ebf3] space-y-4 shadow-xs'
+																		>
 																			<div className='flex items-center justify-between gap-3'>
 																				<input
 																					type='text'
@@ -4373,7 +4972,16 @@ export default function AlpacaWebPage() {
 																					className='p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer'
 																					title='Remove Item'
 																				>
-																					<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+																					<svg
+																						width='18'
+																						height='18'
+																						viewBox='0 0 24 24'
+																						fill='none'
+																						stroke='currentColor'
+																						strokeWidth='2'
+																						strokeLinecap='round'
+																						strokeLinejoin='round'
+																					>
 																						<polyline points='3 6 5 6 21 6' />
 																						<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
 																					</svg>
@@ -4381,7 +4989,9 @@ export default function AlpacaWebPage() {
 																			</div>
 
 																			<div>
-																				<label className='block text-[11px] font-bold text-[#7a7d90] mb-1 uppercase tracking-wider'>Description / Content</label>
+																				<label className='block text-[11px] font-bold text-[#7a7d90] mb-1 uppercase tracking-wider'>
+																					Description / Content
+																				</label>
 																				<textarea
 																					rows={2}
 																					value={item.description}
@@ -4392,7 +5002,9 @@ export default function AlpacaWebPage() {
 																			</div>
 
 																			<div>
-																				<label className='block text-[11px] font-bold text-[#7a7d90] mb-1 uppercase tracking-wider'>Tags / Keywords (comma separated)</label>
+																				<label className='block text-[11px] font-bold text-[#7a7d90] mb-1 uppercase tracking-wider'>
+																					Tags / Keywords (comma separated)
+																				</label>
 																				<input
 																					type='text'
 																					value={item.tags}
@@ -4420,7 +5032,16 @@ export default function AlpacaWebPage() {
 																type='submit'
 																className='px-6 py-2.5 rounded-2xl text-xs font-bold bg-[#7678ed] hover:bg-[#6869d9] text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer flex items-center gap-2'
 															>
-																<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+																<svg
+																	width='16'
+																	height='16'
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='currentColor'
+																	strokeWidth='2.2'
+																	strokeLinecap='round'
+																	strokeLinejoin='round'
+																>
 																	<polyline points='20 6 9 17 4 12' />
 																</svg>
 																Save Model Preference
@@ -4436,7 +5057,16 @@ export default function AlpacaWebPage() {
 										<div className='space-y-6 animate-in fade-in duration-200'>
 											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex items-center gap-3.5'>
 												<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 text-[#7678ed] flex items-center justify-center shrink-0 shadow-xs'>
-													<svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+													<svg
+														width='24'
+														height='24'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
 														<line x1='4' y1='21' x2='4' y2='14' />
 														<line x1='4' y1='10' x2='4' y2='3' />
 														<line x1='12' y1='21' x2='12' y2='12' />
@@ -4450,7 +5080,9 @@ export default function AlpacaWebPage() {
 												</div>
 												<div>
 													<h3 className='text-2xl font-bold text-[#202022] tracking-tight'>Preferences</h3>
-													<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>Configure playback options, user interface defaults, and system notifications.</p>
+													<p className='text-xs text-[#7a7d90] mt-0.5 font-medium'>
+														Configure playback options, user interface defaults, and system notifications.
+													</p>
 												</div>
 											</div>
 
@@ -4458,25 +5090,42 @@ export default function AlpacaWebPage() {
 												<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
 													<div>
 														<h4 className='text-base font-bold text-[#202022]'>Auto-play Assistant Voice</h4>
-														<p className='text-xs text-[#8e90a6] mt-0.5'>Automatically start TTS voice playback when assistant finishes generating response.</p>
+														<p className='text-xs text-[#8e90a6] mt-0.5'>
+															Automatically start TTS voice playback when assistant finishes generating response.
+														</p>
 													</div>
-													<input type='checkbox' className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer' />
+													<input
+														type='checkbox'
+														className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer'
+													/>
 												</div>
 
 												<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
 													<div>
 														<h4 className='text-base font-bold text-[#202022]'>Desktop Notifications</h4>
-														<p className='text-xs text-[#8e90a6] mt-0.5'>Send desktop alert when background LLM generation completes.</p>
+														<p className='text-xs text-[#8e90a6] mt-0.5'>
+															Send desktop alert when background LLM generation completes.
+														</p>
 													</div>
-													<input type='checkbox' defaultChecked className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer' />
+													<input
+														type='checkbox'
+														defaultChecked
+														className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer'
+													/>
 												</div>
 
 												<div className='flex items-center justify-between pb-4 border-b border-[#e8ebf3]'>
 													<div>
 														<h4 className='text-base font-bold text-[#202022]'>Auto-scroll during generation</h4>
-														<p className='text-xs text-[#8e90a6] mt-0.5'>Keep chat window scrolled to the latest incoming message tokens.</p>
+														<p className='text-xs text-[#8e90a6] mt-0.5'>
+															Keep chat window scrolled to the latest incoming message tokens.
+														</p>
 													</div>
-													<input type='checkbox' defaultChecked className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer' />
+													<input
+														type='checkbox'
+														defaultChecked
+														className='w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer'
+													/>
 												</div>
 
 												<div className='pt-2 space-y-2'>
@@ -4487,6 +5136,205 @@ export default function AlpacaWebPage() {
 													</select>
 												</div>
 											</div>
+										</div>
+									)}
+
+									{activeSettingsCategory === 'manage-lorebook' && (
+										<div className='space-y-6 animate-in fade-in duration-200 pb-8'>
+											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4'>
+												<div>
+													<h3 className='text-xl font-bold text-[#202022] tracking-tight'>Manage Lorebook Templates</h3>
+													<p className='text-sm text-[#7a7d90] mt-1 font-medium'>
+														Create, view, and edit character lore templates stored as JSON files in the{' '}
+														<code className='bg-[#eaecf9] px-1.5 py-0.5 rounded text-[#7678ed] font-mono border border-[#7678ed]/20'>
+															lorebook
+														</code>{' '}
+														folder.
+													</p>
+												</div>
+												<button
+													onClick={handleOpenCreateLorebookModal}
+													className='px-4 py-2.5 rounded-2xl bg-[#7678ed] hover:bg-[#6869d9] text-white font-semibold text-sm transition-all shadow-md shadow-[#7678ed]/20 flex items-center gap-2 shrink-0 cursor-pointer'
+												>
+													<svg
+														width='16'
+														height='16'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2.5'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
+														<line x1='12' y1='5' x2='12' y2='19' />
+														<line x1='5' y1='12' x2='19' y2='12' />
+													</svg>
+													<span>Add Character Template</span>
+												</button>
+											</div>
+
+											{/* Search Bar */}
+											<div className='relative'>
+												<input
+													type='text'
+													value={lorebookSearchQuery}
+													onChange={(e) => setLorebookSearchQuery(e.target.value)}
+													placeholder='Search templates by character name or keywords...'
+													className='w-full bg-white border border-[#e8ebf3] rounded-2xl pl-11 pr-4 py-3 text-sm text-[#202022] placeholder-[#a0a3b5] outline-none focus:border-[#7678ed] transition-all shadow-xs'
+												/>
+												<svg
+													className='absolute left-4 top-3.5 text-[#a0a3b5]'
+													width='18'
+													height='18'
+													viewBox='0 0 24 24'
+													fill='none'
+													stroke='currentColor'
+													strokeWidth='2'
+													strokeLinecap='round'
+													strokeLinejoin='round'
+												>
+													<circle cx='11' cy='11' r='8' />
+													<line x1='21' y1='21' x2='16.65' y2='16.65' />
+												</svg>
+											</div>
+
+											{/* Cards Grid */}
+											{isLorebookLoading ? (
+												<div className='p-12 text-center text-[#7a7d90] font-medium animate-pulse bg-white rounded-2xl border border-[#e8ebf3]'>
+													Loading lorebook templates...
+												</div>
+											) : (
+												(() => {
+													const filtered = lorebookTemplates.filter((t) => {
+														const q = lorebookSearchQuery.toLowerCase().trim();
+														if (!q) return true;
+														const nameMatch = t.name.toLowerCase().includes(q);
+														const fileMatch = t.filename.toLowerCase().includes(q);
+														const keysMatch = Array.isArray(t.keys) && t.keys.some((k) => k.toLowerCase().includes(q));
+														const contentMatch = t.content.toLowerCase().includes(q);
+														return nameMatch || fileMatch || keysMatch || contentMatch;
+													});
+
+													if (filtered.length === 0) {
+														return (
+															<div className='p-12 text-center bg-white rounded-2xl border border-[#e8ebf3] space-y-3'>
+																<div className='w-12 h-12 rounded-2xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center mx-auto'>
+																	<svg
+																		width='24'
+																		height='24'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																	>
+																		<path d='M4 19.5A2.5 2.5 0 0 1 6.5 17H20' />
+																		<path d='M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z' />
+																	</svg>
+																</div>
+																<h4 className='font-bold text-[#202022] text-base'>No character templates found</h4>
+																<p className='text-xs text-[#7a7d90] max-w-sm mx-auto'>
+																	{lorebookSearchQuery
+																		? 'No templates match your search filter.'
+																		: 'No lorebook JSON files exist in the lorebook directory. Click below to create your first template.'}
+																</p>
+																{!lorebookSearchQuery && (
+																	<button
+																		onClick={handleOpenCreateLorebookModal}
+																		className='mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7678ed] text-white text-xs font-semibold hover:bg-[#6869d9] transition-all cursor-pointer'
+																	>
+																		Create Character Template
+																	</button>
+																)}
+															</div>
+														);
+													}
+
+													return (
+														<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+															{filtered.map((tmpl) => (
+																<div
+																	key={tmpl.filename}
+																	className='p-5 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs flex flex-col justify-between space-y-4 hover:border-[#7678ed]/40 transition-all'
+																>
+																	<div className='space-y-3'>
+																		<div>
+																			<h4 className='font-bold text-[#202022] text-base leading-snug'>{tmpl.name}</h4>
+																			<span className='text-[11px] font-mono text-[#a0a3b5] block mt-0.5'>
+																				{tmpl.filename}
+																			</span>
+																		</div>
+
+																		{/* Keyword Tags */}
+																		<div>
+																			<span className='text-[11px] font-bold text-[#a0a3b5] uppercase tracking-wider block mb-1.5'>
+																				Trigger Keys
+																			</span>
+																			{Array.isArray(tmpl.keys) && tmpl.keys.length > 0 ? (
+																				<div className='flex flex-wrap gap-1.5'>
+																					{tmpl.keys.map((key, idx) => (
+																						<span
+																							key={idx}
+																							className='bg-[#f0f2fb] text-[#7678ed] text-xs font-medium px-2.5 py-0.5 rounded-lg border border-[#7678ed]/15'
+																						>
+																							{key}
+																						</span>
+																					))}
+																				</div>
+																			) : (
+																				<span className='text-xs text-[#a0a3b5] italic'>No trigger keys set</span>
+																			)}
+																		</div>
+																	</div>
+
+																	{/* Footer Actions */}
+																	<div className='pt-3 border-t border-[#e8ebf3] flex items-center justify-end gap-2'>
+																		<button
+																			onClick={() => handleOpenEditLorebookModal(tmpl)}
+																			className='px-3 py-1.5 rounded-xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5'
+																		>
+																			<svg
+																				width='14'
+																				height='14'
+																				viewBox='0 0 24 24'
+																				fill='none'
+																				stroke='currentColor'
+																				strokeWidth='2'
+																				strokeLinecap='round'
+																				strokeLinejoin='round'
+																			>
+																				<path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' />
+																				<path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' />
+																			</svg>
+																			<span>Edit</span>
+																		</button>
+																		<button
+																			onClick={() => setDeletingLorebookTemplate(tmpl)}
+																			className='px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5'
+																		>
+																			<svg
+																				width='14'
+																				height='14'
+																				viewBox='0 0 24 24'
+																				fill='none'
+																				stroke='currentColor'
+																				strokeWidth='2'
+																				strokeLinecap='round'
+																				strokeLinejoin='round'
+																			>
+																				<polyline points='3 6 5 6 21 6' />
+																				<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																			</svg>
+																			<span>Delete</span>
+																		</button>
+																	</div>
+																</div>
+															))}
+														</div>
+													);
+												})()
+											)}
 										</div>
 									)}
 
@@ -4501,23 +5349,48 @@ export default function AlpacaWebPage() {
 													<div>
 														<div className='flex items-center gap-2.5'>
 															<h3 className='text-2xl font-bold text-[#202022] tracking-tight'>Walpaca</h3>
-															<span className='px-2.5 py-0.5 text-xs font-semibold bg-[#eaecf9] text-[#7678ed] rounded-lg border border-[#7678ed]/20'>v1.0.0</span>
+															<span className='px-2.5 py-0.5 text-xs font-semibold bg-[#eaecf9] text-[#7678ed] rounded-lg border border-[#7678ed]/20'>
+																v1.0.0
+															</span>
 														</div>
 														<p className='text-lg text-[#7a7d90] mt-0.5 font-medium'>
-															Web interface inspired on <a href='https://github.com/Jeffser/Alpaca' target='_blank' rel='noopener noreferrer' className='text-[#7678ed] underline hover:text-[#5d6075]'>Jeffser/Alpaca</a> GTK client.
+															Web interface inspired on{' '}
+															<a
+																href='https://github.com/Jeffser/Alpaca'
+																target='_blank'
+																rel='noopener noreferrer'
+																className='text-[#7678ed] underline hover:text-[#5d6075]'
+															>
+																Jeffser/Alpaca
+															</a>{' '}
+															GTK client.
 														</p>
 													</div>
 												</div>
 
 												<p className='text-lg text-[#404252] leading-relaxed pt-3 border-t border-[#e8ebf3]'>
-													Walpaca lets you access your local Alpaca workspace across your network or VPN. It mounts the exact same SQLite database file (<code className='bg-[#eaecf9] px-1.5 py-0.5 rounded-md text-[#7678ed] font-mono border border-[#7678ed]/20'>alpaca.db</code>) used by the native desktop app, keeping your existing chats and settings synchronized.
+													Walpaca lets you access your local Alpaca workspace across your network or VPN. It mounts the exact same
+													SQLite database file (
+													<code className='bg-[#eaecf9] px-1.5 py-0.5 rounded-md text-[#7678ed] font-mono border border-[#7678ed]/20'>
+														alpaca.db
+													</code>
+													) used by the native desktop app, keeping your existing chats and settings synchronized.
 												</p>
 											</div>
 
 											{/* Features Overview */}
 											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4'>
 												<div className='flex items-center gap-2.5 text-[#202022] font-bold text-lg pb-3 border-b border-[#e8ebf3]'>
-													<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#7678ed' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+													<svg
+														width='20'
+														height='20'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='#7678ed'
+														strokeWidth='2.2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
 														<polygon points='12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' />
 													</svg>
 													<span>Features</span>
@@ -4525,12 +5398,36 @@ export default function AlpacaWebPage() {
 
 												<div className='grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-[#404252]'>
 													{[
-														{ icon: '💬', title: 'Multi-Model Chats', desc: 'Switch between Ollama & Cloud models in the same conversation.' },
-														{ icon: '📄', title: 'Document Recognition', desc: 'Attach text and code files (.txt, .md, .js, .py, .css) for prompt analysis.' },
-														{ icon: '🖼️', title: 'Image Support', desc: 'Attach up to 4 images per message for multimodal vision models.' },
-														{ icon: '💻', title: 'Syntax Highlighting', desc: 'Tokenized code blocks with copy button and line counters.' },
-														{ icon: '📥', title: 'Export Transcripts', desc: 'Export chats to Markdown (.md), Obsidian, JSON, or Plain Text.' },
-														{ icon: '🔊', title: 'Speech Output', desc: 'Line-by-line audio synthesis using Kokoro TTS integration.' },
+														{
+															icon: '💬',
+															title: 'Multi-Model Chats',
+															desc: 'Switch between Ollama & Cloud models in the same conversation.',
+														},
+														{
+															icon: '📄',
+															title: 'Document Recognition',
+															desc: 'Attach text and code files (.txt, .md, .js, .py, .css) for prompt analysis.',
+														},
+														{
+															icon: '🖼️',
+															title: 'Image Support',
+															desc: 'Attach up to 4 images per message for multimodal vision models.',
+														},
+														{
+															icon: '💻',
+															title: 'Syntax Highlighting',
+															desc: 'Tokenized code blocks with copy button and line counters.',
+														},
+														{
+															icon: '📥',
+															title: 'Export Transcripts',
+															desc: 'Export chats to Markdown (.md), Obsidian, JSON, or Plain Text.',
+														},
+														{
+															icon: '🔊',
+															title: 'Speech Output',
+															desc: 'Line-by-line audio synthesis using Kokoro TTS integration.',
+														},
 													].map((feat, i) => (
 														<div key={i} className='flex items-start gap-3 p-3.5 transition-all'>
 															<div className='w-9 h-9 rounded-xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center shrink-0 font-bold text-base border border-[#7678ed]/20'>
@@ -4548,7 +5445,16 @@ export default function AlpacaWebPage() {
 											{/* Tech Stack & Credits */}
 											<div className='p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4 text-xs text-[#404252]'>
 												<div className='flex items-center gap-2.5 text-[#202022] font-bold text-lg pb-3 border-b border-[#e8ebf3]'>
-													<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#7678ed' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+													<svg
+														width='20'
+														height='20'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='#7678ed'
+														strokeWidth='2.2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
 														<rect x='2' y='3' width='20' height='14' rx='2' ry='2' />
 														<line x1='8' y1='21' x2='16' y2='21' />
 														<line x1='12' y1='17' x2='12' y2='21' />
@@ -4557,7 +5463,11 @@ export default function AlpacaWebPage() {
 												</div>
 
 												<p className='leading-relaxed text-[#7a7d90] text-lg'>
-													Built with Next.js, React, Tailwind CSS, Zustand, and Python Flask. Uses shared SQLite database (<code className='font-mono text-[#7678ed] bg-[#eaecf9] px-1.5 py-0.5 rounded-md border border-[#7678ed]/20'>alpaca.db</code>).
+													Built with Next.js, React, Tailwind CSS, Zustand, and Python Flask. Uses shared SQLite database (
+													<code className='font-mono text-[#7678ed] bg-[#eaecf9] px-1.5 py-0.5 rounded-md border border-[#7678ed]/20'>
+														alpaca.db
+													</code>
+													).
 												</p>
 
 												<div className='pt-4 flex flex-wrap items-center gap-2.5'>
@@ -4565,13 +5475,23 @@ export default function AlpacaWebPage() {
 														<span className='w-2 h-2 rounded-full bg-[#7678ed]' />
 														Open Source (GPL License)
 													</span>
-													<a href='https://github.com/Jeffser/Alpaca' target='_blank' rel='noopener noreferrer' className='px-3 py-1.5 rounded-xl bg-[#eaecf9] text-[#7678ed] hover:bg-[#7678ed] hover:text-white font-semibold text-sm transition-all flex items-center gap-1.5 border border-[#7678ed]/20'>
+													<a
+														href='https://github.com/Jeffser/Alpaca'
+														target='_blank'
+														rel='noopener noreferrer'
+														className='px-3 py-1.5 rounded-xl bg-[#eaecf9] text-[#7678ed] hover:bg-[#7678ed] hover:text-white font-semibold text-sm transition-all flex items-center gap-1.5 border border-[#7678ed]/20'
+													>
 														<svg width='14' height='14' viewBox='0 0 24 24' fill='currentColor'>
 															<path d='M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z' />
 														</svg>
 														Jeffser/Alpaca
 													</a>
-													<a href='https://github.com/c42759/walpaca' target='_blank' rel='noopener noreferrer' className='px-3 py-1.5 rounded-xl bg-[#eaecf9] text-[#7678ed] hover:bg-[#7678ed] hover:text-white font-semibold text-sm transition-all flex items-center gap-1.5 border border-[#7678ed]/20'>
+													<a
+														href='https://github.com/c42759/walpaca'
+														target='_blank'
+														rel='noopener noreferrer'
+														className='px-3 py-1.5 rounded-xl bg-[#eaecf9] text-[#7678ed] hover:bg-[#7678ed] hover:text-white font-semibold text-sm transition-all flex items-center gap-1.5 border border-[#7678ed]/20'
+													>
 														<svg width='14' height='14' viewBox='0 0 24 24' fill='currentColor'>
 															<path d='M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z' />
 														</svg>
@@ -4587,7 +5507,16 @@ export default function AlpacaWebPage() {
 							{/* 3. RIGHT SIDEBAR - HELP & TIPS */}
 							<aside className='w-[320px] bg-[#f9fafc] border-l border-[#e8ebf3] p-6 flex flex-col gap-5 overflow-y-auto shrink-0 select-none'>
 								<div className='flex items-center gap-2 text-[#7678ed] font-bold text-lg border-b border-[#e8ebf3] pb-3'>
-									<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<svg
+										width='20'
+										height='20'
+										viewBox='0 0 24 24'
+										fill='none'
+										stroke='currentColor'
+										strokeWidth='2.2'
+										strokeLinecap='round'
+										strokeLinejoin='round'
+									>
 										<path d='M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z' />
 									</svg>
 									<span>Help &amp; Tips</span>
@@ -4598,12 +5527,16 @@ export default function AlpacaWebPage() {
 										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
 											<h5 className='font-bold text-[#202022] text-sm'>Supported File Types</h5>
 											<p className='text-xs text-[#7a7d90]'>
-												You can import JSON files exported directly from ChatGPT (<code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>conversations.json</code>) or Anthropic Claude exports.
+												You can import JSON files exported directly from ChatGPT (
+												<code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>conversations.json</code>) or Anthropic Claude
+												exports.
 											</p>
 										</div>
 										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
 											<h5 className='font-bold text-[#202022] text-sm'>Size Limits</h5>
-											<p className='text-xs text-[#7a7d90]'>Single file archives up to 500 MB are processed locally without leaving your browser workspace.</p>
+											<p className='text-xs text-[#7a7d90]'>
+												Single file archives up to 500 MB are processed locally without leaving your browser workspace.
+											</p>
 										</div>
 									</div>
 								)}
@@ -4613,12 +5546,16 @@ export default function AlpacaWebPage() {
 										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
 											<h5 className='font-bold text-[#202022] text-sm'>Connecting Ollama</h5>
 											<p className='text-xs text-[#7a7d90]'>
-												Ensure Ollama is running locally with <code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>OLLAMA_ORIGINS="*"</code> enabled for web CORS access.
+												Ensure Ollama is running locally with{' '}
+												<code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>OLLAMA_ORIGINS="*"</code> enabled for web CORS
+												access.
 											</p>
 										</div>
 										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
 											<h5 className='font-bold text-[#202022] text-sm'>API Key Security</h5>
-											<p className='text-xs text-[#7a7d90]'>Cloud API tokens are encrypted in your browser's local secure storage and never transmitted to third parties.</p>
+											<p className='text-xs text-[#7a7d90]'>
+												Cloud API tokens are encrypted in your browser's local secure storage and never transmitted to third parties.
+											</p>
 										</div>
 									</div>
 								)}
@@ -4627,7 +5564,35 @@ export default function AlpacaWebPage() {
 									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
 										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
 											<h5 className='font-bold text-[#202022] text-sm'>TTS Audio Output</h5>
-											<p className='text-xs text-[#7a7d90]'>Ensure your browser permission allows HTML5 Web Audio auto-play for seamless speech output.</p>
+											<p className='text-xs text-[#7a7d90]'>
+												Ensure your browser permission allows HTML5 Web Audio auto-play for seamless speech output.
+											</p>
+										</div>
+									</div>
+								)}
+
+								{activeSettingsCategory === 'manage-lorebook' && (
+									<div className='space-y-4 text-sm text-[#404252] leading-relaxed'>
+										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
+											<h5 className='font-bold text-[#202022] text-sm'>Lorebook JSON Format</h5>
+											<p className='text-xs text-[#7a7d90]'>
+												Each template is saved as a JSON file in{' '}
+												<code className='bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]'>lorebook/</code> with the structure:
+											</p>
+											<pre className='bg-[#f9fafc] p-2.5 rounded-xl border border-[#e8ebf3] text-[11px] font-mono text-[#202022] overflow-x-auto'>
+												{`{
+  "name": "Character Name",
+  "keys": ["key1", "key2"],
+  "content": "My content here"
+}`}
+											</pre>
+										</div>
+										<div className='p-4 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs space-y-2'>
+											<h5 className='font-bold text-[#202022] text-sm'>Keyword Triggering</h5>
+											<p className='text-xs text-[#7a7d90]'>
+												When prompt messages match any trigger key, the character content is automatically evaluated into the model's
+												system prompt.
+											</p>
 										</div>
 									</div>
 								)}
@@ -4655,460 +5620,206 @@ export default function AlpacaWebPage() {
 							{/* ========================================================= */}
 							{/* 2. CHAT LIST PANEL (#f9fafc) */}
 							{/* ========================================================= */}
-					<section className='w-[350px] border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0'>
-						{/* Search Bar Header */}
-						<div className='p-4 pb-3 flex items-center gap-2'>
-							<div className='relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]'>
-								<svg
-									width='18'
-									height='18'
-									viewBox='0 0 24 24'
-									fill='none'
-									stroke='#7678ed'
-									strokeWidth='2.2'
-									strokeLinecap='round'
-									strokeLinejoin='round'
-									className='mr-2.5 shrink-0 opacity-80'
-								>
-									<circle cx='11' cy='11' r='8' />
-									<line x1='21' y1='21' x2='16.65' y2='16.65' />
-								</svg>
-								<input
-									type='text'
-									placeholder='Search'
-									value={searchQuery}
-									onChange={(e) => setSearchQuery(e.target.value)}
-									className='bg-transparent text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium'
-								/>
-							</div>
-							<button
-								onClick={handleOpenNewChatModal}
-								className='p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-sm shrink-0 cursor-pointer'
-								title='Create New Chat'
-							>
-								<svg
-									width='18'
-									height='18'
-									viewBox='0 0 24 24'
-									fill='none'
-									stroke='currentColor'
-									strokeWidth='2.5'
-									strokeLinecap='round'
-									strokeLinejoin='round'
-								>
-									<line x1='12' y1='5' x2='12' y2='19' />
-									<line x1='6' y1='12' x2='18' y2='12' />
-								</svg>
-							</button>
-						</div>
-
-						{/* Chat List Scrollable Items */}
-						<div className='flex-1 overflow-y-auto px-2 space-y-1.5 pb-4'>
-							{chatItems
-								.filter((chat) => {
-									const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase());
-									const matchesFolder = (activeTab === "none" || activeTab === "all") ? (!chat.folder || chat.folder === "none") : chat.folder === activeTab;
-									return matchesSearch && matchesFolder;
-								})
-								.map((chat) => {
-									const isSelected = activeChatId === chat.id;
-									const isBeingDragged = draggedChatId === chat.id;
-									return (
-										<div
-											key={chat.id}
-											draggable={true}
-											onDragStart={(e) => {
-												e.dataTransfer.setData("text/plain", chat.id);
-												e.dataTransfer.effectAllowed = "move";
-												setDraggedChatId(chat.id);
-											}}
-											onDragEnd={() => {
-												setDraggedChatId(null);
-												setDragOverFolderTarget(null);
-											}}
-											onClick={() => setActiveChatId(chat.id)}
-											className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-grab active:cursor-grabbing transition-all ${
-												isBeingDragged ? 'opacity-40 scale-95 border-2 border-dashed border-[#7678ed]' : ''
-											} ${
-												isSelected ? 'bg-[#edeffb] shadow-[0_2px_8px_rgba(118,120,237,0.08)]' : 'hover:bg-[#f2f4fa]'
-											}`}
+							<section className='w-[350px] border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0'>
+								{/* Search Bar Header */}
+								<div className='p-4 pb-3 flex items-center gap-2'>
+									<div className='relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]'>
+										<svg
+											width='18'
+											height='18'
+											viewBox='0 0 24 24'
+											fill='none'
+											stroke='#7678ed'
+											strokeWidth='2.2'
+											strokeLinecap='round'
+											strokeLinejoin='round'
+											className='mr-2.5 shrink-0 opacity-80'
 										>
-											{/* Avatar */}
-											{chat.avatarText ? (
-												<div
-													style={{ background: getAvatarColor(chat.name) }}
-													className='w-12 h-12 rounded-2xl text-white flex items-center justify-center font-bold text-lg tracking-wide shrink-0 shadow-sm'
-												>
-													{chat.avatarText}
-												</div>
-											) : (
-												<img src={chat.avatarImg} alt={chat.name} className='w-12 h-12 rounded-2xl object-cover shrink-0 shadow-sm' />
-											)}
-
-											{/* Info */}
-											<div className='flex-1 min-w-0'>
-												<div className='flex items-center justify-between gap-1 mb-0.5'>
-													<h4 className='font-semibold text-lg text-[#202022] truncate'>{chat.name}</h4>
-													<span className='text-sm text-[#8e90a6] font-medium shrink-0'>{chat.time}</span>
-												</div>
-												<div className='flex items-center justify-between gap-1'>
-													<p className={`text-base truncate ${isSelected ? 'text-[#7678ed] font-medium' : 'text-[#7a7d90]'}`}>
-														{chat.lastMessage}
-													</p>
-
-													{/* Pin / Badge / Delivered */}
-													<div className='flex items-center gap-1.5 shrink-0'>
-														{chat.unreadCount && (
-															<span className='bg-[#ff7a55] text-white text-sm font-bold w-5 h-5 rounded-full flex items-center justify-center leading-none'>
-																{chat.unreadCount}
-															</span>
-														)}
-														{chat.isPinned && (
-															<svg width='13' height='13' viewBox='0 0 24 24' fill='#7678ed' stroke='#7678ed' strokeWidth='1.5'>
-																<path d='M12 2L15 8L21 9L17 14L18 20L12 17L6 20L7 14L3 9L9 8L12 2Z' />
-															</svg>
-														)}
-														{chat.isDelivered && (
-															<svg
-																width='15'
-																height='15'
-																viewBox='0 0 24 24'
-																fill='none'
-																stroke='#7678ed'
-																strokeWidth='2.5'
-																strokeLinecap='round'
-																strokeLinejoin='round'
-															>
-																<polyline points='18 6 9 17 4 12' />
-															</svg>
-														)}
-													</div>
-												</div>
-											</div>
-										</div>
-									);
-								})}
-						</div>
-					</section>
-
-					{/* ========================================================= */}
-					{/* 3. MAIN CHAT AREA (WHITE) */}
-					{/* ========================================================= */}
-					{(() => {
-						const activeChat = chatItems.find((c) => c.id === activeChatId);
-						if (!activeChatId || !activeChat) {
-							return (
-								<section className='flex-1 flex flex-col items-center justify-center bg-white p-8 text-center select-none'>
-									<div className='w-24 h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-6 text-[#7678ed] shadow-inner'>
-										<img src='/icon-black.svg' alt='Alpaca Logo' className='w-14 h-14 opacity-70' />
+											<circle cx='11' cy='11' r='8' />
+											<line x1='21' y1='21' x2='16.65' y2='16.65' />
+										</svg>
+										<input
+											type='text'
+											placeholder='Search'
+											value={searchQuery}
+											onChange={(e) => setSearchQuery(e.target.value)}
+											className='bg-transparent text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium'
+										/>
 									</div>
-									<h3 className='text-2xl font-bold text-[#202022] mb-2'>No chat select</h3>
-									<p className='text-base text-[#8e90a6] max-w-sm'>
-										Select a conversation from the chat list on the left to view messages and continue chatting.
-									</p>
-								</section>
-							);
-						}
-
-						return (
-							<section className='flex-1 flex flex-col bg-white overflow-hidden'>
-								{/* Header */}
-								<div className='h-[76px] px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0'>
-									<div>
-										<h2 className='text-2xl font-bold text-[#202022] tracking-tight'>{activeChat.name}</h2>
-										<p className='text-base text-[#8e90a6] font-medium mt-0.5'>Active chat session</p>
-									</div>
-
-									{/* Action Icons */}
-									<div className='flex items-center gap-4 text-[#8e90a6] relative'>
-										<button className='p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors'>
-											<svg
-												width='20'
-												height='20'
-												viewBox='0 0 24 24'
-												fill='none'
-												stroke='currentColor'
-												strokeWidth='2'
-												strokeLinecap='round'
-												strokeLinejoin='round'
-											>
-												<circle cx='11' cy='11' r='8' />
-												<line x1='21' y1='21' x2='16.65' y2='16.65' />
-											</svg>
-										</button>
-
-										{/* 3 Dots Context Menu */}
-										<div className='relative'>
-											<button
-												onClick={() => setIsChatContextMenuOpen(!isChatContextMenuOpen)}
-												className='p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer'
-												title='Chat options'
-											>
-												<svg
-													width='20'
-													height='20'
-													viewBox='0 0 24 24'
-													fill='none'
-													stroke='currentColor'
-													strokeWidth='2'
-													strokeLinecap='round'
-													strokeLinejoin='round'
-												>
-													<circle cx='12' cy='12' r='1' />
-													<circle cx='12' cy='5' r='1' />
-													<circle cx='12' cy='19' r='1' />
-												</svg>
-											</button>
-
-											{isChatContextMenuOpen && (
-												<>
-													{/* Backdrop to close context menu on click outside */}
-													<div className='fixed inset-0 z-30' onClick={() => setIsChatContextMenuOpen(false)} />
-													{/* Dropdown Menu */}
-													<div className='absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-[#e8ebf3] py-2 z-40 select-none animate-in fade-in duration-150'>
-														<button
-															onClick={handleOpenRenameModal}
-															className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer'
-														>
-															<svg
-																width='16'
-																height='16'
-																viewBox='0 0 24 24'
-																fill='none'
-																stroke='currentColor'
-																strokeWidth='2'
-																strokeLinecap='round'
-																strokeLinejoin='round'
-															>
-																<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
-															</svg>
-															Rename
-														</button>
-														<button
-															onClick={handleOpenDuplicateModal}
-															className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer'
-														>
-															<svg
-																width='16'
-																height='16'
-																viewBox='0 0 24 24'
-																fill='none'
-																stroke='currentColor'
-																strokeWidth='2'
-																strokeLinecap='round'
-																strokeLinejoin='round'
-															>
-																<rect x='9' y='9' width='13' height='13' rx='2' ry='2' />
-																<path d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' />
-															</svg>
-															Duplicate
-														</button>
-														<button
-															onClick={handleOpenExportModal}
-															className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer'
-														>
-															<svg
-																width='16'
-																height='16'
-																viewBox='0 0 24 24'
-																fill='none'
-																stroke='currentColor'
-																strokeWidth='2'
-																strokeLinecap='round'
-																strokeLinejoin='round'
-															>
-																<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
-																<polyline points='7 10 12 15 17 10' />
-																<line x1='12' y1='15' x2='12' y2='3' />
-															</svg>
-															Export Chat
-														</button>
-														<button
-															onClick={handleOpenDeleteModal}
-															className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#ff4d4f] hover:bg-[#fff1f0] transition-colors flex items-center gap-2.5 cursor-pointer'
-														>
-															<svg
-																width='16'
-																height='16'
-																viewBox='0 0 24 24'
-																fill='none'
-																stroke='currentColor'
-																strokeWidth='2'
-																strokeLinecap='round'
-																strokeLinejoin='round'
-															>
-																<polyline points='3 6 5 6 21 6' />
-																<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
-															</svg>
-															Delete
-														</button>
-													</div>
-												</>
-											)}
-										</div>
-									</div>
+									<button
+										onClick={handleOpenNewChatModal}
+										className='p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-sm shrink-0 cursor-pointer'
+										title='Create New Chat'
+									>
+										<svg
+											width='18'
+											height='18'
+											viewBox='0 0 24 24'
+											fill='none'
+											stroke='currentColor'
+											strokeWidth='2.5'
+											strokeLinecap='round'
+											strokeLinejoin='round'
+										>
+											<line x1='12' y1='5' x2='12' y2='19' />
+											<line x1='6' y1='12' x2='18' y2='12' />
+										</svg>
+									</button>
 								</div>
 
-								{/* Conversation Messages */}
-								<div className='flex-1 overflow-y-auto px-8 py-6 space-y-6 flex flex-col'>
-									{messages.length === 0 ? (() => {
-										const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
-										const selectedPref =
-											modelPreferences[selectedChatModelId] ||
-											modelPreferences[selectedPrefKey] ||
-											Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
-										const char = selectedPref?.character || {};
-										const charData = char.data || char || {};
-										const firstMes = (charData.first_mes || charData.first_message || selectedPref?.first_message || '').trim();
-
-										return (
-											<div className='flex flex-col items-center justify-center h-full min-h-[350px] text-center p-8 select-none my-auto'>
-												<div className='w-24 h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-6 text-[#7678ed] shadow-inner'>
-													<img src='/icon-black.svg' alt='Alpaca Logo' className='w-14 h-14 opacity-70' />
-												</div>
-												<h3 className='text-2xl font-bold text-[#202022] mb-2'>No messages yet</h3>
-												<p className='text-base text-[#8e90a6] max-w-sm mb-6'>
-													Start a conversation by typing a message below or using a character template.
-												</p>
-												{selectedPref && firstMes ? (
-													<button
-														type='button'
-														onClick={handleUseCharacterFirstMes}
-														className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer flex items-center gap-2'
-													>
-														<span>✨</span>
-														<span>Use Character</span>
-													</button>
-												) : null}
-											</div>
-										);
-									})() : (
-										messages.map((msg) => {
-										if (msg.isSelf) {
-											{
-												/* User message (Role 'user' -> Right side, full width) */
-											}
-											const imageAttachments = (msg.attachments || []).filter(isImageAttachment);
-											const imageSources: string[] = [];
-											if (msg.image) imageSources.push(msg.image);
-											imageAttachments.forEach((att) => {
-												const src = getImageSrc(att);
-												if (src && !imageSources.includes(src)) imageSources.push(src);
-											});
-
-											const isEditingUser = editingMsgId === msg.id;
-
+								{/* Chat List Scrollable Items */}
+								<div className='flex-1 overflow-y-auto px-2 space-y-1.5 pb-4'>
+									{chatItems
+										.filter((chat) => {
+											const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase());
+											const matchesFolder =
+												activeTab === 'none' || activeTab === 'all'
+													? !chat.folder || chat.folder === 'none'
+													: chat.folder === activeTab;
+											return matchesSearch && matchesFolder;
+										})
+										.map((chat) => {
+											const isSelected = activeChatId === chat.id;
+											const isBeingDragged = draggedChatId === chat.id;
 											return (
-												<div key={msg.id} className='flex items-start justify-end gap-3.5 w-full'>
-													<div className='flex flex-col items-end flex-1 w-full min-w-0'>
-														<div className='bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-5 py-4 text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full'>
-															{isEditingUser ? (
-																<div className='flex flex-col gap-3 w-full my-1'>
-																	<textarea
-																		ref={autoResizeTextarea}
-																		rows={1}
-																		value={editingMsgContent}
-																		onChange={(e) => {
-																			setEditingMsgContent(e.target.value);
-																			autoResizeTextarea(e.currentTarget);
-																		}}
-																		onInput={(e) => autoResizeTextarea(e.currentTarget)}
-																		className='w-full bg-white/10 text-white placeholder-white/50 rounded-xl p-3.5 text-base outline-none border border-white/30 focus:border-white transition-all resize-none overflow-hidden font-normal leading-relaxed'
-																		autoFocus
-																	/>
-																	<div className='flex items-center justify-end gap-2'>
-																		<button
-																			type='button'
-																			onClick={() => setEditingMsgId(null)}
-																			className='px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer'
-																		>
-																			Cancel
-																		</button>
-																		<button
-																			type='button'
-																			onClick={handleSaveInlineEdit}
-																			disabled={!editingMsgContent.trim()}
-																			className='px-4 py-1.5 rounded-lg text-xs font-semibold bg-white text-[#7678ed] hover:bg-white/90 disabled:opacity-50 transition-all shadow-xs cursor-pointer'
-																		>
-																			Save
-																		</button>
-																	</div>
-																</div>
-															) : (
-																<>
-																	<div className='leading-relaxed font-normal'>{renderMarkdownText(msg.content)}</div>
-																	{imageSources.length > 0 && (
-																		<div className='flex flex-row gap-2.5 overflow-x-auto mt-3 pb-1.5 max-w-full'>
-																			{imageSources.map((src, idx) => (
-																				<img
-																					key={idx}
-																					src={src}
-																					alt={`Attachment ${idx + 1}`}
-																					className='h-32 min-w-[128px] max-w-[260px] rounded-xl object-cover border border-white/20 shadow-xs flex-shrink-0 cursor-pointer hover:opacity-95 transition-opacity'
-																					onClick={() => setActiveImageModal({ src, title: `Attachment Image ${idx + 1}` })}
-																				/>
-																			))}
-																		</div>
-																	)}
-																	{(() => {
-																		const docAtts = (msg.attachments || []).filter(
-																			(att) => att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att)
-																		);
-																		if (docAtts.length === 0) return null;
-																		return (
-																			<div className="flex flex-col gap-2 mt-3 w-full max-w-full">
-																				{docAtts.map((att, idx) => {
-																					const ext = att.name ? att.name.split(".").pop()?.toLowerCase() || "txt" : "file";
-																					return <DocumentAttachmentCard key={att.id || idx} attachment={att} extension={ext} isSelf={msg.isSelf} />;
-																				})}
-																			</div>
-																		);
-																	})()}
-																	<div className='flex items-center justify-end gap-2 text-sm text-white/80 mt-2'>
-																		<button
-																			type='button'
-																			onClick={() => handleOpenForkModal(msg)}
-																			className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white transition-all cursor-pointer'
-																			title='Fork Chat'
-																		>
-																			<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-																				<circle cx='12' cy='18' r='3' />
-																				<circle cx='6' cy='6' r='3' />
-																				<circle cx='18' cy='6' r='3' />
-																				<path d='M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9' />
-																				<path d='M12 12v3' />
-																			</svg>
-																		</button>
-																		<button
-																			type='button'
-																			onClick={() => handleStartInlineEdit(msg)}
-																			className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white transition-all cursor-pointer'
-																			title='Edit Message'
-																		>
-																			<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-																				<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
-																			</svg>
-																		</button>
-																		<button
-																			type='button'
-																			onClick={() => handleOpenDeleteMessageModal(msg)}
-																			className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white hover:text-[#ff7875] transition-all cursor-pointer'
-																			title='Delete Message'
-																		>
-																			<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-																				<polyline points='3 6 5 6 21 6' />
-																				<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
-																			</svg>
-																		</button>
-																		<span>{msg.time}</span>
-																	</div>
-																</>
-															)}
+												<div
+													key={chat.id}
+													draggable={true}
+													onDragStart={(e) => {
+														e.dataTransfer.setData('text/plain', chat.id);
+														e.dataTransfer.effectAllowed = 'move';
+														setDraggedChatId(chat.id);
+													}}
+													onDragEnd={() => {
+														setDraggedChatId(null);
+														setDragOverFolderTarget(null);
+													}}
+													onClick={() => setActiveChatId(chat.id)}
+													className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-grab active:cursor-grabbing transition-all ${
+														isBeingDragged ? 'opacity-40 scale-95 border-2 border-dashed border-[#7678ed]' : ''
+													} ${isSelected ? 'bg-[#edeffb] shadow-[0_2px_8px_rgba(118,120,237,0.08)]' : 'hover:bg-[#f2f4fa]'}`}
+												>
+													{/* Avatar */}
+													{chat.avatarText ? (
+														<div
+															style={{ background: getAvatarColor(chat.name) }}
+															className='w-12 h-12 rounded-2xl text-white flex items-center justify-center font-bold text-lg tracking-wide shrink-0 shadow-sm'
+														>
+															{chat.avatarText}
+														</div>
+													) : (
+														<img
+															src={chat.avatarImg}
+															alt={chat.name}
+															className='w-12 h-12 rounded-2xl object-cover shrink-0 shadow-sm'
+														/>
+													)}
+
+													{/* Info */}
+													<div className='flex-1 min-w-0'>
+														<div className='flex items-center justify-between gap-1 mb-0.5'>
+															<h4 className='font-semibold text-lg text-[#202022] truncate'>{chat.name}</h4>
+															<span className='text-sm text-[#8e90a6] font-medium shrink-0'>{chat.time}</span>
+														</div>
+														<div className='flex items-center justify-between gap-1'>
+															<p className={`text-base truncate ${isSelected ? 'text-[#7678ed] font-medium' : 'text-[#7a7d90]'}`}>
+																{chat.lastMessage}
+															</p>
+
+															{/* Pin / Badge / Delivered */}
+															<div className='flex items-center gap-1.5 shrink-0'>
+																{chat.unreadCount && (
+																	<span className='bg-[#ff7a55] text-white text-sm font-bold w-5 h-5 rounded-full flex items-center justify-center leading-none'>
+																		{chat.unreadCount}
+																	</span>
+																)}
+																{chat.isPinned && (
+																	<svg
+																		width='13'
+																		height='13'
+																		viewBox='0 0 24 24'
+																		fill='#7678ed'
+																		stroke='#7678ed'
+																		strokeWidth='1.5'
+																	>
+																		<path d='M12 2L15 8L21 9L17 14L18 20L12 17L6 20L7 14L3 9L9 8L12 2Z' />
+																	</svg>
+																)}
+																{chat.isDelivered && (
+																	<svg
+																		width='15'
+																		height='15'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='#7678ed'
+																		strokeWidth='2.5'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																	>
+																		<polyline points='18 6 9 17 4 12' />
+																	</svg>
+																)}
+															</div>
 														</div>
 													</div>
-													<div
-														className='w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 mt-1 shadow-sm'
-														title='You'
+												</div>
+											);
+										})}
+								</div>
+							</section>
+
+							{/* ========================================================= */}
+							{/* 3. MAIN CHAT AREA (WHITE) */}
+							{/* ========================================================= */}
+							{(() => {
+								const activeChat = chatItems.find((c) => c.id === activeChatId);
+								if (!activeChatId || !activeChat) {
+									return (
+										<section className='flex-1 flex flex-col items-center justify-center bg-white p-8 text-center select-none'>
+											<div className='w-24 h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-6 text-[#7678ed] shadow-inner'>
+												<img src='/icon-black.svg' alt='Alpaca Logo' className='w-14 h-14 opacity-70' />
+											</div>
+											<h3 className='text-2xl font-bold text-[#202022] mb-2'>No chat select</h3>
+											<p className='text-base text-[#8e90a6] max-w-sm'>
+												Select a conversation from the chat list on the left to view messages and continue chatting.
+											</p>
+										</section>
+									);
+								}
+
+								return (
+									<section className='flex-1 flex flex-col bg-white overflow-hidden'>
+										{/* Header */}
+										<div className='h-[76px] px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0'>
+											<div>
+												<h2 className='text-2xl font-bold text-[#202022] tracking-tight'>{activeChat.name}</h2>
+												<p className='text-base text-[#8e90a6] font-medium mt-0.5'>Active chat session</p>
+											</div>
+
+											{/* Action Icons */}
+											<div className='flex items-center gap-4 text-[#8e90a6] relative'>
+												<button className='p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors'>
+													<svg
+														width='20'
+														height='20'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
+														<circle cx='11' cy='11' r='8' />
+														<line x1='21' y1='21' x2='16.65' y2='16.65' />
+													</svg>
+												</button>
+
+												{/* 3 Dots Context Menu */}
+												<div className='relative'>
+													<button
+														onClick={() => setIsChatContextMenuOpen(!isChatContextMenuOpen)}
+														className='p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer'
+														title='Chat options'
 													>
 														<svg
 															width='20'
@@ -5116,808 +5827,1219 @@ export default function AlpacaWebPage() {
 															viewBox='0 0 24 24'
 															fill='none'
 															stroke='currentColor'
+															strokeWidth='2'
+															strokeLinecap='round'
+															strokeLinejoin='round'
+														>
+															<circle cx='12' cy='12' r='1' />
+															<circle cx='12' cy='5' r='1' />
+															<circle cx='12' cy='19' r='1' />
+														</svg>
+													</button>
+
+													{isChatContextMenuOpen && (
+														<>
+															{/* Backdrop to close context menu on click outside */}
+															<div className='fixed inset-0 z-30' onClick={() => setIsChatContextMenuOpen(false)} />
+															{/* Dropdown Menu */}
+															<div className='absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-[#e8ebf3] py-2 z-40 select-none animate-in fade-in duration-150'>
+																<button
+																	onClick={handleOpenRenameModal}
+																	className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer'
+																>
+																	<svg
+																		width='16'
+																		height='16'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																	>
+																		<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																	</svg>
+																	Rename
+																</button>
+																<button
+																	onClick={handleOpenDuplicateModal}
+																	className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer'
+																>
+																	<svg
+																		width='16'
+																		height='16'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																	>
+																		<rect x='9' y='9' width='13' height='13' rx='2' ry='2' />
+																		<path d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' />
+																	</svg>
+																	Duplicate
+																</button>
+																<button
+																	onClick={handleOpenExportModal}
+																	className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer'
+																>
+																	<svg
+																		width='16'
+																		height='16'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																	>
+																		<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
+																		<polyline points='7 10 12 15 17 10' />
+																		<line x1='12' y1='15' x2='12' y2='3' />
+																	</svg>
+																	Export Chat
+																</button>
+																<button
+																	onClick={handleOpenDeleteModal}
+																	className='w-full text-left px-4 py-2.5 text-base font-semibold text-[#ff4d4f] hover:bg-[#fff1f0] transition-colors flex items-center gap-2.5 cursor-pointer'
+																>
+																	<svg
+																		width='16'
+																		height='16'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																	>
+																		<polyline points='3 6 5 6 21 6' />
+																		<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																	</svg>
+																	Delete
+																</button>
+															</div>
+														</>
+													)}
+												</div>
+											</div>
+										</div>
+
+										{/* Conversation Messages */}
+										<div className='flex-1 overflow-y-auto px-8 py-6 space-y-6 flex flex-col'>
+											{messages.length === 0
+												? (() => {
+														const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
+														const selectedPref =
+															modelPreferences[selectedChatModelId] ||
+															modelPreferences[selectedPrefKey] ||
+															Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+														const char = selectedPref?.character || {};
+														const charData = char.data || char || {};
+														const firstMes = (
+															charData.first_mes ||
+															charData.first_message ||
+															selectedPref?.first_message ||
+															''
+														).trim();
+
+														return (
+															<div className='flex flex-col items-center justify-center h-full min-h-[350px] text-center p-8 select-none my-auto'>
+																<div className='w-24 h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-6 text-[#7678ed] shadow-inner'>
+																	<img src='/icon-black.svg' alt='Alpaca Logo' className='w-14 h-14 opacity-70' />
+																</div>
+																<h3 className='text-2xl font-bold text-[#202022] mb-2'>No messages yet</h3>
+																<p className='text-base text-[#8e90a6] max-w-sm mb-6'>
+																	Start a conversation by typing a message below or using a character template.
+																</p>
+																{selectedPref && firstMes ? (
+																	<button
+																		type='button'
+																		onClick={handleUseCharacterFirstMes}
+																		className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer flex items-center gap-2'
+																	>
+																		<span>✨</span>
+																		<span>Use Character</span>
+																	</button>
+																) : null}
+															</div>
+														);
+													})()
+												: messages.map((msg) => {
+														if (msg.isSelf) {
+															{
+																/* User message (Role 'user' -> Right side, full width) */
+															}
+															const imageAttachments = (msg.attachments || []).filter(isImageAttachment);
+															const imageSources: string[] = [];
+															if (msg.image) imageSources.push(msg.image);
+															imageAttachments.forEach((att) => {
+																const src = getImageSrc(att);
+																if (src && !imageSources.includes(src)) imageSources.push(src);
+															});
+
+															const isEditingUser = editingMsgId === msg.id;
+
+															return (
+																<div key={msg.id} className='flex items-start justify-end gap-3.5 w-full'>
+																	<div className='flex flex-col items-end flex-1 w-full min-w-0'>
+																		<div className='bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-5 py-4 text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full'>
+																			{isEditingUser ? (
+																				<div className='flex flex-col gap-3 w-full my-1'>
+																					<textarea
+																						ref={autoResizeTextarea}
+																						rows={1}
+																						value={editingMsgContent}
+																						onChange={(e) => {
+																							setEditingMsgContent(e.target.value);
+																							autoResizeTextarea(e.currentTarget);
+																						}}
+																						onInput={(e) => autoResizeTextarea(e.currentTarget)}
+																						className='w-full bg-white/10 text-white placeholder-white/50 rounded-xl p-3.5 text-base outline-none border border-white/30 focus:border-white transition-all resize-none overflow-hidden font-normal leading-relaxed'
+																						autoFocus
+																					/>
+																					<div className='flex items-center justify-end gap-2'>
+																						<button
+																							type='button'
+																							onClick={() => setEditingMsgId(null)}
+																							className='px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer'
+																						>
+																							Cancel
+																						</button>
+																						<button
+																							type='button'
+																							onClick={handleSaveInlineEdit}
+																							disabled={!editingMsgContent.trim()}
+																							className='px-4 py-1.5 rounded-lg text-xs font-semibold bg-white text-[#7678ed] hover:bg-white/90 disabled:opacity-50 transition-all shadow-xs cursor-pointer'
+																						>
+																							Save
+																						</button>
+																					</div>
+																				</div>
+																			) : (
+																				<>
+																					<div className='leading-relaxed font-normal'>
+																						{renderMarkdownText(msg.content)}
+																					</div>
+																					{imageSources.length > 0 && (
+																						<div className='flex flex-row gap-2.5 overflow-x-auto mt-3 pb-1.5 max-w-full'>
+																							{imageSources.map((src, idx) => (
+																								<img
+																									key={idx}
+																									src={src}
+																									alt={`Attachment ${idx + 1}`}
+																									className='h-32 min-w-[128px] max-w-[260px] rounded-xl object-cover border border-white/20 shadow-xs flex-shrink-0 cursor-pointer hover:opacity-95 transition-opacity'
+																									onClick={() =>
+																										setActiveImageModal({
+																											src,
+																											title: `Attachment Image ${idx + 1}`,
+																										})
+																									}
+																								/>
+																							))}
+																						</div>
+																					)}
+																					{(() => {
+																						const docAtts = (msg.attachments || []).filter(
+																							(att) =>
+																								att.type !== 'thought' &&
+																								att.type !== 'metadata' &&
+																								!isImageAttachment(att),
+																						);
+																						if (docAtts.length === 0) return null;
+																						return (
+																							<div className='flex flex-col gap-2 mt-3 w-full max-w-full'>
+																								{docAtts.map((att, idx) => {
+																									const ext = att.name
+																										? att.name.split('.').pop()?.toLowerCase() || 'txt'
+																										: 'file';
+																									return (
+																										<DocumentAttachmentCard
+																											key={att.id || idx}
+																											attachment={att}
+																											extension={ext}
+																											isSelf={msg.isSelf}
+																										/>
+																									);
+																								})}
+																							</div>
+																						);
+																					})()}
+																					<div className='flex items-center justify-end gap-2 text-sm text-white/80 mt-2'>
+																						<button
+																							type='button'
+																							onClick={() => handleOpenForkModal(msg)}
+																							className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white transition-all cursor-pointer'
+																							title='Fork Chat'
+																						>
+																							<svg
+																								width='13'
+																								height='13'
+																								viewBox='0 0 24 24'
+																								fill='none'
+																								stroke='currentColor'
+																								strokeWidth='2'
+																								strokeLinecap='round'
+																								strokeLinejoin='round'
+																							>
+																								<circle cx='12' cy='18' r='3' />
+																								<circle cx='6' cy='6' r='3' />
+																								<circle cx='18' cy='6' r='3' />
+																								<path d='M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9' />
+																								<path d='M12 12v3' />
+																							</svg>
+																						</button>
+																						<button
+																							type='button'
+																							onClick={() => handleStartInlineEdit(msg)}
+																							className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white transition-all cursor-pointer'
+																							title='Edit Message'
+																						>
+																							<svg
+																								width='13'
+																								height='13'
+																								viewBox='0 0 24 24'
+																								fill='none'
+																								stroke='currentColor'
+																								strokeWidth='2'
+																								strokeLinecap='round'
+																								strokeLinejoin='round'
+																							>
+																								<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																							</svg>
+																						</button>
+																						<button
+																							type='button'
+																							onClick={() => handleOpenDeleteMessageModal(msg)}
+																							className='p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white hover:text-[#ff7875] transition-all cursor-pointer'
+																							title='Delete Message'
+																						>
+																							<svg
+																								width='13'
+																								height='13'
+																								viewBox='0 0 24 24'
+																								fill='none'
+																								stroke='currentColor'
+																								strokeWidth='2'
+																								strokeLinecap='round'
+																								strokeLinejoin='round'
+																							>
+																								<polyline points='3 6 5 6 21 6' />
+																								<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																							</svg>
+																						</button>
+																						<span>{msg.time}</span>
+																					</div>
+																				</>
+																			)}
+																		</div>
+																	</div>
+																	<div
+																		className='w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 mt-1 shadow-sm'
+																		title='You'
+																	>
+																		<svg
+																			width='20'
+																			height='20'
+																			viewBox='0 0 24 24'
+																			fill='none'
+																			stroke='currentColor'
+																			strokeWidth='2.2'
+																			strokeLinecap='round'
+																			strokeLinejoin='round'
+																		>
+																			<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
+																			<circle cx='12' cy='7' r='4' />
+																		</svg>
+																	</div>
+																</div>
+															);
+														} else {
+															{
+																/* Assistant / Incoming message (Role 'assistant' -> Left side, full width) */
+															}
+															const prefKey = (msg.senderName || '').toLowerCase();
+															const pref =
+																modelPreferences[prefKey] ||
+																modelPreferences[msg.senderName || ''] ||
+																(msg.model ? modelPreferences[msg.model.toLowerCase()] : undefined);
+															const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || DEFAULT_MODEL_AVATAR;
+															const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
+															const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
+															const modelVoice = pref?.voice || undefined;
+
+															const isThisMsgPlaying = ttsState.msgId === msg.id && ttsState.status === 'playing';
+															const isThisMsgActive = ttsState.msgId === msg.id && ttsState.status !== 'stopped';
+															const isEditingAssistant = editingMsgId === msg.id;
+
+															const thoughtAtt = msg.attachments?.find(
+																(a) => a.type?.toLowerCase() === 'thought' || a.type?.toLowerCase() === 'brain',
+															);
+															const metadataAtt = msg.attachments?.find(
+																(a) => a.type?.toLowerCase() === 'metadata' || a.type?.toLowerCase() === 'data',
+															);
+
+															return (
+																<div key={msg.id} className='flex items-start gap-3.5 w-full'>
+																	<img
+																		src={avatarSrc}
+																		alt={displayName}
+																		className='w-10 h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm'
+																	/>
+																	<div className='flex flex-col items-start flex-1 w-full min-w-0'>
+																		<div className='bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-5 py-4 text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full'>
+																			<div className='flex items-center justify-between gap-3 mb-1.5'>
+																				<div className='flex items-center gap-2'>
+																					{/* TTS Controls in front of displayName */}
+																					{isThisMsgActive ? (
+																						<div className='flex items-center gap-1'>
+																							{isThisMsgPlaying ? (
+																								<button
+																									type='button'
+																									onClick={handlePauseTTS}
+																									className='p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																									title='Pause Speech'
+																								>
+																									<svg
+																										width='12'
+																										height='12'
+																										viewBox='0 0 24 24'
+																										fill='currentColor'
+																									>
+																										<rect x='6' y='4' width='4' height='16' rx='1' />
+																										<rect x='14' y='4' width='4' height='16' rx='1' />
+																									</svg>
+																								</button>
+																							) : (
+																								<button
+																									type='button'
+																									onClick={handleResumeTTS}
+																									className='p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																									title='Resume Speech'
+																								>
+																									<svg
+																										width='12'
+																										height='12'
+																										viewBox='0 0 24 24'
+																										fill='currentColor'
+																									>
+																										<polygon points='5 3 19 12 5 21 5 3' />
+																									</svg>
+																								</button>
+																							)}
+																							<button
+																								type='button'
+																								onClick={handleStopTTS}
+																								className='p-1.5 rounded-xl bg-[#ff7a55] text-white hover:bg-[#e06845] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																								title='Stop Speech'
+																							>
+																								<svg
+																									width='12'
+																									height='12'
+																									viewBox='0 0 24 24'
+																									fill='currentColor'
+																								>
+																									<rect x='4' y='4' width='16' height='16' rx='2' />
+																								</svg>
+																							</button>
+																						</div>
+																					) : (
+																						<button
+																							type='button'
+																							onClick={() => handlePlayTTS(msg.id, msg.content, modelVoice)}
+																							className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#7678ed] hover:bg-[#7678ed] hover:text-white transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																							title='Play Speech'
+																						>
+																							<svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor'>
+																								<polygon points='5 3 19 12 5 21 5 3' />
+																							</svg>
+																						</button>
+																					)}
+																					<p className='text-base font-semibold text-[#7678ed]'>{displayName}</p>
+																				</div>
+																				<div className='flex items-center gap-1.5 shrink-0'>
+																					{thoughtAtt && (
+																						<button
+																							type='button'
+																							onClick={() =>
+																								setActiveAttachmentModal({
+																									title: thoughtAtt.name || 'Thought',
+																									type: 'thought',
+																									content: thoughtAtt.content,
+																								})
+																							}
+																							className='px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer'
+																							title='View Thought / Reasoning'
+																						>
+																							<BrainIcon className='w-3.5 h-3.5' />
+																							<span>Thought</span>
+																						</button>
+																					)}
+																					{metadataAtt && (
+																						<button
+																							type='button'
+																							onClick={() =>
+																								setActiveAttachmentModal({
+																									title: metadataAtt.name || 'Metadata',
+																									type: 'metadata',
+																									content: metadataAtt.content,
+																								})
+																							}
+																							className='px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer'
+																							title='View Metadata'
+																						>
+																							<MetadataIcon className='w-3.5 h-3.5' />
+																							<span>Metadata</span>
+																						</button>
+																					)}
+																					<button
+																						type='button'
+																						onClick={() => handleOpenForkModal(msg)}
+																						className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#7678ed] hover:border-[#7678ed] hover:bg-[#f4f6fc] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																						title='Fork Chat'
+																					>
+																						<svg
+																							width='14'
+																							height='14'
+																							viewBox='0 0 24 24'
+																							fill='none'
+																							stroke='currentColor'
+																							strokeWidth='2'
+																							strokeLinecap='round'
+																							strokeLinejoin='round'
+																						>
+																							<circle cx='12' cy='18' r='3' />
+																							<circle cx='6' cy='6' r='3' />
+																							<circle cx='18' cy='6' r='3' />
+																							<path d='M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9' />
+																							<path d='M12 12v3' />
+																						</svg>
+																					</button>
+																					<button
+																						type='button'
+																						onClick={() => handleStartInlineEdit(msg)}
+																						className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#7678ed] hover:border-[#7678ed] hover:bg-[#f4f6fc] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																						title='Edit Message'
+																					>
+																						<svg
+																							width='14'
+																							height='14'
+																							viewBox='0 0 24 24'
+																							fill='none'
+																							stroke='currentColor'
+																							strokeWidth='2'
+																							strokeLinecap='round'
+																							strokeLinejoin='round'
+																						>
+																							<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
+																						</svg>
+																					</button>
+																					<button
+																						type='button'
+																						onClick={() => handleOpenDeleteMessageModal(msg)}
+																						className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#ff4d4f] hover:border-[#ff4d4f] hover:bg-[#fff1f0] transition-all shadow-xs cursor-pointer flex items-center justify-center'
+																						title='Delete Message'
+																					>
+																						<svg
+																							width='14'
+																							height='14'
+																							viewBox='0 0 24 24'
+																							fill='none'
+																							stroke='currentColor'
+																							strokeWidth='2'
+																							strokeLinecap='round'
+																							strokeLinejoin='round'
+																						>
+																							<polyline points='3 6 5 6 21 6' />
+																							<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
+																						</svg>
+																					</button>
+																				</div>
+																			</div>
+																			<div className='leading-relaxed'>
+																				{isEditingAssistant ? (
+																					<div className='flex flex-col gap-3 w-full my-2'>
+																						<textarea
+																							ref={autoResizeTextarea}
+																							rows={1}
+																							value={editingMsgContent}
+																							onChange={(e) => {
+																								setEditingMsgContent(e.target.value);
+																								autoResizeTextarea(e.currentTarget);
+																							}}
+																							onInput={(e) => autoResizeTextarea(e.currentTarget)}
+																							className='w-full bg-white border border-[#e2e5f1] text-[#202022] rounded-xl p-3.5 text-base outline-none focus:border-[#7678ed] focus:ring-1 focus:ring-[#7678ed] transition-all resize-none overflow-hidden font-normal leading-relaxed'
+																							autoFocus
+																						/>
+																						<div className='flex items-center justify-end gap-2'>
+																							<button
+																								type='button'
+																								onClick={() => setEditingMsgId(null)}
+																								className='px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#e2e5f1] hover:bg-[#d5d8e6] text-[#5d6075] transition-all cursor-pointer'
+																							>
+																								Cancel
+																							</button>
+																							<button
+																								type='button'
+																								onClick={handleSaveInlineEdit}
+																								disabled={!editingMsgContent.trim()}
+																								className='px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-xs cursor-pointer'
+																							>
+																								Save
+																							</button>
+																						</div>
+																					</div>
+																				) : (
+																					renderMarkdownText(
+																						msg.content,
+																						msg.id === ttsState.msgId ? ttsState.lineIndex : undefined,
+																						(e, lineText, lineIdx) => {
+																							setLineContextMenu({
+																								x: e.clientX,
+																								y: e.clientY,
+																								msgId: msg.id,
+																								lineText,
+																								lineIndex: lineIdx,
+																								voice: modelVoice,
+																								fullContent: msg.content,
+																							});
+																						},
+																					)
+																				)}
+																				{(() => {
+																					const docAtts = (msg.attachments || []).filter(
+																						(att) =>
+																							att.type !== 'thought' &&
+																							att.type !== 'metadata' &&
+																							!isImageAttachment(att),
+																					);
+																					if (docAtts.length === 0) return null;
+																					return (
+																						<div className='flex flex-col gap-2 mt-3 w-full max-w-full'>
+																							{docAtts.map((att, idx) => {
+																								const ext = att.name
+																									? att.name.split('.').pop()?.toLowerCase() || 'txt'
+																									: 'file';
+																								return (
+																									<DocumentAttachmentCard
+																										key={att.id || idx}
+																										attachment={att}
+																										extension={ext}
+																										isSelf={false}
+																									/>
+																								);
+																							})}
+																						</div>
+																					);
+																				})()}
+																			</div>
+																			<div className='flex items-center justify-between gap-4 mt-2.5 pt-1'>
+																				{msg.reactions && msg.reactions.length > 0 && (
+																					<div className='flex items-center gap-1.5'>
+																						{msg.reactions.map((r, i) => (
+																							<span
+																								key={i}
+																								className='inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white border border-[#e2e5f1] rounded-full text-base font-medium text-[#4a4d63] shadow-xs'
+																							>
+																								<span>{r.emoji}</span> {r.count}
+																							</span>
+																						))}
+																					</div>
+																				)}
+																				<div className='flex items-center gap-2 text-sm text-[#8e90a6]'>
+																					{msg.views !== undefined && (
+																						<span className='flex items-center gap-1'>
+																							<svg
+																								width='14'
+																								height='14'
+																								viewBox='0 0 24 24'
+																								fill='none'
+																								stroke='currentColor'
+																								strokeWidth='2'
+																							>
+																								<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' />
+																								<circle cx='12' cy='12' r='3' />
+																							</svg>
+																							{msg.views}
+																						</span>
+																					)}
+																					<span>{msg.time}</span>
+																				</div>
+																			</div>
+																		</div>
+																	</div>
+																</div>
+															);
+														}
+													})}
+											{messages.length > 0 && messages[messages.length - 1].isSelf && (
+												<div className='flex justify-center my-3 animate-in fade-in duration-200 select-none'>
+													<button
+														type='button'
+														onClick={handleCallForAnswer}
+														className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer flex items-center gap-2'
+													>
+														<span>🤖</span>
+														<span>Call for an answer</span>
+													</button>
+												</div>
+											)}
+											<div ref={messagesEndRef} />
+										</div>
+
+										{/* Input Composer */}
+										<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex flex-col gap-3'>
+											<input
+												type='file'
+												ref={fileInputRef}
+												accept='image/*,.txt,.md,.css,.js,.jsx,.ts,.tsx,.php,.py,.html,.json,.xml,.csv,.c,.cpp,.h,.hpp,.cs,.java,.rb,.rs,.go,.sql,.sh,.yaml,.yml,.dockerfile,.env,.odt,.docx,.pptx,.pdf'
+												multiple
+												onChange={handleAttachmentSelect}
+												className='hidden'
+											/>
+
+											{/* Attachments Preview Strip */}
+											{selectedAttachments.length > 0 && (
+												<div className='flex items-center gap-3 px-1 py-1.5 overflow-x-auto w-full border-b border-[#eef0f6]/60 pb-3'>
+													{selectedAttachments.map((att, idx) =>
+														att.type === 'image' ? (
+															<div
+																key={att.id || idx}
+																className='relative group w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#e2e5f1] shadow-xs bg-[#f4f6fc]'
+															>
+																<img
+																	src={att.content}
+																	alt={att.name || `Selected ${idx + 1}`}
+																	className='w-full h-full object-cover'
+																/>
+																<button
+																	type='button'
+																	onClick={() => handleRemoveSelectedAttachment(idx)}
+																	className='absolute top-1 right-1 bg-black/60 hover:bg-[#ff4d4f] text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer shadow-sm'
+																	title='Remove image'
+																>
+																	<svg
+																		width='12'
+																		height='12'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2.5'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																	>
+																		<line x1='18' y1='6' x2='6' y2='18' />
+																		<line x1='6' y1='6' x2='18' y2='18' />
+																	</svg>
+																</button>
+															</div>
+														) : (
+															<div
+																key={att.id || idx}
+																className='relative group flex items-center gap-2.5 px-3 py-2 rounded-xl border border-[#7678ed]/30 bg-[#7678ed]/5 hover:bg-[#7678ed]/10 transition-all shrink-0 max-w-[220px] shadow-2xs'
+															>
+																<div className='w-8 h-8 rounded-lg bg-[#7678ed]/15 text-[#7678ed] flex items-center justify-center shrink-0 font-bold text-xs uppercase'>
+																	{att.extension || 'txt'}
+																</div>
+																<div className='flex flex-col min-w-0 flex-1 pr-1'>
+																	<span className='text-xs font-semibold text-[#2d3142] truncate' title={att.name}>
+																		{att.name}
+																	</span>
+																	<span className='text-[10px] text-[#8e90a6] font-medium'>
+																		{att.size ? `${(att.size / 1024).toFixed(1)} KB` : 'Document'}
+																	</span>
+																</div>
+																<button
+																	type='button'
+																	onClick={() => handleRemoveSelectedAttachment(idx)}
+																	className='text-[#8e90a6] hover:text-[#ff4d4f] p-1 rounded-full hover:bg-black/5 transition-all cursor-pointer shrink-0'
+																	title='Remove attachment'
+																>
+																	<svg
+																		width='12'
+																		height='12'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2.5'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																	>
+																		<line x1='18' y1='6' x2='6' y2='18' />
+																		<line x1='6' y1='6' x2='18' y2='18' />
+																	</svg>
+																</button>
+															</div>
+														),
+													)}
+													{selectedAttachments.length < 4 && (
+														<span className='text-xs text-[#8e90a6] font-medium ml-1 select-none whitespace-nowrap'>
+															{selectedAttachments.length}/4 attachments
+														</span>
+													)}
+												</div>
+											)}
+
+											<div className='flex items-center gap-2.5 w-full'>
+												{/* Combined Model & Instance Selector Button */}
+												{(() => {
+													const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
+													const selectedInstName = selectedInst?.properties?.name || selectedInst?.type || 'Instance';
+													const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
+													const selectedPref =
+														modelPreferences[selectedChatModelId] ||
+														modelPreferences[selectedPrefKey] ||
+														Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+
+													let selectedModelName = selectedChatModelId;
+													if (selectedPref) {
+														selectedModelName =
+															getCharacterName(selectedPref.character) || (selectedPref as any).name || selectedPref.id;
+													} else if (selectedChatModelId) {
+														const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
+														if (instMod) {
+															selectedModelName = instMod.name || instMod.id;
+														}
+													}
+
+													if (!selectedModelName) {
+														selectedModelName = 'Select Model';
+													}
+
+													return (
+														<button
+															type='button'
+															onClick={() => setIsSelectModelModalOpen(true)}
+															className='group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2.5 hover:px-3.5 hover:bg-[#eaecf9] transition-all duration-300 ease-in-out shadow-xs cursor-pointer text-xs font-bold text-[#202022] max-w-[42px] hover:max-w-[340px] overflow-hidden'
+															title={`Model: ${selectedModelName} @ ${selectedInstName}`}
+														>
+															<div className='flex items-center gap-2 pl-1 shrink-0'>
+																<svg
+																	width='18'
+																	height='18'
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='currentColor'
+																	strokeWidth='2'
+																	strokeLinecap='round'
+																	strokeLinejoin='round'
+																	className='text-[#7678ed] shrink-0'
+																>
+																	<rect x='2' y='3' width='20' height='14' rx='2' ry='2' />
+																	<line x1='8' y1='21' x2='16' y2='21' />
+																	<line x1='12' y1='17' x2='12' y2='21' />
+																</svg>
+																<div className='flex items-center gap-1.5 opacity-0 max-w-0 group-hover:opacity-100 group-hover:max-w-[280px] transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden'>
+																	<span className='truncate'>{selectedModelName}</span>
+																	<span className='text-[#8e90a6] font-semibold'>@</span>
+																	<span className='text-[#7678ed] truncate'>{selectedInstName}</span>
+																	<svg
+																		width='14'
+																		height='14'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='#8e90a6'
+																		strokeWidth='2.2'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																		className='ml-0.5 shrink-0 group-hover:text-[#202022] transition-colors'
+																	>
+																		<polyline points='6 9 12 15 18 9' />
+																	</svg>
+																</div>
+															</div>
+														</button>
+													);
+												})()}
+
+												{/* 3. Thinking Mode Brain Toggle Button */}
+												<button
+													type='button'
+													onClick={() => setIsThinkingEnabled((prev) => !prev)}
+													className={`p-2.5 rounded-2xl transition-all cursor-pointer shrink-0 border flex items-center justify-center ${
+														isThinkingEnabled
+															? 'bg-[#7678ed]/10 border-[#7678ed] text-[#7678ed] opacity-100 shadow-xs'
+															: 'bg-[#f0f2f9] border-[#e8ebf3] text-[#8e90a6] hover:bg-[#eaecf9] opacity-40 hover:opacity-70'
+													}`}
+													title={
+														isThinkingEnabled ? 'Thinking Mode Enabled (think=True)' : 'Thinking Mode Disabled (click to enable)'
+													}
+												>
+													<BrainIcon className='w-5 h-5' />
+												</button>
+
+												{/* Attach file button */}
+												<button
+													type='button'
+													disabled={selectedAttachments.length >= 4}
+													onClick={() => {
+														if (selectedAttachments.length < 4) {
+															fileInputRef.current?.click();
+														}
+													}}
+													className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#8e90a6] disabled:hover:bg-transparent'
+													title={
+														selectedAttachments.length >= 4 ? 'Maximum 4 attachments reached' : 'Attach file (Max 4 attachments)'
+													}
+												>
+													<svg
+														width='20'
+														height='20'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
+														<path d='M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48' />
+													</svg>
+												</button>
+
+												<textarea
+													ref={(el) => {
+														promptTextareaRef.current = el;
+														autoResizeTextarea(el);
+													}}
+													rows={1}
+													placeholder='Write a message...'
+													value={inputText}
+													onChange={(e) => {
+														setInputText(e.target.value);
+														autoResizeTextarea(e.currentTarget);
+													}}
+													onInput={(e) => autoResizeTextarea(e.currentTarget)}
+													onKeyDown={(e) => {
+														if (e.key === 'Enter' && !e.shiftKey) {
+															e.preventDefault();
+															if (inputText.trim() || selectedAttachments.length > 0) {
+																handleSendMessage(e);
+															}
+														}
+													}}
+													className='flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]'
+												/>
+
+												<button
+													type='button'
+													className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0'
+													title='Emoji'
+												>
+													<svg
+														width='20'
+														height='20'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
+														<circle cx='12' cy='12' r='10' />
+														<path d='M8 14s1.5 2 4 2 4-2 4-2' />
+														<line x1='9' y1='9' x2='9.01' y2='9' />
+														<line x1='15' y1='9' x2='15.01' y2='9' />
+													</svg>
+												</button>
+
+												<button
+													type='submit'
+													className='w-11 h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0'
+													title='Send'
+												>
+													<svg
+														width='18'
+														height='18'
+														viewBox='0 0 24 24'
+														fill='none'
+														stroke='currentColor'
+														strokeWidth='2.5'
+														strokeLinecap='round'
+														strokeLinejoin='round'
+													>
+														<line x1='22' y1='2' x2='11' y2='13' />
+														<polygon points='22 2 15 22 11 13 2 9 22 2' />
+													</svg>
+												</button>
+											</div>
+										</form>
+									</section>
+								);
+							})()}
+
+							{/* ========================================================= */}
+							{/* 4. RIGHT INFO DRAWER (#f9fafc) */}
+							{/* ========================================================= */}
+							{activeChatId && chatItems.some((c) => c.id === activeChatId) ? (
+								<aside className='w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0'>
+									{/* Context Card */}
+									{(() => {
+										const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
+										const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
+										const selectedPref =
+											modelPreferences[selectedChatModelId] ||
+											modelPreferences[selectedPrefKey] ||
+											Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+
+										const props = selectedInst?.properties as any;
+										const rawNumCtx =
+											props?.num_ctx || props?.context_size || props?.numCtx || props?.context || selectedPref?.num_ctx || 4096;
+
+										const totalTokens = Number(rawNumCtx) || 4096;
+
+										let consumedTokens = 0;
+										const assistantMsgs = [...messages].reverse().filter((m) => !m.isSelf);
+
+										for (const msg of assistantMsgs) {
+											const metaAtt = msg.attachments?.find(
+												(a) => a.type?.toLowerCase() === 'metadata' || a.type?.toLowerCase() === 'data',
+											);
+											if (metaAtt && metaAtt.content) {
+												const promptMatch = metaAtt.content.match(/Prompt Eval Count\s*\|\s*(\d+)/i);
+												const evalMatch = metaAtt.content.match(/Eval Count\s*\|\s*(\d+)/i);
+												const promptCount = promptMatch ? parseInt(promptMatch[1], 10) : 0;
+												const evalCount = evalMatch ? parseInt(evalMatch[1], 10) : 0;
+												const totalMsgTokens = promptCount + evalCount;
+												if (totalMsgTokens > 0) {
+													consumedTokens = totalMsgTokens;
+													break;
+												}
+											}
+										}
+
+										const rawPercentage = (consumedTokens / totalTokens) * 100;
+										const percentage = Math.min(Math.round(rawPercentage), 100);
+										const isOverconsumed = consumedTokens >= totalTokens;
+
+										let cardBg = 'bg-white border-[#edf0f7] text-[#202022]';
+										let iconColor = '#7678ed';
+										let titleColor = 'text-[#202022]';
+										let textColor = 'text-[#5d6075] font-medium';
+										let trackBg = 'bg-[#f0f2f9] border-[#e8ebf3]';
+										let barColor = 'bg-emerald-500';
+										let badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+
+										if (isOverconsumed) {
+											cardBg = 'bg-rose-50/90 border-rose-200 text-rose-950 shadow-sm';
+											iconColor = '#e11d48';
+											titleColor = 'text-rose-900';
+											textColor = 'text-rose-800 font-semibold';
+											trackBg = 'bg-rose-100 border-rose-200';
+											barColor = 'bg-rose-600';
+											badgeBg = 'bg-rose-600 text-white border-rose-600 font-extrabold shadow-xs';
+										} else if (rawPercentage >= 90) {
+											barColor = 'bg-rose-500';
+											badgeBg = 'bg-rose-50 text-rose-700 border-rose-200';
+										} else if (rawPercentage >= 65) {
+											barColor = 'bg-amber-500';
+											badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
+										}
+
+										return (
+											<div className={`rounded-3xl p-5 shadow-xs border flex flex-col gap-3 transition-all duration-300 ${cardBg}`}>
+												<div className='flex items-center justify-between'>
+													<div className='flex items-center gap-2'>
+														<svg
+															width='20'
+															height='20'
+															viewBox='0 0 24 24'
+															fill='none'
+															stroke={iconColor}
 															strokeWidth='2.2'
 															strokeLinecap='round'
 															strokeLinejoin='round'
 														>
-															<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
-															<circle cx='12' cy='7' r='4' />
+															<rect x='2' y='2' width='20' height='8' rx='2' ry='2' />
+															<rect x='2' y='14' width='20' height='8' rx='2' ry='2' />
+															<line x1='6' y1='6' x2='6.01' y2='6' />
+															<line x1='6' y1='18' x2='6.01' y2='18' />
 														</svg>
+														<h3 className={`font-bold text-xl ${titleColor}`}>Context</h3>
 													</div>
+													<span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeBg}`}>{percentage}%</span>
 												</div>
-											);
-										} else {
-											{
-												/* Assistant / Incoming message (Role 'assistant' -> Left side, full width) */
-											}
-											const prefKey = (msg.senderName || '').toLowerCase();
-											const pref =
-												modelPreferences[prefKey] ||
-												modelPreferences[msg.senderName || ''] ||
-												(msg.model ? modelPreferences[msg.model.toLowerCase()] : undefined);
-											const avatarSrc =
-												msg.senderAvatar ||
-												formatAvatarPicture(pref?.picture) ||
-												DEFAULT_MODEL_AVATAR;
-											const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
-											const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
-											const modelVoice = pref?.voice || undefined;
 
-											const isThisMsgPlaying = ttsState.msgId === msg.id && ttsState.status === 'playing';
-											const isThisMsgActive = ttsState.msgId === msg.id && ttsState.status !== 'stopped';
-											const isEditingAssistant = editingMsgId === msg.id;
+												<p className={`text-sm ${textColor}`}>
+													Consumed {consumedTokens.toLocaleString()} from {totalTokens.toLocaleString()} tokens.
+												</p>
 
-											const thoughtAtt = msg.attachments?.find(
-												(a) => a.type?.toLowerCase() === 'thought' || a.type?.toLowerCase() === 'brain',
-											);
-											const metadataAtt = msg.attachments?.find(
-												(a) => a.type?.toLowerCase() === 'metadata' || a.type?.toLowerCase() === 'data',
-											);
-
-											return (
-												<div key={msg.id} className='flex items-start gap-3.5 w-full'>
-													<img
-														src={avatarSrc}
-														alt={displayName}
-														className='w-10 h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm'
+												<div className={`w-full rounded-full h-2.5 overflow-hidden p-0.5 border ${trackBg}`}>
+													<div
+														className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+														style={{ width: `${percentage}%` }}
 													/>
-													<div className='flex flex-col items-start flex-1 w-full min-w-0'>
-														<div className='bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-5 py-4 text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full'>
-															<div className='flex items-center justify-between gap-3 mb-1.5'>
-																<div className='flex items-center gap-2'>
-																	{/* TTS Controls in front of displayName */}
-																	{isThisMsgActive ? (
-																		<div className='flex items-center gap-1'>
-																			{isThisMsgPlaying ? (
-																				<button
-																					type='button'
-																					onClick={handlePauseTTS}
-																					className='p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center'
-																					title='Pause Speech'
-																				>
-																					<svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor'>
-																						<rect x='6' y='4' width='4' height='16' rx='1' />
-																						<rect x='14' y='4' width='4' height='16' rx='1' />
-																					</svg>
-																				</button>
-																			) : (
-																				<button
-																					type='button'
-																					onClick={handleResumeTTS}
-																					className='p-1.5 rounded-xl bg-[#7678ed] text-white hover:bg-[#6869d9] transition-all shadow-xs cursor-pointer flex items-center justify-center'
-																					title='Resume Speech'
-																				>
-																					<svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor'>
-																						<polygon points='5 3 19 12 5 21 5 3' />
-																					</svg>
-																				</button>
-																			)}
-																			<button
-																				type='button'
-																				onClick={handleStopTTS}
-																				className='p-1.5 rounded-xl bg-[#ff7a55] text-white hover:bg-[#e06845] transition-all shadow-xs cursor-pointer flex items-center justify-center'
-																				title='Stop Speech'
-																			>
-																				<svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor'>
-																					<rect x='4' y='4' width='16' height='16' rx='2' />
-																				</svg>
-																			</button>
-																		</div>
-																	) : (
-																		<button
-																			type='button'
-																			onClick={() => handlePlayTTS(msg.id, msg.content, modelVoice)}
-																			className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#7678ed] hover:bg-[#7678ed] hover:text-white transition-all shadow-xs cursor-pointer flex items-center justify-center'
-																			title='Play Speech'
-																		>
-																			<svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor'>
-																				<polygon points='5 3 19 12 5 21 5 3' />
-																			</svg>
-																		</button>
-																	)}
-																	<p className='text-base font-semibold text-[#7678ed]'>{displayName}</p>
-																</div>
-																<div className='flex items-center gap-1.5 shrink-0'>
-																	{thoughtAtt && (
-																		<button
-																			type='button'
-																			onClick={() =>
-																				setActiveAttachmentModal({
-																					title: thoughtAtt.name || 'Thought',
-																					type: 'thought',
-																					content: thoughtAtt.content,
-																				})
-																			}
-																			className='px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer'
-																			title='View Thought / Reasoning'
-																		>
-																			<BrainIcon className='w-3.5 h-3.5' />
-																			<span>Thought</span>
-																		</button>
-																	)}
-																	{metadataAtt && (
-																		<button
-																			type='button'
-																			onClick={() =>
-																				setActiveAttachmentModal({
-																					title: metadataAtt.name || 'Metadata',
-																					type: 'metadata',
-																					content: metadataAtt.content,
-																				})
-																			}
-																			className='px-2.5 py-1 rounded-xl bg-white border border-[#e2e5f1] hover:bg-[#7678ed] hover:text-white text-[#7678ed] transition-all text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer'
-																			title='View Metadata'
-																		>
-																			<MetadataIcon className='w-3.5 h-3.5' />
-																			<span>Metadata</span>
-																		</button>
-																	)}
-																	<button
-																		type='button'
-																		onClick={() => handleOpenForkModal(msg)}
-																		className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#7678ed] hover:border-[#7678ed] hover:bg-[#f4f6fc] transition-all shadow-xs cursor-pointer flex items-center justify-center'
-																		title='Fork Chat'
-																	>
-																		<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-																			<circle cx='12' cy='18' r='3' />
-																			<circle cx='6' cy='6' r='3' />
-																			<circle cx='18' cy='6' r='3' />
-																			<path d='M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9' />
-																			<path d='M12 12v3' />
-																		</svg>
-																	</button>
-																	<button
-																		type='button'
-																		onClick={() => handleStartInlineEdit(msg)}
-																		className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#7678ed] hover:border-[#7678ed] hover:bg-[#f4f6fc] transition-all shadow-xs cursor-pointer flex items-center justify-center'
-																		title='Edit Message'
-																	>
-																		<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-																			<path d='M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z' />
-																		</svg>
-																	</button>
-																	<button
-																		type='button'
-																		onClick={() => handleOpenDeleteMessageModal(msg)}
-																		className='p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#ff4d4f] hover:border-[#ff4d4f] hover:bg-[#fff1f0] transition-all shadow-xs cursor-pointer flex items-center justify-center'
-																		title='Delete Message'
-																	>
-																		<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-																			<polyline points='3 6 5 6 21 6' />
-																			<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
-																		</svg>
-																	</button>
-																</div>
-															</div>
-															<div className='leading-relaxed'>
-																{isEditingAssistant ? (
-																	<div className='flex flex-col gap-3 w-full my-2'>
-																		<textarea
-																			ref={autoResizeTextarea}
-																			rows={1}
-																			value={editingMsgContent}
-																			onChange={(e) => {
-																				setEditingMsgContent(e.target.value);
-																				autoResizeTextarea(e.currentTarget);
-																			}}
-																			onInput={(e) => autoResizeTextarea(e.currentTarget)}
-																			className='w-full bg-white border border-[#e2e5f1] text-[#202022] rounded-xl p-3.5 text-base outline-none focus:border-[#7678ed] focus:ring-1 focus:ring-[#7678ed] transition-all resize-none overflow-hidden font-normal leading-relaxed'
-																			autoFocus
-																		/>
-																		<div className='flex items-center justify-end gap-2'>
-																			<button
-																				type='button'
-																				onClick={() => setEditingMsgId(null)}
-																				className='px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#e2e5f1] hover:bg-[#d5d8e6] text-[#5d6075] transition-all cursor-pointer'
-																			>
-																				Cancel
-																			</button>
-																			<button
-																				type='button'
-																				onClick={handleSaveInlineEdit}
-																				disabled={!editingMsgContent.trim()}
-																				className='px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-xs cursor-pointer'
-																			>
-																				Save
-																			</button>
-																		</div>
-																	</div>
-																) : (
-																	renderMarkdownText(
-																		msg.content,
-																		msg.id === ttsState.msgId ? ttsState.lineIndex : undefined,
-																		(e, lineText, lineIdx) => {
-																			setLineContextMenu({
-																				x: e.clientX,
-																				y: e.clientY,
-																				msgId: msg.id,
-																				lineText,
-																				lineIndex: lineIdx,
-																				voice: modelVoice,
-																				fullContent: msg.content,
-																			});
-																		}
-																	)
-																)}
-																{(() => {
-																	const docAtts = (msg.attachments || []).filter(
-																		(att) => att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att)
-																	);
-																	if (docAtts.length === 0) return null;
-																	return (
-																		<div className="flex flex-col gap-2 mt-3 w-full max-w-full">
-																			{docAtts.map((att, idx) => {
-																				const ext = att.name ? att.name.split(".").pop()?.toLowerCase() || "txt" : "file";
-																				return <DocumentAttachmentCard key={att.id || idx} attachment={att} extension={ext} isSelf={false} />;
-																			})}
-																		</div>
-																	);
-																})()}
-															</div>
-															<div className='flex items-center justify-between gap-4 mt-2.5 pt-1'>
-																{msg.reactions && msg.reactions.length > 0 && (
-																	<div className='flex items-center gap-1.5'>
-																		{msg.reactions.map((r, i) => (
-																			<span
-																				key={i}
-																				className='inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white border border-[#e2e5f1] rounded-full text-base font-medium text-[#4a4d63] shadow-xs'
-																			>
-																				<span>{r.emoji}</span> {r.count}
-																			</span>
-																		))}
-																	</div>
-																)}
-																<div className='flex items-center gap-2 text-sm text-[#8e90a6]'>
-																	{msg.views !== undefined && (
-																		<span className='flex items-center gap-1'>
-																			<svg
-																				width='14'
-																				height='14'
-																				viewBox='0 0 24 24'
-																				fill='none'
-																				stroke='currentColor'
-																				strokeWidth='2'
-																			>
-																				<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' />
-																				<circle cx='12' cy='12' r='3' />
-																			</svg>
-																			{msg.views}
-																		</span>
-																	)}
-																	<span>{msg.time}</span>
-																</div>
-															</div>
-														</div>
-													</div>
 												</div>
-											);
-										}
-									})
-									)}
-									{messages.length > 0 && messages[messages.length - 1].isSelf && (
-										<div className='flex justify-center my-3 animate-in fade-in duration-200 select-none'>
-											<button
-												type='button'
-												onClick={handleCallForAnswer}
-												className='px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer flex items-center gap-2'
-											>
-												<span>🤖</span>
-												<span>Call for an answer</span>
-											</button>
-										</div>
-									)}
-									<div ref={messagesEndRef} />
-								</div>
+											</div>
+										);
+									})()}
 
-								{/* Input Composer */}
-								<form onSubmit={handleSendMessage} className='p-4 px-8 border-t border-[#eef0f6] bg-white flex flex-col gap-3'>
-									<input
-										type='file'
-										ref={fileInputRef}
-										accept='image/*,.txt,.md,.css,.js,.jsx,.ts,.tsx,.php,.py,.html,.json,.xml,.csv,.c,.cpp,.h,.hpp,.cs,.java,.rb,.rs,.go,.sql,.sh,.yaml,.yml,.dockerfile,.env,.odt,.docx,.pptx,.pdf'
-										multiple
-										onChange={handleAttachmentSelect}
-										className='hidden'
-									/>
+									{/* 1. Members Card (Middle) */}
+									{(() => {
+										const participants = getConversationParticipants();
+										return (
+											<div className='bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]'>
+												<div className='flex items-center justify-between mb-4'>
+													<h3 className='font-bold text-xl text-[#202022]'>{participants.length} members</h3>
+												</div>
 
-									{/* Attachments Preview Strip */}
-									{selectedAttachments.length > 0 && (
-										<div className='flex items-center gap-3 px-1 py-1.5 overflow-x-auto w-full border-b border-[#eef0f6]/60 pb-3'>
-											{selectedAttachments.map((att, idx) =>
-												att.type === 'image' ? (
-													<div key={att.id || idx} className='relative group w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#e2e5f1] shadow-xs bg-[#f4f6fc]'>
-														<img src={att.content} alt={att.name || `Selected ${idx + 1}`} className='w-full h-full object-cover' />
-														<button
-															type='button'
-															onClick={() => handleRemoveSelectedAttachment(idx)}
-															className='absolute top-1 right-1 bg-black/60 hover:bg-[#ff4d4f] text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer shadow-sm'
-															title='Remove image'
-														>
-															<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
-																<line x1='18' y1='6' x2='6' y2='18' />
-																<line x1='6' y1='6' x2='18' y2='18' />
-															</svg>
-														</button>
-													</div>
-												) : (
-													<div key={att.id || idx} className='relative group flex items-center gap-2.5 px-3 py-2 rounded-xl border border-[#7678ed]/30 bg-[#7678ed]/5 hover:bg-[#7678ed]/10 transition-all shrink-0 max-w-[220px] shadow-2xs'>
-														<div className='w-8 h-8 rounded-lg bg-[#7678ed]/15 text-[#7678ed] flex items-center justify-center shrink-0 font-bold text-xs uppercase'>
-															{att.extension || 'txt'}
+												{/* Members List */}
+												<div className='space-y-3.5 max-h-[300px] overflow-y-auto pr-1'>
+													{participants.map((p) => (
+														<div key={p.id} className='flex items-center gap-3'>
+															{p.id === 'user' ? (
+																<div className='w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs'>
+																	<svg
+																		width='20'
+																		height='20'
+																		viewBox='0 0 24 24'
+																		fill='none'
+																		stroke='currentColor'
+																		strokeWidth='2.2'
+																		strokeLinecap='round'
+																		strokeLinejoin='round'
+																	>
+																		<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
+																		<circle cx='12' cy='7' r='4' />
+																	</svg>
+																</div>
+															) : (
+																<img
+																	src={p.avatar}
+																	alt={p.name}
+																	className='w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0'
+																/>
+															)}
+															<div className='flex-1 min-w-0'>
+																<h5 className='font-semibold text-base text-[#202022] truncate'>{p.name}</h5>
+																<span className='text-sm font-medium text-[#7678ed]'>{p.role}</span>
+															</div>
 														</div>
-														<div className='flex flex-col min-w-0 flex-1 pr-1'>
-															<span className='text-xs font-semibold text-[#2d3142] truncate' title={att.name}>{att.name}</span>
-															<span className='text-[10px] text-[#8e90a6] font-medium'>
-																{att.size ? `${(att.size / 1024).toFixed(1)} KB` : 'Document'}
-															</span>
-														</div>
-														<button
-															type='button'
-															onClick={() => handleRemoveSelectedAttachment(idx)}
-															className='text-[#8e90a6] hover:text-[#ff4d4f] p-1 rounded-full hover:bg-black/5 transition-all cursor-pointer shrink-0'
-															title='Remove attachment'
-														>
-															<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
-																<line x1='18' y1='6' x2='6' y2='18' />
-																<line x1='6' y1='6' x2='18' y2='18' />
-															</svg>
-														</button>
-													</div>
-												)
-											)}
-											{selectedAttachments.length < 4 && (
-												<span className='text-xs text-[#8e90a6] font-medium ml-1 select-none whitespace-nowrap'>
-													{selectedAttachments.length}/4 attachments
-												</span>
-											)}
-										</div>
-									)}
+													))}
+												</div>
+											</div>
+										);
+									})()}
 
-									<div className='flex items-center gap-2.5 w-full'>
-										{/* Combined Model & Instance Selector Button */}
-										{(() => {
-											const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
-											const selectedInstName = selectedInst?.properties?.name || selectedInst?.type || 'Instance';
-											const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
-											const selectedPref =
-												modelPreferences[selectedChatModelId] ||
-												modelPreferences[selectedPrefKey] ||
-												Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+									{/* 2. Attachments Card (Bottom - Collapsed by default) */}
+									{(() => {
+										const atts = getConversationAttachments();
+										const totalCount = atts.photos.length + atts.otherFiles.length;
 
-											let selectedModelName = selectedChatModelId;
-											if (selectedPref) {
-												selectedModelName = getCharacterName(selectedPref.character) || (selectedPref as any).name || selectedPref.id;
-											} else if (selectedChatModelId) {
-												const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
-												if (instMod) {
-													selectedModelName = instMod.name || instMod.id;
-												}
-											}
-
-											if (!selectedModelName) {
-												selectedModelName = 'Select Model';
-											}
-
-											return (
+										return (
+											<div className='bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]'>
+												{/* Card Header with Collapse Toggle */}
 												<button
-													type='button'
-													onClick={() => setIsSelectModelModalOpen(true)}
-													className='group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2.5 hover:px-3.5 hover:bg-[#eaecf9] transition-all duration-300 ease-in-out shadow-xs cursor-pointer text-xs font-bold text-[#202022] max-w-[42px] hover:max-w-[340px] overflow-hidden'
-													title={`Model: ${selectedModelName} @ ${selectedInstName}`}
+													onClick={() => setIsAttachmentsExpanded(!isAttachmentsExpanded)}
+													className='w-full flex items-center justify-between cursor-pointer select-none'
 												>
-													<div className='flex items-center gap-2 pl-1 shrink-0'>
+													<div className='flex items-center gap-2'>
+														<h3 className='font-bold text-xl text-[#202022]'>Attachments</h3>
+														<span className='text-sm font-semibold text-white bg-[#7678ed] px-2.5 py-0.5 rounded-full'>
+															{totalCount}
+														</span>
+													</div>
+													<div className='p-1 text-[#8e90a6] hover:text-[#202022] transition-colors'>
 														<svg
 															width='18'
 															height='18'
 															viewBox='0 0 24 24'
 															fill='none'
 															stroke='currentColor'
-															strokeWidth='2'
+															strokeWidth='2.2'
 															strokeLinecap='round'
 															strokeLinejoin='round'
-															className='text-[#7678ed] shrink-0'
+															className={`transition-transform duration-200 ${isAttachmentsExpanded ? 'rotate-180' : ''}`}
 														>
-															<rect x='2' y='3' width='20' height='14' rx='2' ry='2' />
-															<line x1='8' y1='21' x2='16' y2='21' />
-															<line x1='12' y1='17' x2='12' y2='21' />
+															<polyline points='6 9 12 15 18 9' />
 														</svg>
-														<div className='flex items-center gap-1.5 opacity-0 max-w-0 group-hover:opacity-100 group-hover:max-w-[280px] transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden'>
-															<span className='truncate'>{selectedModelName}</span>
-															<span className='text-[#8e90a6] font-semibold'>@</span>
-															<span className='text-[#7678ed] truncate'>{selectedInstName}</span>
-															<svg
-																width='14'
-																height='14'
-																viewBox='0 0 24 24'
-																fill='none'
-																stroke='#8e90a6'
-																strokeWidth='2.2'
-																strokeLinecap='round'
-																strokeLinejoin='round'
-																className='ml-0.5 shrink-0 group-hover:text-[#202022] transition-colors'
-															>
-																<polyline points='6 9 12 15 18 9' />
-															</svg>
-														</div>
 													</div>
 												</button>
-											);
-										})()}
 
-										{/* 3. Thinking Mode Brain Toggle Button */}
-										<button
-											type='button'
-											onClick={() => setIsThinkingEnabled((prev) => !prev)}
-											className={`p-2.5 rounded-2xl transition-all cursor-pointer shrink-0 border flex items-center justify-center ${
-												isThinkingEnabled
-													? 'bg-[#7678ed]/10 border-[#7678ed] text-[#7678ed] opacity-100 shadow-xs'
-													: 'bg-[#f0f2f9] border-[#e8ebf3] text-[#8e90a6] hover:bg-[#eaecf9] opacity-40 hover:opacity-70'
-											}`}
-											title={isThinkingEnabled ? 'Thinking Mode Enabled (think=True)' : 'Thinking Mode Disabled (click to enable)'}
-										>
-											<BrainIcon className='w-5 h-5' />
-										</button>
+												{/* Collapsible Content */}
+												{isAttachmentsExpanded && (
+													<div className='mt-4 pt-3 border-t border-[#edf0f7] space-y-4'>
+														{totalCount === 0 ? (
+															<p className='text-sm text-[#8e90a6] italic'>No attachments in this conversation.</p>
+														) : (
+															<>
+																{/* Photos / Images */}
+																{atts.photos.length > 0 && (
+																	<div>
+																		<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
+																			<svg
+																				width='15'
+																				height='15'
+																				viewBox='0 0 24 24'
+																				fill='none'
+																				stroke='currentColor'
+																				strokeWidth='2'
+																			>
+																				<rect x='3' y='3' width='18' height='18' rx='2' ry='2' />
+																				<circle cx='8.5' cy='8.5' r='1.5' />
+																				<polyline points='21 15 16 10 5 21' />
+																			</svg>
+																			Photos ({atts.photos.length})
+																		</p>
+																		<div className='grid grid-cols-2 gap-2'>
+																			{atts.photos.map((src, idx) => (
+																				<img
+																					key={idx}
+																					src={src}
+																					alt={`Photo ${idx + 1}`}
+																					className='w-full h-20 object-cover rounded-xl shadow-xs cursor-pointer hover:opacity-90 transition-opacity border border-[#edf0f7]'
+																					onClick={() => setActiveImageModal({ src, title: `Photo ${idx + 1}` })}
+																				/>
+																			))}
+																		</div>
+																	</div>
+																)}
 
-										{/* Attach file button */}
-										<button
-											type='button'
-											disabled={selectedAttachments.length >= 4}
-											onClick={() => {
-												if (selectedAttachments.length < 4) {
-													fileInputRef.current?.click();
-												}
-											}}
-											className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#8e90a6] disabled:hover:bg-transparent'
-											title={selectedAttachments.length >= 4 ? 'Maximum 4 attachments reached' : 'Attach file (Max 4 attachments)'}
-										>
-											<svg
-												width='20'
-												height='20'
-												viewBox='0 0 24 24'
-												fill='none'
-												stroke='currentColor'
-												strokeWidth='2'
-												strokeLinecap='round'
-												strokeLinejoin='round'
-											>
-												<path d='M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48' />
-											</svg>
-										</button>
-
-										<textarea
-											ref={(el) => {
-												promptTextareaRef.current = el;
-												autoResizeTextarea(el);
-											}}
-											rows={1}
-											placeholder='Write a message...'
-											value={inputText}
-											onChange={(e) => {
-												setInputText(e.target.value);
-												autoResizeTextarea(e.currentTarget);
-											}}
-											onInput={(e) => autoResizeTextarea(e.currentTarget)}
-											onKeyDown={(e) => {
-												if (e.key === 'Enter' && !e.shiftKey) {
-													e.preventDefault();
-													if (inputText.trim() || selectedAttachments.length > 0) {
-														handleSendMessage(e);
-													}
-												}
-											}}
-											className='flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]'
-										/>
-
-										<button
-											type='button'
-											className='p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0'
-											title='Emoji'
-										>
-											<svg
-												width='20'
-												height='20'
-												viewBox='0 0 24 24'
-												fill='none'
-												stroke='currentColor'
-												strokeWidth='2'
-												strokeLinecap='round'
-												strokeLinejoin='round'
-											>
-												<circle cx='12' cy='12' r='10' />
-												<path d='M8 14s1.5 2 4 2 4-2 4-2' />
-												<line x1='9' y1='9' x2='9.01' y2='9' />
-												<line x1='15' y1='9' x2='15.01' y2='9' />
-											</svg>
-										</button>
-
-										<button
-											type='submit'
-											className='w-11 h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0'
-											title='Send'
-										>
-											<svg
-												width='18'
-												height='18'
-												viewBox='0 0 24 24'
-												fill='none'
-												stroke='currentColor'
-												strokeWidth='2.5'
-												strokeLinecap='round'
-												strokeLinejoin='round'
-											>
-												<line x1='22' y1='2' x2='11' y2='13' />
-												<polygon points='22 2 15 22 11 13 2 9 22 2' />
-											</svg>
-										</button>
-									</div>
-								</form>
-							</section>
-						);
-					})()}
-
-					{/* ========================================================= */}
-					{/* 4. RIGHT INFO DRAWER (#f9fafc) */}
-					{/* ========================================================= */}
-					{activeChatId && chatItems.some((c) => c.id === activeChatId) ? (
-						<aside className='w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0'>
-							{/* Context Card */}
-							{(() => {
-								const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
-								const selectedPrefKey = (selectedChatModelId || '').toLowerCase();
-								const selectedPref =
-									modelPreferences[selectedChatModelId] ||
-									modelPreferences[selectedPrefKey] ||
-									Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
-
-								const props = selectedInst?.properties as any;
-								const rawNumCtx =
-									props?.num_ctx ||
-									props?.context_size ||
-									props?.numCtx ||
-									props?.context ||
-									selectedPref?.num_ctx ||
-									4096;
-
-								const totalTokens = Number(rawNumCtx) || 4096;
-
-								let consumedTokens = 0;
-								const assistantMsgs = [...messages].reverse().filter((m) => !m.isSelf);
-
-								for (const msg of assistantMsgs) {
-									const metaAtt = msg.attachments?.find(
-										(a) => a.type?.toLowerCase() === 'metadata' || a.type?.toLowerCase() === 'data'
-									);
-									if (metaAtt && metaAtt.content) {
-										const promptMatch = metaAtt.content.match(/Prompt Eval Count\s*\|\s*(\d+)/i);
-										const evalMatch = metaAtt.content.match(/Eval Count\s*\|\s*(\d+)/i);
-										const promptCount = promptMatch ? parseInt(promptMatch[1], 10) : 0;
-										const evalCount = evalMatch ? parseInt(evalMatch[1], 10) : 0;
-										const totalMsgTokens = promptCount + evalCount;
-										if (totalMsgTokens > 0) {
-											consumedTokens = totalMsgTokens;
-											break;
-										}
-									}
-								}
-
-								const rawPercentage = (consumedTokens / totalTokens) * 100;
-								const percentage = Math.min(Math.round(rawPercentage), 100);
-								const isOverconsumed = consumedTokens >= totalTokens;
-
-								let cardBg = 'bg-white border-[#edf0f7] text-[#202022]';
-								let iconColor = '#7678ed';
-								let titleColor = 'text-[#202022]';
-								let textColor = 'text-[#5d6075] font-medium';
-								let trackBg = 'bg-[#f0f2f9] border-[#e8ebf3]';
-								let barColor = 'bg-emerald-500';
-								let badgeBg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-
-								if (isOverconsumed) {
-									cardBg = 'bg-rose-50/90 border-rose-200 text-rose-950 shadow-sm';
-									iconColor = '#e11d48';
-									titleColor = 'text-rose-900';
-									textColor = 'text-rose-800 font-semibold';
-									trackBg = 'bg-rose-100 border-rose-200';
-									barColor = 'bg-rose-600';
-									badgeBg = 'bg-rose-600 text-white border-rose-600 font-extrabold shadow-xs';
-								} else if (rawPercentage >= 90) {
-									barColor = 'bg-rose-500';
-									badgeBg = 'bg-rose-50 text-rose-700 border-rose-200';
-								} else if (rawPercentage >= 65) {
-									barColor = 'bg-amber-500';
-									badgeBg = 'bg-amber-50 text-amber-700 border-amber-200';
-								}
-
-								return (
-									<div className={`rounded-3xl p-5 shadow-xs border flex flex-col gap-3 transition-all duration-300 ${cardBg}`}>
-										<div className='flex items-center justify-between'>
-											<div className='flex items-center gap-2'>
-												<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke={iconColor} strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
-													<rect x='2' y='2' width='20' height='8' rx='2' ry='2' />
-													<rect x='2' y='14' width='20' height='8' rx='2' ry='2' />
-													<line x1='6' y1='6' x2='6.01' y2='6' />
-													<line x1='6' y1='18' x2='6.01' y2='18' />
-												</svg>
-												<h3 className={`font-bold text-xl ${titleColor}`}>Context</h3>
-											</div>
-											<span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeBg}`}>
-												{percentage}%
-											</span>
-										</div>
-
-										<p className={`text-sm ${textColor}`}>
-											Consumed {consumedTokens.toLocaleString()} from {totalTokens.toLocaleString()} tokens.
-										</p>
-
-										<div className={`w-full rounded-full h-2.5 overflow-hidden p-0.5 border ${trackBg}`}>
-											<div
-												className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-												style={{ width: `${percentage}%` }}
-											/>
-										</div>
-									</div>
-								);
-							})()}
-
-							{/* 1. Members Card (Middle) */}
-							{(() => {
-								const participants = getConversationParticipants();
-								return (
-									<div className='bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]'>
-										<div className='flex items-center justify-between mb-4'>
-											<h3 className='font-bold text-xl text-[#202022]'>{participants.length} members</h3>
-										</div>
-
-										{/* Members List */}
-										<div className='space-y-3.5 max-h-[300px] overflow-y-auto pr-1'>
-											{participants.map((p) => (
-												<div key={p.id} className='flex items-center gap-3'>
-													{p.id === 'user' ? (
-														<div className='w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs'>
-															<svg
-																width='20'
-																height='20'
-																viewBox='0 0 24 24'
-																fill='none'
-																stroke='currentColor'
-																strokeWidth='2.2'
-																strokeLinecap='round'
-																strokeLinejoin='round'
-															>
-																<path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
-																<circle cx='12' cy='7' r='4' />
-															</svg>
-														</div>
-													) : (
-														<img src={p.avatar} alt={p.name} className='w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0' />
-													)}
-													<div className='flex-1 min-w-0'>
-														<h5 className='font-semibold text-base text-[#202022] truncate'>{p.name}</h5>
-														<span className='text-sm font-medium text-[#7678ed]'>{p.role}</span>
+																{/* Other Files */}
+																{atts.otherFiles.length > 0 && (
+																	<div>
+																		<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
+																			<svg
+																				width='15'
+																				height='15'
+																				viewBox='0 0 24 24'
+																				fill='none'
+																				stroke='currentColor'
+																				strokeWidth='2'
+																			>
+																				<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' />
+																				<polyline points='14 2 14 8 20 8' />
+																			</svg>
+																			Files ({atts.otherFiles.length})
+																		</p>
+																		<div className='space-y-1.5'>
+																			{atts.otherFiles.map((item, idx) => (
+																				<button
+																					key={idx}
+																					onClick={() =>
+																						setActiveAttachmentModal({
+																							title: item.name || 'Attachment',
+																							type: item.type || 'file',
+																							content: item.content,
+																						})
+																					}
+																					className='w-full text-left px-3 py-2 rounded-xl bg-[#f8f9fe] hover:bg-[#7678ed] hover:text-white text-[#202022] transition-colors text-sm font-medium flex items-center justify-between border border-[#e8ebf3] group cursor-pointer'
+																				>
+																					<span className='truncate'>{item.name || `File ${idx + 1}`}</span>
+																				</button>
+																			))}
+																		</div>
+																	</div>
+																)}
+															</>
+														)}
 													</div>
-												</div>
-											))}
-										</div>
-									</div>
-								);
-							})()}
-
-							{/* 2. Attachments Card (Bottom - Collapsed by default) */}
-							{(() => {
-								const atts = getConversationAttachments();
-								const totalCount = atts.photos.length + atts.otherFiles.length;
-
-								return (
-									<div className='bg-white rounded-3xl p-5 shadow-xs border border-[#edf0f7]'>
-										{/* Card Header with Collapse Toggle */}
-										<button
-											onClick={() => setIsAttachmentsExpanded(!isAttachmentsExpanded)}
-											className='w-full flex items-center justify-between cursor-pointer select-none'
-										>
-											<div className='flex items-center gap-2'>
-												<h3 className='font-bold text-xl text-[#202022]'>Attachments</h3>
-												<span className='text-sm font-semibold text-white bg-[#7678ed] px-2.5 py-0.5 rounded-full'>{totalCount}</span>
-											</div>
-											<div className='p-1 text-[#8e90a6] hover:text-[#202022] transition-colors'>
-												<svg
-													width='18'
-													height='18'
-													viewBox='0 0 24 24'
-													fill='none'
-													stroke='currentColor'
-													strokeWidth='2.2'
-													strokeLinecap='round'
-													strokeLinejoin='round'
-													className={`transition-transform duration-200 ${isAttachmentsExpanded ? 'rotate-180' : ''}`}
-												>
-													<polyline points='6 9 12 15 18 9' />
-												</svg>
-											</div>
-										</button>
-
-										{/* Collapsible Content */}
-										{isAttachmentsExpanded && (
-											<div className='mt-4 pt-3 border-t border-[#edf0f7] space-y-4'>
-												{totalCount === 0 ? (
-													<p className='text-sm text-[#8e90a6] italic'>No attachments in this conversation.</p>
-												) : (
-													<>
-														{/* Photos / Images */}
-														{atts.photos.length > 0 && (
-															<div>
-																<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
-																	<svg
-																		width='15'
-																		height='15'
-																		viewBox='0 0 24 24'
-																		fill='none'
-																		stroke='currentColor'
-																		strokeWidth='2'
-																	>
-																		<rect x='3' y='3' width='18' height='18' rx='2' ry='2' />
-																		<circle cx='8.5' cy='8.5' r='1.5' />
-																		<polyline points='21 15 16 10 5 21' />
-																	</svg>
-																	Photos ({atts.photos.length})
-																</p>
-																<div className='grid grid-cols-2 gap-2'>
-																	{atts.photos.map((src, idx) => (
-																		<img
-																			key={idx}
-																			src={src}
-																			alt={`Photo ${idx + 1}`}
-																			className='w-full h-20 object-cover rounded-xl shadow-xs cursor-pointer hover:opacity-90 transition-opacity border border-[#edf0f7]'
-																			onClick={() => setActiveImageModal({ src, title: `Photo ${idx + 1}` })}
-																		/>
-																	))}
-																</div>
-															</div>
-														)}
-
-														{/* Other Files */}
-														{atts.otherFiles.length > 0 && (
-															<div>
-																<p className='text-sm font-semibold text-[#8e90a6] uppercase tracking-wider mb-2 flex items-center gap-1.5'>
-																	<svg
-																		width='15'
-																		height='15'
-																		viewBox='0 0 24 24'
-																		fill='none'
-																		stroke='currentColor'
-																		strokeWidth='2'
-																	>
-																		<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' />
-																		<polyline points='14 2 14 8 20 8' />
-																	</svg>
-																	Files ({atts.otherFiles.length})
-																</p>
-																<div className='space-y-1.5'>
-																	{atts.otherFiles.map((item, idx) => (
-																		<button
-																			key={idx}
-																			onClick={() =>
-																				setActiveAttachmentModal({
-																					title: item.name || 'Attachment',
-																					type: item.type || 'file',
-																					content: item.content,
-																				})
-																			}
-																			className='w-full text-left px-3 py-2 rounded-xl bg-[#f8f9fe] hover:bg-[#7678ed] hover:text-white text-[#202022] transition-colors text-sm font-medium flex items-center justify-between border border-[#e8ebf3] group cursor-pointer'
-																		>
-																			<span className='truncate'>{item.name || `File ${idx + 1}`}</span>
-																		</button>
-																	))}
-																</div>
-															</div>
-														)}
-													</>
 												)}
 											</div>
-										)}
-									</div>
-								);
-							})()}
-						</aside>
-					) : null}
+										);
+									})()}
+								</aside>
+							) : null}
 						</>
 					)}
 				</div>
@@ -6174,7 +7296,16 @@ export default function AlpacaWebPage() {
 					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
 						<div className='flex items-center justify-between mb-3'>
 							<div className='flex items-center gap-2.5 text-[#7678ed] font-bold text-lg'>
-								<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+								<svg
+									width='20'
+									height='20'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<circle cx='12' cy='18' r='3' />
 									<circle cx='6' cy='6' r='3' />
 									<circle cx='18' cy='6' r='3' />
@@ -6184,7 +7315,16 @@ export default function AlpacaWebPage() {
 								<span>Fork Conversation?</span>
 							</div>
 							<button onClick={() => setIsForkModalOpen(false)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
-								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<line x1='18' y1='6' x2='6' y2='18' />
 									<line x1='6' y1='6' x2='18' y2='18' />
 								</svg>
@@ -6276,8 +7416,20 @@ export default function AlpacaWebPage() {
 					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
 						<div className='flex items-center justify-between mb-4'>
 							<h3 className='text-lg font-bold tracking-tight'>Duplicate Chat</h3>
-							<button onClick={() => setIsDuplicateModalOpen(false)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
-								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+							<button
+								onClick={() => setIsDuplicateModalOpen(false)}
+								className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'
+							>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<line x1='18' y1='6' x2='6' y2='18' />
 									<line x1='6' y1='6' x2='18' y2='18' />
 								</svg>
@@ -6313,7 +7465,16 @@ export default function AlpacaWebPage() {
 						<div className='flex items-center justify-between mb-4'>
 							<div className='flex items-center gap-2.5'>
 								<div className='w-9 h-9 rounded-xl bg-[#7678ed]/20 text-[#7678ed] flex items-center justify-center'>
-									<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<svg
+										width='20'
+										height='20'
+										viewBox='0 0 24 24'
+										fill='none'
+										stroke='currentColor'
+										strokeWidth='2.2'
+										strokeLinecap='round'
+										strokeLinejoin='round'
+									>
 										<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
 										<polyline points='7 10 12 15 17 10' />
 										<line x1='12' y1='15' x2='12' y2='3' />
@@ -6325,7 +7486,16 @@ export default function AlpacaWebPage() {
 								</div>
 							</div>
 							<button onClick={() => setIsExportModalOpen(false)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
-								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<line x1='18' y1='6' x2='6' y2='18' />
 									<line x1='6' y1='6' x2='18' y2='18' />
 								</svg>
@@ -6341,13 +7511,21 @@ export default function AlpacaWebPage() {
 										: 'bg-[#2d2d30]/60 border-white/10 text-white/70 hover:bg-[#2d2d30]'
 								}`}
 							>
-								<input type='radio' name='exportFormat' checked={exportFormat === 'md'} onChange={() => setExportFormat('md')} className='mt-1 accent-[#7678ed]' />
+								<input
+									type='radio'
+									name='exportFormat'
+									checked={exportFormat === 'md'}
+									onChange={() => setExportFormat('md')}
+									className='mt-1 accent-[#7678ed]'
+								/>
 								<div>
 									<div className='text-sm font-semibold text-white flex items-center gap-2'>
 										<span>Standard Markdown (.md)</span>
 										<span className='px-2 py-0.5 text-[10px] rounded-md bg-white/10 text-white/80 font-mono'>DEFAULT</span>
 									</div>
-									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>Formatted Markdown transcript with timestamps and attachment blocks</p>
+									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>
+										Formatted Markdown transcript with timestamps and attachment blocks
+									</p>
 								</div>
 							</label>
 
@@ -6359,10 +7537,18 @@ export default function AlpacaWebPage() {
 										: 'bg-[#2d2d30]/60 border-white/10 text-white/70 hover:bg-[#2d2d30]'
 								}`}
 							>
-								<input type='radio' name='exportFormat' checked={exportFormat === 'obsidian'} onChange={() => setExportFormat('obsidian')} className='mt-1 accent-[#7678ed]' />
+								<input
+									type='radio'
+									name='exportFormat'
+									checked={exportFormat === 'obsidian'}
+									onChange={() => setExportFormat('obsidian')}
+									className='mt-1 accent-[#7678ed]'
+								/>
 								<div>
 									<div className='text-sm font-semibold text-white'>Obsidian Markdown (.md)</div>
-									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>Uses Obsidian callouts (&gt; [!quote]- filename) for attachments</p>
+									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>
+										Uses Obsidian callouts (&gt; [!quote]- filename) for attachments
+									</p>
 								</div>
 							</label>
 
@@ -6374,10 +7560,18 @@ export default function AlpacaWebPage() {
 										: 'bg-[#2d2d30]/60 border-white/10 text-white/70 hover:bg-[#2d2d30]'
 								}`}
 							>
-								<input type='radio' name='exportFormat' checked={exportFormat === 'json'} onChange={() => setExportFormat('json')} className='mt-1 accent-[#7678ed]' />
+								<input
+									type='radio'
+									name='exportFormat'
+									checked={exportFormat === 'json'}
+									onChange={() => setExportFormat('json')}
+									className='mt-1 accent-[#7678ed]'
+								/>
 								<div>
 									<div className='text-sm font-semibold text-white'>JSON (.json)</div>
-									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>Structured JSON containing chat metadata, messages, and attachments</p>
+									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>
+										Structured JSON containing chat metadata, messages, and attachments
+									</p>
 								</div>
 							</label>
 
@@ -6389,7 +7583,13 @@ export default function AlpacaWebPage() {
 										: 'bg-[#2d2d30]/60 border-white/10 text-white/70 hover:bg-[#2d2d30]'
 								}`}
 							>
-								<input type='radio' name='exportFormat' checked={exportFormat === 'txt'} onChange={() => setExportFormat('txt')} className='mt-1 accent-[#7678ed]' />
+								<input
+									type='radio'
+									name='exportFormat'
+									checked={exportFormat === 'txt'}
+									onChange={() => setExportFormat('txt')}
+									className='mt-1 accent-[#7678ed]'
+								/>
 								<div>
 									<div className='text-sm font-semibold text-white'>Plain Text (.txt)</div>
 									<p className='text-xs text-white/60 mt-0.5 leading-relaxed'>Simple text transcript suitable for any text editor</p>
@@ -6410,7 +7610,16 @@ export default function AlpacaWebPage() {
 								onClick={handleExportChat}
 								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] text-white transition-all shadow-md shadow-[#7678ed]/30 flex items-center gap-2 cursor-pointer'
 							>
-								<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+								<svg
+									width='16'
+									height='16'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
 									<polyline points='7 10 12 15 17 10' />
 									<line x1='12' y1='15' x2='12' y2='3' />
@@ -6429,7 +7638,16 @@ export default function AlpacaWebPage() {
 						<div className='flex items-center justify-between mb-2'>
 							<h3 className='text-lg font-bold text-[#ff4d4f]'>Delete Message?</h3>
 							<button onClick={() => setDeletingMsg(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
-								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<line x1='18' y1='6' x2='6' y2='18' />
 									<line x1='6' y1='6' x2='18' y2='18' />
 								</svg>
@@ -6466,7 +7684,16 @@ export default function AlpacaWebPage() {
 						<div className='flex items-center justify-between pb-4 border-b border-[#eef0f6] shrink-0 mb-4'>
 							<div className='flex items-center gap-2.5'>
 								<div className='w-10 h-10 rounded-2xl bg-[#7678ed]/10 text-[#7678ed] flex items-center justify-center font-bold shrink-0 shadow-xs border border-[#7678ed]/20'>
-									<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+									<svg
+										width='20'
+										height='20'
+										viewBox='0 0 24 24'
+										fill='none'
+										stroke='currentColor'
+										strokeWidth='2.2'
+										strokeLinecap='round'
+										strokeLinejoin='round'
+									>
 										<path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' />
 										<circle cx='9' cy='7' r='4' />
 										<path d='M22 21v-2a4 4 0 0 0-3-3.87' />
@@ -6483,7 +7710,16 @@ export default function AlpacaWebPage() {
 								className='p-1.5 text-[#8e90a6] hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer'
 								title='Close'
 							>
-								<svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+								<svg
+									width='20'
+									height='20'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<line x1='18' y1='6' x2='6' y2='18' />
 									<line x1='6' y1='6' x2='18' y2='18' />
 								</svg>
@@ -6492,7 +7728,17 @@ export default function AlpacaWebPage() {
 
 						{/* Search Input */}
 						<div className='mb-4 relative shrink-0'>
-							<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='#8e90a6' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' className='absolute left-3.5 top-3.5'>
+							<svg
+								width='16'
+								height='16'
+								viewBox='0 0 24 24'
+								fill='none'
+								stroke='#8e90a6'
+								strokeWidth='2'
+								strokeLinecap='round'
+								strokeLinejoin='round'
+								className='absolute left-3.5 top-3.5'
+							>
 								<circle cx='11' cy='11' r='8' />
 								<line x1='21' y1='21' x2='16.65' y2='16.65' />
 							</svg>
@@ -6510,13 +7756,13 @@ export default function AlpacaWebPage() {
 							{(() => {
 								const query = modelModalSearchQuery.toLowerCase().trim();
 
-								const prefList = Array.from(
-									new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()
-								).filter((pref) => {
-									if (!query) return true;
-									const prefName = (getCharacterName(pref.character) || pref.name || pref.id).toLowerCase();
-									return prefName.includes(query) || pref.id.toLowerCase().includes(query);
-								});
+								const prefList = Array.from(new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()).filter(
+									(pref) => {
+										if (!query) return true;
+										const prefName = (getCharacterName(pref.character) || pref.name || pref.id).toLowerCase();
+										return prefName.includes(query) || pref.id.toLowerCase().includes(query);
+									},
+								);
 
 								const filteredInstanceModels = instanceModelsList.filter((mod) => {
 									if (!query) return true;
@@ -6539,7 +7785,10 @@ export default function AlpacaWebPage() {
 											const isCurrentInst = selectedChatInstanceId === inst.id;
 
 											return (
-												<div key={`inst-modal-${inst.id}`} className='bg-[#f9fafc] rounded-2xl p-3.5 border border-[#e8ebf3] space-y-2.5'>
+												<div
+													key={`inst-modal-${inst.id}`}
+													className='bg-[#f9fafc] rounded-2xl p-3.5 border border-[#e8ebf3] space-y-2.5'
+												>
 													<div className='flex items-center justify-between px-1'>
 														<div className='flex items-center gap-2'>
 															<span className='text-base'>💻</span>
@@ -6576,13 +7825,25 @@ export default function AlpacaWebPage() {
 																		<span className='text-sm shrink-0'>✨</span>
 																		<div className='truncate'>
 																			<p className='font-semibold text-xs truncate'>{prefName}</p>
-																			<p className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-[#8e90a6]'}`}>
+																			<p
+																				className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-[#8e90a6]'}`}
+																			>
 																				Model Preference @ {instName}
 																			</p>
 																		</div>
 																	</div>
 																	{isSelected && (
-																		<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='3' strokeLinecap='round' strokeLinejoin='round' className='shrink-0 ml-2'>
+																		<svg
+																			width='16'
+																			height='16'
+																			viewBox='0 0 24 24'
+																			fill='none'
+																			stroke='currentColor'
+																			strokeWidth='3'
+																			strokeLinecap='round'
+																			strokeLinejoin='round'
+																			className='shrink-0 ml-2'
+																		>
 																			<polyline points='20 6 9 17 4 12' />
 																		</svg>
 																	)}
@@ -6615,13 +7876,25 @@ export default function AlpacaWebPage() {
 																		<span className='text-sm shrink-0'>🤖</span>
 																		<div className='truncate'>
 																			<p className='font-semibold text-xs truncate'>{modName}</p>
-																			<p className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-[#8e90a6]'}`}>
+																			<p
+																				className={`text-[10px] truncate ${isSelected ? 'text-white/80' : 'text-[#8e90a6]'}`}
+																			>
 																				Model @ {instName}
 																			</p>
 																		</div>
 																	</div>
 																	{isSelected && (
-																		<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='3' strokeLinecap='round' strokeLinejoin='round' className='shrink-0 ml-2'>
+																		<svg
+																			width='16'
+																			height='16'
+																			viewBox='0 0 24 24'
+																			fill='none'
+																			stroke='currentColor'
+																			strokeWidth='3'
+																			strokeLinecap='round'
+																			strokeLinejoin='round'
+																			className='shrink-0 ml-2'
+																		>
 																			<polyline points='20 6 9 17 4 12' />
 																		</svg>
 																	)}
@@ -6652,16 +7925,23 @@ export default function AlpacaWebPage() {
 					onClick={(e) => e.stopPropagation()}
 				>
 					<div className='px-3 py-1.5 border-b border-[#3e3e42] mb-1'>
-						<p className='text-[11px] font-bold text-[#8b8d97] uppercase tracking-wider truncate max-w-[140px]'>
-							{folderContextMenu.folderName}
-						</p>
+						<p className='text-[11px] font-bold text-[#8b8d97] uppercase tracking-wider truncate max-w-[140px]'>{folderContextMenu.folderName}</p>
 					</div>
 					<button
 						type='button'
 						onClick={() => handleStartRenameFolder(folderContextMenu.folderId, folderContextMenu.folderName)}
 						className='w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] hover:text-[#7678ed] flex items-center gap-2 transition-colors cursor-pointer'
 					>
-						<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+						<svg
+							width='14'
+							height='14'
+							viewBox='0 0 24 24'
+							fill='none'
+							stroke='currentColor'
+							strokeWidth='2'
+							strokeLinecap='round'
+							strokeLinejoin='round'
+						>
 							<path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' />
 							<path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' />
 						</svg>
@@ -6672,7 +7952,16 @@ export default function AlpacaWebPage() {
 						onClick={() => handleStartDeleteFolder(folderContextMenu.folderId, folderContextMenu.folderName)}
 						className='w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] text-rose-400 hover:text-rose-300 flex items-center gap-2 transition-colors cursor-pointer'
 					>
-						<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+						<svg
+							width='14'
+							height='14'
+							viewBox='0 0 24 24'
+							fill='none'
+							stroke='currentColor'
+							strokeWidth='2'
+							strokeLinecap='round'
+							strokeLinejoin='round'
+						>
 							<polyline points='3 6 5 6 21 6' />
 							<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
 						</svg>
@@ -6711,7 +8000,16 @@ export default function AlpacaWebPage() {
 						}}
 						className='w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] hover:text-[#7678ed] flex items-center gap-2 transition-colors cursor-pointer'
 					>
-						<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+						<svg
+							width='14'
+							height='14'
+							viewBox='0 0 24 24'
+							fill='none'
+							stroke='currentColor'
+							strokeWidth='2'
+							strokeLinecap='round'
+							strokeLinejoin='round'
+						>
 							<polygon points='5 3 19 12 5 21 5 3' fill='currentColor' />
 							<line x1='19' y1='5' x2='19' y2='19' strokeWidth='2.5' />
 						</svg>
@@ -6727,7 +8025,16 @@ export default function AlpacaWebPage() {
 						<div className='flex items-center justify-between mb-4'>
 							<h3 className='text-lg font-bold'>Rename Folder</h3>
 							<button onClick={() => setRenamingFolder(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
-								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<line x1='18' y1='6' x2='6' y2='18' />
 									<line x1='6' y1='6' x2='18' y2='18' />
 								</svg>
@@ -6773,14 +8080,24 @@ export default function AlpacaWebPage() {
 						<div className='flex items-center justify-between mb-2'>
 							<h3 className='text-lg font-bold text-rose-400'>Delete Folder?</h3>
 							<button onClick={() => setDeletingFolder(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
-								<svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
 									<line x1='18' y1='6' x2='6' y2='18' />
 									<line x1='6' y1='6' x2='18' y2='18' />
 								</svg>
 							</button>
 						</div>
 						<p className='text-sm text-white/70 leading-relaxed mb-6'>
-							Are you sure you want to delete <strong className='text-white'>"{deletingFolder.name}"</strong>? Chats in this folder will be moved to No Folder.
+							Are you sure you want to delete <strong className='text-white'>"{deletingFolder.name}"</strong>? Chats in this folder will be moved
+							to No Folder.
 						</p>
 						<div className='flex items-center justify-end gap-3'>
 							<button
@@ -6796,6 +8113,135 @@ export default function AlpacaWebPage() {
 								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-all shadow-md shadow-rose-600/30 cursor-pointer'
 							>
 								Delete Folder
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Create / Edit Lorebook Template Modal */}
+			{isLorebookModalOpen && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-4 pb-3 border-b border-white/10'>
+							<h3 className='text-lg font-bold text-white'>{editingLorebookTemplate ? 'Edit Character Template' : 'New Character Template'}</h3>
+							<button
+								onClick={() => setIsLorebookModalOpen(false)}
+								className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'
+							>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+
+						<form onSubmit={handleSaveLorebookTemplate} className='space-y-4'>
+							<div>
+								<label className='block text-xs font-semibold text-white/80 mb-1.5'>Character / Template Name</label>
+								<input
+									type='text'
+									required
+									value={lorebookFormName}
+									onChange={(e) => setLorebookFormName(e.target.value)}
+									placeholder='e.g., Cyberpunk Hacker'
+									className='w-full bg-white/10 border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-white/40 outline-none focus:border-[#7678ed] transition-all'
+								/>
+							</div>
+
+							<div>
+								<label className='block text-xs font-semibold text-white/80 mb-1.5'>Trigger Keywords (comma-separated)</label>
+								<input
+									type='text'
+									value={lorebookFormKeys}
+									onChange={(e) => setLorebookFormKeys(e.target.value)}
+									placeholder='e.g., hacker, cyberware, netrunner'
+									className='w-full bg-white/10 border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-white/40 outline-none focus:border-[#7678ed] transition-all'
+								/>
+								<span className='text-[11px] text-white/50 block mt-1'>
+									Messages containing any of these keywords will trigger this lore context.
+								</span>
+							</div>
+
+							<div>
+								<label className='block text-xs font-semibold text-white/80 mb-1.5'>Lore Content</label>
+								<textarea
+									rows={5}
+									value={lorebookFormContent}
+									onChange={(e) => setLorebookFormContent(e.target.value)}
+									placeholder='Enter detailed background story, rules, or character prompt context...'
+									className='w-full bg-white/10 border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-white/40 outline-none focus:border-[#7678ed] transition-all font-mono leading-relaxed resize-y'
+								/>
+							</div>
+
+							<div className='flex items-center justify-end gap-3 pt-3 border-t border-white/10'>
+								<button
+									type='button'
+									onClick={() => setIsLorebookModalOpen(false)}
+									className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+								>
+									Cancel
+								</button>
+								<button
+									type='submit'
+									disabled={lorebookSaving || !lorebookFormName.trim()}
+									className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-[#7678ed] hover:bg-[#6869d9] disabled:opacity-50 text-white transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer'
+								>
+									{lorebookSaving ? 'Saving...' : 'Save Template'}
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+			{/* Delete Lorebook Template Confirmation Modal */}
+			{deletingLorebookTemplate && (
+				<div className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none'>
+					<div className='bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200'>
+						<div className='flex items-center justify-between mb-2'>
+							<h3 className='text-lg font-bold text-rose-400'>Delete Template?</h3>
+							<button onClick={() => setDeletingLorebookTemplate(null)} className='text-white/60 hover:text-white p-1 transition-colors cursor-pointer'>
+								<svg
+									width='18'
+									height='18'
+									viewBox='0 0 24 24'
+									fill='none'
+									stroke='currentColor'
+									strokeWidth='2.2'
+									strokeLinecap='round'
+									strokeLinejoin='round'
+								>
+									<line x1='18' y1='6' x2='6' y2='18' />
+									<line x1='6' y1='6' x2='18' y2='18' />
+								</svg>
+							</button>
+						</div>
+						<p className='text-sm text-white/70 leading-relaxed mb-6'>
+							Are you sure you want to delete character template <strong className='text-white'>"{deletingLorebookTemplate.name}"</strong> (<span className='font-mono text-xs text-white/50'>{deletingLorebookTemplate.filename}</span>)? This action cannot be undone.
+						</p>
+						<div className='flex items-center justify-end gap-3'>
+							<button
+								type='button'
+								onClick={() => setDeletingLorebookTemplate(null)}
+								className='px-4 py-2.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer'
+							>
+								Cancel
+							</button>
+							<button
+								type='button'
+								onClick={handleConfirmDeleteLorebookTemplate}
+								className='px-5 py-2.5 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-all shadow-md shadow-rose-600/30 cursor-pointer'
+							>
+								Delete Template
 							</button>
 						</div>
 					</div>

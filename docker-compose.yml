@@ -11,12 +11,19 @@ services:
     volumes:
       - ./backend:/app
       - ./alpaca.db:/app/alpaca.db
+      - ./personas:/app/personas
+      - ./lorebook:/app/lorebook
     environment:
       ALPACA_DB_PATH: "/app/alpaca.db"
       TTS_SERVER_URL: "http://kokoro:8880"
       TTS_API_KEY: ${KOKORO_API_KEY}
       CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
     command: sh run_server.sh
 
   frontend:
@@ -36,6 +43,11 @@ services:
     environment:
       CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
     command: sh run_server.sh
 
   kokoro:
@@ -45,6 +57,11 @@ services:
       - kokoro-data:/var/lib/kokoro
     environment:
       KOKORO_API_KEY: ${KOKORO_API_KEY}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
     restart: always
 
 volumes:
