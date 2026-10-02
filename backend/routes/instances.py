@@ -1,8 +1,14 @@
 import json
-import urllib.request
 import urllib.error
-from flask import Blueprint, request, jsonify
-from models import db, Instance, OnlineInstanceModelList, generate_uuid
+import urllib.request
+
+from flask import Blueprint
+from flask import request
+from flask import jsonify
+from models import db
+from models import Instance
+from models import OnlineInstanceModelList
+from models import generate_uuid
 
 instances_bp = Blueprint("instances", __name__)
 

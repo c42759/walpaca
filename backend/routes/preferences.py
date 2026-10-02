@@ -1,6 +1,9 @@
 import os
 import json
-from flask import Blueprint, request, jsonify
+
+from flask import Blueprint
+from flask import request
+from flask import jsonify
 
 preferences_bp = Blueprint("preferences", __name__)
 

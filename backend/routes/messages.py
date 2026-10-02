@@ -1,12 +1,13 @@
-from flask import Blueprint, request, jsonify
-from models import (
-    db,
-    Chat,
-    Message,
-    Attachment,
-    generate_uuid,
-    current_alpaca_timestamp,
-)
+from flask import request
+from flask import jsonify
+from flask import Blueprint
+
+from models import db
+from models import Chat
+from models import Message
+from models import Attachment
+from models import generate_uuid
+from models import current_alpaca_timestamp
 
 messages_bp = Blueprint("messages", __name__)
 

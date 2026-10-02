@@ -1,6 +1,8 @@
 import json
 import unittest
-from unittest.mock import patch, MagicMock
+
+from unittest.mock import patch
+from unittest.mock import MagicMock
 from main import create_app
 
 

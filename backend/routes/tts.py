@@ -1,8 +1,13 @@
-import json
 import os
-import urllib.request
+import json
 import urllib.error
-from flask import Blueprint, request, jsonify, Response, stream_with_context
+import urllib.request
+
+from flask import request
+from flask import jsonify
+from flask import Response
+from flask import Blueprint
+from flask import stream_with_context
 
 tts_bp = Blueprint("tts", __name__)
 

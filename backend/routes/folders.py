@@ -1,5 +1,10 @@
-from flask import Blueprint, request, jsonify
-from models import db, ChatFolder, generate_uuid
+from flask import request
+from flask import jsonify
+from flask import Blueprint
+
+from models import db
+from models import ChatFolder
+from models import generate_uuid
 
 folders_bp = Blueprint("folders", __name__)
 

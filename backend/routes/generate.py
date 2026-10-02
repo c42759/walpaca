@@ -1,19 +1,22 @@
 import json
-import threading
 import time
-import urllib.request
+import threading
 import urllib.error
-from flask import Blueprint, request, Response, stream_with_context, current_app
-from models import (
-    db,
-    Chat,
-    Message,
-    Attachment,
-    Instance,
-    ModelPreferences,
-    generate_uuid,
-    current_alpaca_timestamp,
-)
+import urllib.request
+
+from flask import Blueprint
+from flask import request
+from flask import Response
+from flask import stream_with_context
+from flask import current_app
+from models import db
+from models import Chat
+from models import Message
+from models import Attachment
+from models import Instance
+from models import ModelPreferences
+from models import generate_uuid
+from models import current_alpaca_timestamp
 
 generate_bp = Blueprint("generate", __name__)
 

@@ -1,5 +1,8 @@
-from flask import Blueprint, request, jsonify
-from models import Chat, Message
+from flask import Blueprint
+from flask import request
+from flask import jsonify
+from models import Chat
+from models import Message
 
 search_bp = Blueprint("search", __name__)
 

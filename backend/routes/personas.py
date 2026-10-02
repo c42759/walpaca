@@ -1,8 +1,11 @@
-import base64
-import json
 import os
 import re
-from flask import Blueprint, request, jsonify
+import json
+import base64
+
+from flask import Blueprint
+from flask import request
+from flask import jsonify
 
 personas_bp = Blueprint("personas", __name__)
 

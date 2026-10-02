@@ -1,7 +1,10 @@
-import json
 import os
 import re
-from flask import Blueprint, request, jsonify
+import json
+
+from flask import request
+from flask import jsonify
+from flask import Blueprint
 
 lorebook_bp = Blueprint("lorebook", __name__)
 

@@ -1,6 +1,11 @@
 import unittest
+
 from main import create_app
-from models import db, ChatFolder, Chat, Message, Attachment
+from models import db
+from models import ChatFolder
+from models import Chat
+from models import Message
+from models import Attachment
 
 
 class DeleteCascadeTestCase(unittest.TestCase):

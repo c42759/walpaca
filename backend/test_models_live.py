@@ -1,8 +1,11 @@
 import json
 import unittest
-from unittest.mock import patch, MagicMock
+
+from unittest.mock import patch
+from unittest.mock import MagicMock
 from main import create_app
-from models import db, Instance
+from models import db
+from models import Instance
 
 
 class LiveInstanceModelsTestCase(unittest.TestCase):

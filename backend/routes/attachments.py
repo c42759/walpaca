@@ -1,5 +1,10 @@
-from flask import Blueprint, request, jsonify
-from models import db, Message, Attachment, generate_uuid
+from flask import request
+from flask import jsonify
+from flask import Blueprint
+from models import db
+from models import Message
+from models import Attachment
+from models import generate_uuid
 
 attachments_bp = Blueprint("attachments", __name__)
 

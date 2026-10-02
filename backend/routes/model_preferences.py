@@ -1,5 +1,8 @@
-from flask import Blueprint, request, jsonify
-from models import db, ModelPreferences
+from models import db
+from flask import request
+from flask import jsonify
+from flask import Blueprint
+from models import ModelPreferences
 
 model_preferences_bp = Blueprint("model_preferences", __name__)
 

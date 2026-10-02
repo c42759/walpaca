@@ -1,7 +1,8 @@
 import unittest
 
 from main import create_app
-from models import db, ModelPreferences
+from models import db
+from models import ModelPreferences
 from routes.api import evaluate_lorebook_entries
 
 
