@@ -72,7 +72,8 @@ export const ManageModelPreferencesPanel: React.FC = () => {
     };
 
     // Resolve the hosting instance for a given model ID
-    const getInstanceForModel = useCallback( (modelId: string): { name: string; type: string; color: string } => {
+    const getInstanceForModel = useCallback(
+        (modelId: string): { name: string; type: string; color: string } => {
             // 1. Direct match in fetched instance models
             for (const inst of instances) {
                 const models = instanceModelsMap[inst.id] || [];

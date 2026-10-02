@@ -1,72 +1,74 @@
-'use client';
+"use client";
 /* eslint-disable @next/next/no-img-element */
 
-import React, { useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import React, { useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 
 export interface ChatFolder {
-	id: string;
-	name: string;
-	color?: string;
-	parent?: string | null;
+    id: string;
+    name: string;
+    color?: string;
+    parent?: string | null;
 }
 
 export interface NavigationRailProps {
-	activeTab: string;
-	setActiveTab: (tab: string) => void;
-	currentView: 'chat' | 'settings';
-	setCurrentView: (view: 'chat' | 'settings') => void;
-	folders: ChatFolder[];
-	draggedChatId?: string | null;
-	handleGoToRoot: () => void;
-	handleDropChatToFolder: (chatId: string, folderId: string) => void;
-	setFolderContextMenu: (menu: {
-		x: number;
-		y: number;
-		folderId: string;
-		folderName: string;
-	} | null) => void;
-	setIsCreatingFolder: (isCreating: boolean) => void;
+    activeTab: string;
+    setActiveTab: (tab: string) => void;
+    currentView: "chat" | "settings";
+    setCurrentView: (view: "chat" | "settings") => void;
+    folders: ChatFolder[];
+    draggedChatId?: string | null;
+    handleGoToRoot: () => void;
+    handleDropChatToFolder: (chatId: string, folderId: string) => void;
+    setFolderContextMenu: (
+        menu: {
+            x: number;
+            y: number;
+            folderId: string;
+            folderName: string;
+        } | null,
+    ) => void;
+    setIsCreatingFolder: (isCreating: boolean) => void;
 }
 
 export const NavigationRail: React.FC<NavigationRailProps> = ({
-	activeTab,
-	setActiveTab,
-	currentView,
-	setCurrentView,
-	folders,
-	draggedChatId,
-	handleGoToRoot,
-	handleDropChatToFolder,
-	setFolderContextMenu,
-	setIsCreatingFolder,
+    activeTab,
+    setActiveTab,
+    currentView,
+    setCurrentView,
+    folders,
+    draggedChatId,
+    handleGoToRoot,
+    handleDropChatToFolder,
+    setFolderContextMenu,
+    setIsCreatingFolder,
 }) => {
-	const router = useRouter();
-	const pathname = usePathname();
-	const isSettings = pathname.startsWith('/settings') || currentView === 'settings';
-	const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
+    const router = useRouter();
+    const pathname = usePathname();
+    const isSettings = pathname.startsWith("/settings") || currentView === "settings";
+    const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
 
-	const handleNavigateChatTab = (tab: string) => {
-		setActiveTab(tab);
-		setCurrentView('chat');
-		if (pathname.startsWith('/settings')) {
-			router.push('/');
-		}
-	};
+    const handleNavigateChatTab = (tab: string) => {
+        setActiveTab(tab);
+        setCurrentView("chat");
+        if (pathname.startsWith("/settings")) {
+            router.push("/");
+        }
+    };
 
-	const handleNavigateSettings = () => {
-		setCurrentView('settings');
-		router.push('/settings/import');
-	};
+    const handleNavigateSettings = () => {
+        setCurrentView("settings");
+        router.push("/settings/import");
+    };
 
-	const handleLogoClick = () => {
-		handleGoToRoot();
-		if (pathname.startsWith('/settings')) {
-			router.push('/');
-		}
-	};
+    const handleLogoClick = () => {
+        handleGoToRoot();
+        if (pathname.startsWith("/settings")) {
+            router.push("/");
+        }
+    };
 
-	return (
+    return (
         <aside className="w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#202022]">
             {/* Top Alpaca Prism Logo */}
             <div className="flex flex-col items-center gap-8 w-full">

@@ -1,27 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --alpaca-dark: #202022;
-  --alpaca-primary: #7678ed;
-  --alpaca-coral: #ff7a55;
-  --alpaca-light: #f9fafc;
-  --alpaca-border: #e8ebf3;
-  --alpaca-bubble: #f2f4f8;
-  --font-sans: var(--font-poppins), sans-serif;
-  --font-mono: var(--font-roboto-mono), 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-serif: var(--font-poppins), sans-serif;
+    --alpaca-dark: #202022;
+    --alpaca-primary: #7678ed;
+    --alpaca-coral: #ff7a55;
+    --alpaca-light: #f9fafc;
+    --alpaca-border: #e8ebf3;
+    --alpaca-bubble: #f2f4f8;
+    --font-sans: var(--font-poppins), sans-serif;
+    --font-mono: var(--font-roboto-mono), "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --font-serif: var(--font-poppins), sans-serif;
 }
 
 @theme inline {
-  --font-sans: var(--font-poppins), sans-serif;
-  --font-mono: var(--font-roboto-mono), 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --font-serif: var(--font-poppins), sans-serif;
-  --color-alpaca-dark: #202022;
-  --color-alpaca-primary: #7678ed;
-  --color-alpaca-coral: #ff7a55;
-  --color-alpaca-light: #f9fafc;
-  --color-alpaca-border: #e8ebf3;
-  --color-alpaca-bubble: #f2f4f8;
+    --font-sans: var(--font-poppins), sans-serif;
+    --font-mono: var(--font-roboto-mono), "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --font-serif: var(--font-poppins), sans-serif;
+    --color-alpaca-dark: #202022;
+    --color-alpaca-primary: #7678ed;
+    --color-alpaca-coral: #ff7a55;
+    --color-alpaca-light: #f9fafc;
+    --color-alpaca-border: #e8ebf3;
+    --color-alpaca-bubble: #f2f4f8;
 }
 
 *,
@@ -45,7 +45,7 @@ h5,
 h6,
 .font-sans,
 .font-serif {
-  font-family: var(--font-poppins), sans-serif !important;
+    font-family: var(--font-poppins), sans-serif !important;
 }
 
 pre,
@@ -58,47 +58,47 @@ code *,
 kbd *,
 samp *,
 .font-mono * {
-  font-family: var(--font-mono) !important;
+    font-family: var(--font-mono) !important;
 }
 
 html {
-  font-size: 90% !important;
+    font-size: 90% !important;
 }
 
 body {
-  font-family: var(--font-poppins), sans-serif !important;
-  background-color: #cfd2f8;
-  color: #202022;
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
+    font-family: var(--font-poppins), sans-serif !important;
+    background-color: #cfd2f8;
+    color: #202022;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
 }
 
 /* Topographic contour map style */
 .topo-bg {
-  background-color: #cfd2f8;
-  background-image: 
-    radial-gradient(circle at 18% 22%, rgba(135, 142, 237, 0.25) 0, rgba(135, 142, 237, 0.25) 80px, transparent 81px),
-    radial-gradient(circle at 18% 22%, transparent 0, transparent 130px, rgba(135, 142, 237, 0.22) 131px, transparent 132px),
-    radial-gradient(circle at 18% 22%, transparent 0, transparent 190px, rgba(135, 142, 237, 0.20) 191px, transparent 192px),
-    radial-gradient(circle at 75% 15%, transparent 0, transparent 90px, rgba(135, 142, 237, 0.22) 91px, transparent 92px),
-    radial-gradient(circle at 75% 15%, transparent 0, transparent 160px, rgba(135, 142, 237, 0.18) 161px, transparent 162px),
-    radial-gradient(circle at 85% 85%, transparent 0, transparent 120px, rgba(135, 142, 237, 0.20) 121px, transparent 122px),
-    radial-gradient(circle at 85% 85%, transparent 0, transparent 200px, rgba(135, 142, 237, 0.15) 201px, transparent 202px);
+    background-color: #cfd2f8;
+    background-image:
+        radial-gradient(circle at 18% 22%, rgba(135, 142, 237, 0.25) 0, rgba(135, 142, 237, 0.25) 80px, transparent 81px),
+        radial-gradient(circle at 18% 22%, transparent 0, transparent 130px, rgba(135, 142, 237, 0.22) 131px, transparent 132px),
+        radial-gradient(circle at 18% 22%, transparent 0, transparent 190px, rgba(135, 142, 237, 0.2) 191px, transparent 192px),
+        radial-gradient(circle at 75% 15%, transparent 0, transparent 90px, rgba(135, 142, 237, 0.22) 91px, transparent 92px),
+        radial-gradient(circle at 75% 15%, transparent 0, transparent 160px, rgba(135, 142, 237, 0.18) 161px, transparent 162px),
+        radial-gradient(circle at 85% 85%, transparent 0, transparent 120px, rgba(135, 142, 237, 0.2) 121px, transparent 122px),
+        radial-gradient(circle at 85% 85%, transparent 0, transparent 200px, rgba(135, 142, 237, 0.15) 201px, transparent 202px);
 }
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+    width: 5px;
+    height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+    background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
-  border-radius: 9999px;
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.22);
+    background: rgba(0, 0, 0, 0.22);
 }

@@ -4279,15 +4279,11 @@ export default function ChatPage() {
 
                                 const activeInstName = activeInst.properties?.name || activeInst.type;
                                 const activeModels = (instanceModelsMap[activeInst.id]?.length ? instanceModelsMap[activeInst.id] : instanceModelsList) || [];
-                                const activeModelIdSet = new Set(
-                                    activeModels.flatMap((m) => [m.id?.toLowerCase(), m.name?.toLowerCase()].filter(Boolean))
-                                );
+                                const activeModelIdSet = new Set(activeModels.flatMap((m) => [m.id?.toLowerCase(), m.name?.toLowerCase()].filter(Boolean)));
 
                                 const query = modelModalSearchQuery.toLowerCase().trim();
 
-                                const matchingPrefs = Array.from(
-                                    new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()
-                                ).filter((pref) => {
+                                const matchingPrefs = Array.from(new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()).filter((pref) => {
                                     if (!pref || !pref.id) return false;
                                     const matchesInstance = activeModelIdSet.has(pref.id.toLowerCase());
                                     if (!matchesInstance) return false;
