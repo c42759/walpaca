@@ -9,6 +9,7 @@ import { parseImportContent } from '@/lib/importUtils';
 
 import { SettingsSidebar, SettingsCategory } from '@/components/settings/SettingsSidebar';
 import { SettingsHelpSidebar } from '@/components/settings/SettingsHelpSidebar';
+import { UploadIcon } from '@/components/icons/Icons';
 
 export default function ImportSettingsPage() {
 	const router = useRouter();
@@ -123,20 +124,7 @@ export default function ImportSettingsPage() {
 							} rounded-3xl p-10 bg-white hover:bg-[#f3f4fd] transition-all flex flex-col items-center justify-center text-center cursor-pointer group shadow-xs`}
 						>
 							<div className='w-16 h-16 rounded-2xl bg-[#eaecf9] group-hover:bg-[#7678ed] group-hover:text-white text-[#7678ed] flex items-center justify-center mb-4 transition-colors shadow-sm'>
-								<svg
-									width='28'
-									height='28'
-									viewBox='0 0 24 24'
-									fill='none'
-									stroke='currentColor'
-									strokeWidth='2'
-									strokeLinecap='round'
-									strokeLinejoin='round'
-								>
-									<path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
-									<polyline points='17 8 12 3 7 8' />
-									<line x1='12' y1='3' x2='12' y2='15' />
-								</svg>
+								<UploadIcon className='w-7 h-7' />
 							</div>
 
 							{isImporting ? (

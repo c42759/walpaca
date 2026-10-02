@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
+import { CloseIcon, DownloadIcon } from "@/components/icons/Icons";
 
 interface BeforeInstallPromptEvent extends Event {
     prompt: () => Promise<void>;
@@ -15,16 +16,19 @@ export default function PWAInstallPrompt() {
     const [isStandalone, setIsStandalone] = useState(false);
 
     useEffect(() => {
-        // Check if already in standalone mode
-        const inStandaloneMode = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-        setIsStandalone(inStandaloneMode);
-
-        if (inStandaloneMode) return;
-
-        // Detect iOS
+        let isMounted = true;
+        const inStandaloneMode =
+            window.matchMedia("(display-mode: standalone)").matches ||
+            (window.navigator as unknown as { standalone?: boolean }).standalone === true;
         const userAgent = window.navigator.userAgent.toLowerCase();
         const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
-        setIsIOS(isIosDevice);
+
+        Promise.resolve().then(() => {
+            if (!isMounted) return;
+            setIsStandalone(inStandaloneMode);
+            if (inStandaloneMode) return;
+            setIsIOS(isIosDevice);
+        });
 
         const dismissedUntil = localStorage.getItem("walpaca_pwa_dismissed_until");
         if (dismissedUntil && Number(dismissedUntil) > Date.now()) {
@@ -40,12 +44,14 @@ export default function PWAInstallPrompt() {
         window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
         // If iOS Safari and not standalone, show iOS prompt after short delay
+        let timer: NodeJS.Timeout | null = null;
         if (isIosDevice && !inStandaloneMode && !dismissedUntil) {
-            const timer = setTimeout(() => setShowPrompt(true), 3000);
-            return () => clearTimeout(timer);
+            timer = setTimeout(() => setShowPrompt(true), 3000);
         }
 
         return () => {
+            isMounted = false;
+            if (timer) clearTimeout(timer);
             window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
         };
     }, []);
@@ -87,10 +93,7 @@ export default function PWAInstallPrompt() {
                             className="text-[#8e90a6] hover:text-[#181926] dark:hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
                             title="Dismiss"
                         >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
+                            <CloseIcon className="w-3.5 h-3.5" />
                         </button>
                     </div>
 
@@ -106,11 +109,7 @@ export default function PWAInstallPrompt() {
                                 onClick={handleInstallClick}
                                 className="px-3.5 py-1.5 rounded-xl bg-[#7678ed] hover:bg-[#6365e6] text-white text-xs font-medium transition-all shadow-md shadow-[#7678ed]/30 cursor-pointer flex items-center gap-1.5"
                             >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                                </svg>
+                                <DownloadIcon className="w-3.5 h-3.5" />
                                 Install App
                             </button>
                         )}

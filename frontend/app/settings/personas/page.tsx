@@ -8,6 +8,7 @@ import { getApiUrl } from "@/lib/api";
 import { SettingsSidebar, SettingsCategory } from "@/components/settings/SettingsSidebar";
 import { SettingsHelpSidebar } from "@/components/settings/SettingsHelpSidebar";
 import { ManagePersonasPanel, PersonaTemplate, LorebookTemplate } from "@/components/settings/ManagePersonasPanel";
+import { CloseIcon } from "@/components/icons/Icons";
 
 export default function PersonasSettingsPage() {
     const { setCurrentView, instances, fetchInstances, fetchInstanceModels, fetchModelPreferences } = useAppStore();
@@ -51,9 +52,14 @@ export default function PersonasSettingsPage() {
     };
 
     useEffect(() => {
-        fetchPersonaTemplates();
-        fetchLorebookTemplates();
-        fetchInstances();
+        let isMounted = true;
+        (async () => {
+            if (!isMounted) return;
+            await Promise.all([fetchPersonaTemplates(), fetchLorebookTemplates(), fetchInstances()]);
+        })();
+        return () => {
+            isMounted = false;
+        };
     }, [fetchInstances]);
 
     useEffect(() => {
@@ -179,10 +185,7 @@ export default function PersonasSettingsPage() {
                         <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
                             <h3 className="text-lg font-bold text-white">Apply Persona to Model</h3>
                             <button onClick={() => setApplyPersonaModalTemplate(null)} className="text-white/60 hover:text-white p-1 transition-colors cursor-pointer">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                    <line x1="6" y1="6" x2="18" y2="18" />
-                                </svg>
+                                <CloseIcon className="w-4.5 h-4.5" />
                             </button>
                         </div>
 
@@ -248,10 +251,7 @@ export default function PersonasSettingsPage() {
                         <div className="flex items-center justify-between mb-2">
                             <h3 className="text-lg font-bold text-rose-400">Delete Persona?</h3>
                             <button onClick={() => setDeletingPersonaTemplate(null)} className="text-white/60 hover:text-white p-1 transition-colors cursor-pointer">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18" />
-                                    <line x1="6" y1="6" x2="6" y2="18" />
-                                </svg>
+                                <CloseIcon className="w-4.5 h-4.5" />
                             </button>
                         </div>
                         <p className="text-sm text-white/70 leading-relaxed mb-6">

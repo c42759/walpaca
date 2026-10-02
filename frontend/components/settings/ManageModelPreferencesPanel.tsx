@@ -19,6 +19,8 @@ export const ManageModelPreferencesPanel: React.FC = () => {
         removeModelPreference: removeStoreModelPreference,
         instanceModelsMap,
         fetchInstanceModels,
+        appPreferences,
+        fetchAppPreferences,
     } = useAppStore();
 
     const router = useRouter();
@@ -29,12 +31,12 @@ export const ManageModelPreferencesPanel: React.FC = () => {
     const [deletingPref, setDeletingPref] = useState<ModelPreference | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Fetch instances and model preferences on mount
+    // Fetch instances, model preferences, and app preferences on mount
     useEffect(() => {
-        Promise.all([fetchInstances(), fetchModelPreferences()]).finally(() => {
+        Promise.all([fetchInstances(), fetchModelPreferences(), fetchAppPreferences()]).finally(() => {
             setIsLoading(false);
         });
-    }, [fetchInstances, fetchModelPreferences]);
+    }, [fetchInstances, fetchModelPreferences, fetchAppPreferences]);
 
     // Fetch models for each instance to correlate models with their hosting instance
     useEffect(() => {
@@ -73,12 +75,13 @@ export const ManageModelPreferencesPanel: React.FC = () => {
 
     // Resolve the hosting instance for a given model ID
     const getInstanceForModel = useCallback(
-        (modelId: string): { name: string; type: string; color: string } => {
+        (modelId: string): { id?: string; name: string; type: string; color: string } => {
             // 1. Direct match in fetched instance models
             for (const inst of instances) {
                 const models = instanceModelsMap[inst.id] || [];
-                if (models.some((m) => m.id === modelId || m.name === modelId)) {
+                if (models.some((m) => m.id?.toLowerCase() === modelId.toLowerCase() || m.name?.toLowerCase() === modelId.toLowerCase())) {
                     return {
+                        id: inst.id,
                         name: inst.properties?.name || inst.type,
                         type: inst.type,
                         color: getInstanceColor(inst.type),
@@ -90,6 +93,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
             for (const inst of instances) {
                 if (modelId.startsWith(inst.id)) {
                     return {
+                        id: inst.id,
                         name: inst.properties?.name || inst.type,
                         type: inst.type,
                         color: getInstanceColor(inst.type),
@@ -104,6 +108,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                 const geminiInst = instances.find((i) => i.type === "gemini" || i.properties?.url?.includes("generativelanguage"));
                 if (geminiInst) {
                     return {
+                        id: geminiInst.id,
                         name: geminiInst.properties?.name || "Google Gemini",
                         type: "gemini",
                         color: getInstanceColor("gemini"),
@@ -116,6 +121,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                 const openaiInst = instances.find((i) => i.type === "openai");
                 if (openaiInst) {
                     return {
+                        id: openaiInst.id,
                         name: openaiInst.properties?.name || "OpenAI ChatGPT",
                         type: "openai",
                         color: getInstanceColor("openai"),
@@ -128,6 +134,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
             const ollamaInst = instances.find((i) => i.type === "ollama");
             if (ollamaInst) {
                 return {
+                    id: ollamaInst.id,
                     name: ollamaInst.properties?.name || "Ollama",
                     type: "ollama",
                     color: getInstanceColor("ollama"),
@@ -137,6 +144,26 @@ export const ManageModelPreferencesPanel: React.FC = () => {
             return { name: "Ollama Instance", type: "ollama", color: getInstanceColor("ollama") };
         },
         [instances, instanceModelsMap],
+    );
+
+    const activeInstanceId = appPreferences?.active_instance_id || instances[0]?.id;
+    const activeInst = useMemo(
+        () => instances.find((i) => i.id === activeInstanceId) || instances[0],
+        [instances, activeInstanceId]
+    );
+
+    const isModelInActiveInstance = useCallback(
+        (modelId: string): boolean => {
+            if (!activeInst) return true;
+            const activeModels = instanceModelsMap[activeInst.id] || [];
+            const lowerId = modelId.toLowerCase();
+            if (activeModels.some((m) => m.id?.toLowerCase() === lowerId || m.name?.toLowerCase() === lowerId)) {
+                return true;
+            }
+            const resolved = getInstanceForModel(modelId);
+            return resolved.id === activeInst.id;
+        },
+        [activeInst, instanceModelsMap, getInstanceForModel]
     );
 
     const getAvatarBg = (name: string): string => {
@@ -208,11 +235,15 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                         Configure character persona, profile avatar, Kokoro TTS voice, and context window limits for each AI model.
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <span className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#eaecf9] text-[#7678ed] border border-[#7678ed]/20">
-                        {preferencesList.length} {preferencesList.length === 1 ? "Model Preference" : "Model Preferences"}
-                    </span>
-                </div>
+                {activeInst && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] shrink-0 self-start md:self-auto">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-xs font-semibold text-[#202022]">Active: {activeInst.properties?.name || activeInst.type}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-[#eaecf9] text-[#7678ed]">
+                            {activeInst.type}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* Search Bar */}
@@ -247,12 +278,18 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                         const avatarSrc = formatAvatarPicture(pref.picture);
                         const instInfo = getInstanceForModel(pref.id);
                         const voiceLabel = getVoiceDisplayName(pref.voice);
+                        const isActiveInstance = isModelInActiveInstance(pref.id);
 
                         return (
                             // <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                             <div
                                 key={pref.id}
-                                className="p-5 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs flex flex-col justify-between space-y-4 hover:border-[#7678ed]/40 transition-all"
+                                className={`p-5 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs flex flex-col justify-between space-y-4 transition-all ${
+                                    isActiveInstance
+                                        ? "hover:border-[#7678ed]/40"
+                                        : "opacity-50 hover:opacity-85 hover:border-[#7678ed]/30"
+                                }`}
+                                title={!isActiveInstance ? "This model preference belongs to an inactive instance" : undefined}
                             >
                                 <div className="space-y-3 flex">
                                     {/* Avatar */}

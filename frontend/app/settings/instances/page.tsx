@@ -1,23 +1,19 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React, { useState, useEffect } from "react";
-import { useAppStore, InstanceItem, ModelPreference } from "@/store/useAppStore";
+import { useRouter } from "next/navigation";
+import { useAppStore, InstanceItem } from "@/store/useAppStore";
 import { getApiUrl } from "@/lib/api";
-import { getCharacterName } from "@/lib/characterUtils";
 import { SettingsSidebar, SettingsCategory } from "@/components/settings/SettingsSidebar";
 import { SettingsHelpSidebar } from "@/components/settings/SettingsHelpSidebar";
-import { EditIcon, TrashIcon, CheckIcon } from "@/components/icons/Icons";
+import { EditIcon, TrashIcon, CheckIcon, PlusIcon, ArrowLeftIcon } from "@/components/icons/Icons";
 
 export default function InstancesSettingsPage() {
+    const router = useRouter();
     const {
         instances,
         fetchInstances,
         setInstances: setStoreInstances,
-        modelPreferences,
-        fetchModelPreferences,
-        setModelPreference: setStoreModelPreference,
-        fetchInstanceModels,
         setCurrentView,
         appPreferences,
         fetchAppPreferences,
@@ -27,13 +23,10 @@ export default function InstancesSettingsPage() {
     const [activeSettingsCategory, setActiveSettingsCategory] = useState<SettingsCategory>("manage-instances");
 
     // --- Instances Management State ---
-    const [instanceSubView, setInstanceSubView] = useState<"list" | "select-type" | "form" | "instance-models" | "edit-model">("list");
-    const [selectedInstanceForModels, setSelectedInstanceForModels] = useState<InstanceItem | null>(null);
-    const [instanceModelsList, setInstanceModelsList] = useState<any[]>([]);
+    const [instanceSubView, setInstanceSubView] = useState<"list" | "select-type" | "form">("list");
     const [selectedInstanceType, setSelectedInstanceType] = useState<string>("Ollama");
-    const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
 
-    // Instance Form fields
+    // Instance Form fields for Adding
     const [instFormName, setInstFormName] = useState<string>("Instance");
     const [instFormUrl, setInstFormUrl] = useState<string>("http://0.0.0.0:11434");
     const [instFormApiKey, setInstFormApiKey] = useState<string>("");
@@ -48,22 +41,11 @@ export default function InstancesSettingsPage() {
     const [instFormNumCtx, setInstFormNumCtx] = useState<number>(16384);
     const [instFormKeepAliveMinutes, setInstFormKeepAliveMinutes] = useState<number>(5);
 
-    // Edit Model State
-    const [editingModel, setEditingModel] = useState<any | null>(null);
-    const [editModelVoice, setEditModelVoice] = useState<string>("af_heart");
-    const [editModelNumCtx, setEditModelNumCtx] = useState<number>(8192);
-    const [editModelName, setEditModelName] = useState<string>("");
-    const [editModelDescription, setEditModelDescription] = useState<string>("");
-    const [editModelFirstMessage, setEditModelFirstMessage] = useState<string>("");
-    const [editModelAlternateGreetings, setEditModelAlternateGreetings] = useState<string[]>([]);
-    const [editModelCharacterBook, setEditModelCharacterBook] = useState<Array<{ name: string; description: string; tags: string }>>([]);
-
     // Lifecycle
     useEffect(() => {
         fetchInstances();
-        fetchModelPreferences();
         fetchAppPreferences();
-    }, [fetchInstances, fetchModelPreferences, fetchAppPreferences]);
+    }, [fetchInstances, fetchAppPreferences]);
 
     // Handlers: Instances
     const handleOpenAddInstanceModal = () => {
@@ -72,7 +54,6 @@ export default function InstancesSettingsPage() {
 
     const handleSelectInstanceType = (typeLabel: string) => {
         setSelectedInstanceType(typeLabel);
-        setEditingInstanceId(null);
 
         let defaultName = "Instance";
         let defaultUrl = "http://0.0.0.0:11434";
@@ -118,46 +99,6 @@ export default function InstancesSettingsPage() {
         setInstFormSeed(0);
         setInstFormNumCtx(16384);
         setInstFormKeepAliveMinutes(5);
-
-        setInstanceSubView("form");
-    };
-
-    const handleOpenEditInstanceModal = (inst: InstanceItem) => {
-        setEditingInstanceId(inst.id);
-        setSelectedInstanceType(
-            inst.type === "ollama"
-                ? "Ollama"
-                : inst.type === "openai"
-                  ? "OpenAI ChatGPT"
-                  : inst.type === "gemini"
-                    ? "Google Gemini"
-                    : inst.type === "anthropic"
-                      ? "Anthropic"
-                      : inst.type === "deepseek"
-                        ? "Deepseek"
-                        : inst.type === "groq"
-                          ? "Groq Cloud"
-                          : inst.type === "together"
-                            ? "Together AI"
-                            : inst.type === "venice"
-                              ? "Venice"
-                              : inst.type === "openrouter"
-                                ? "OpenRouter AI"
-                                : inst.type,
-        );
-        setInstFormName(inst.properties?.name || "Instance");
-        setInstFormUrl(inst.properties?.url || "http://0.0.0.0:11434");
-        setInstFormApiKey(inst.properties?.api && inst.properties.api !== "NOKEY" ? inst.properties.api : "");
-        setShowApiKeyText(false);
-        setInstFormThink(Boolean(inst.properties?.think));
-        setInstFormShareName(inst.properties?.share_name ?? 2);
-        setInstFormShowMetadata(Boolean(inst.properties?.show_response_metadata));
-        setInstFormAllowSsl(Boolean(inst.properties?.allow_self_signed_ssl));
-        setInstFormOverrideParams(inst.properties?.override_parameters ?? true);
-        setInstFormTemp(inst.properties?.temperature ?? 0.7);
-        setInstFormSeed(inst.properties?.seed ?? 0);
-        setInstFormNumCtx(inst.properties?.num_ctx ?? 16384);
-        setInstFormKeepAliveMinutes(inst.properties?.keep_alive ?? 5);
 
         setInstanceSubView("form");
     };
@@ -234,160 +175,23 @@ export default function InstancesSettingsPage() {
             },
         };
 
-        if (editingInstanceId) {
-            setStoreInstances(
-                instances.map((inst) => (inst.id === editingInstanceId ? { ...inst, type: backendType, properties: { ...inst.properties, ...payload.properties } } : inst)),
-            );
-            try {
-                await fetch(`${getApiUrl()}/instances/${editingInstanceId}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                });
+        const tempId = `inst-${Date.now()}`;
+        const newInst: InstanceItem = { id: tempId, pinned: false, type: backendType, properties: payload.properties };
+        setStoreInstances([...instances, newInst]);
+        try {
+            const res = await fetch(`${getApiUrl()}/instances`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            if (res.ok) {
                 fetchInstances(true);
-            } catch (err) {
-                console.warn("Could not update instance:", err);
             }
-        } else {
-            const tempId = `inst-${Date.now()}`;
-            const newInst: InstanceItem = { id: tempId, pinned: false, type: backendType, properties: payload.properties };
-            setStoreInstances([...instances, newInst]);
-            try {
-                const res = await fetch(`${getApiUrl()}/instances`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                });
-                if (res.ok) {
-                    fetchInstances(true);
-                }
-            } catch (err) {
-                console.warn("Could not create instance:", err);
-            }
+        } catch (err) {
+            console.warn("Could not create instance:", err);
         }
 
         setInstanceSubView("list");
-    };
-
-    const handleManageInstanceModels = async (inst: InstanceItem) => {
-        setSelectedInstanceForModels(inst);
-        setInstanceSubView("instance-models");
-
-        await fetchModelPreferences();
-        const data = await fetchInstanceModels(inst.id);
-        if (Array.isArray(data) && data.length > 0) {
-            setInstanceModelsList(data);
-            return;
-        }
-        const instName = inst.properties?.name || inst.type;
-        if (inst.type === "gemini" || inst.properties?.url?.includes("generativelanguage.googleapis.com")) {
-            setInstanceModelsList([
-                { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", provider: "Google Gemini", voice: "af_heart", context: "1,048,576 tokens" },
-                { id: "gemini-flash-latest", name: "Gemini Flash (Latest)", provider: "Google Gemini", voice: "af_heart", context: "1,048,576 tokens" },
-                { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", provider: "Google Gemini", voice: "af_heart", context: "1,048,576 tokens" },
-                { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", provider: "Google Gemini", voice: "af_heart", context: "1,048,576 tokens" },
-            ]);
-            return;
-        }
-        setInstanceModelsList([
-            { id: `${inst.id}-m1`, name: `${instName} Model 1`, provider: inst.type, voice: "af_heart", context: "8,192 tokens" },
-            { id: `${inst.id}-m2`, name: `${instName} Model 2`, provider: inst.type, voice: "am_adam", context: "16,384 tokens" },
-        ]);
-    };
-
-    const handleOpenEditModelModal = (mod: any) => {
-        setEditingModel(mod);
-        const rawId = String(mod.id || "");
-        const prefKey = rawId.toLowerCase();
-        const pref = modelPreferences[rawId] || modelPreferences[prefKey];
-        setEditModelVoice(pref?.voice || mod.voice || "af_heart");
-        setEditModelNumCtx(pref?.num_ctx ?? (typeof mod.num_ctx === "number" ? mod.num_ctx : mod.context ? parseInt(String(mod.context).replace(/,/g, ""), 10) || 8192 : 8192));
-
-        const char = pref?.character || {};
-        const charData = (char as any).data || char || {};
-
-        setEditModelName(getCharacterName(char) || (pref as any)?.name || mod.name || mod.id || "");
-        setEditModelDescription(charData.description || pref?.description || "");
-        setEditModelFirstMessage(charData.first_mes || charData.first_message || pref?.first_message || "");
-
-        const greetings = Array.isArray(charData.alternate_greetings) ? charData.alternate_greetings : Array.isArray(pref?.alternate_greetings) ? pref.alternate_greetings : [];
-        setEditModelAlternateGreetings(greetings);
-
-        let cbItems: Array<{ name: string; description: string; tags: string }> = [];
-        if (Array.isArray(charData.character_book?.entries)) {
-            cbItems = charData.character_book.entries.map((e: any) => ({
-                name: e.comment || e.name || "",
-                description: e.content || "",
-                tags: Array.isArray(e.keys) ? e.keys.join(", ") : String(e.keys || ""),
-            }));
-        } else if (Array.isArray(charData.character_book)) {
-            cbItems = charData.character_book.map((e: any) => ({
-                name: e.name || "",
-                description: e.description || e.content || "",
-                tags: Array.isArray(e.tags) ? e.tags.join(", ") : String(e.tags || ""),
-            }));
-        }
-        setEditModelCharacterBook(cbItems);
-        setInstanceSubView("edit-model");
-    };
-
-    const handleSaveModelPreference = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!editingModel) return;
-
-        const rawId = String(editingModel.id || "");
-        const prefKey = rawId.toLowerCase();
-        const existingPref = modelPreferences[rawId] || modelPreferences[prefKey];
-        const existingChar = existingPref?.character || {};
-        const existingCharData = (existingChar as any).data || existingChar || {};
-
-        const updatedCharacter = {
-            ...existingCharData,
-            name: editModelName.trim(),
-            description: editModelDescription.trim(),
-            personality: editModelDescription.trim(),
-            first_mes: editModelFirstMessage.trim(),
-            alternate_greetings: editModelAlternateGreetings,
-            character_book: {
-                ...(existingCharData.character_book || {}),
-                entries: editModelCharacterBook.map((b) => ({
-                    comment: b.name,
-                    name: b.name,
-                    content: b.description,
-                    keys: b.tags
-                        .split(",")
-                        .map((t) => t.trim())
-                        .filter(Boolean),
-                    enabled: true,
-                })),
-            },
-        };
-
-        const updatedPref: ModelPreference = {
-            ...(existingPref || { id: rawId }),
-            id: rawId,
-            voice: editModelVoice,
-            num_ctx: editModelNumCtx,
-            character: updatedCharacter,
-        };
-
-        setStoreModelPreference(rawId, updatedPref);
-        setInstanceSubView("instance-models");
-
-        try {
-            await fetch(`${getApiUrl()}/model-preferences`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    id: rawId,
-                    voice: editModelVoice,
-                    num_ctx: editModelNumCtx,
-                    character: updatedCharacter,
-                }),
-            });
-        } catch (err) {
-            console.warn("Could not save model preference:", err);
-        }
     };
 
     return (
@@ -413,10 +217,7 @@ export default function InstancesSettingsPage() {
                                         className="p-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl transition-all shadow-sm flex items-center justify-center cursor-pointer"
                                         title="Add Instance"
                                     >
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <line x1="12" y1="5" x2="12" y2="19" />
-                                            <line x1="6" y1="12" x2="18" y2="12" />
-                                        </svg>
+                                        <PlusIcon className="w-5 h-5" />
                                     </button>
                                 </div>
 
@@ -467,7 +268,7 @@ export default function InstancesSettingsPage() {
                                                     <div className="flex items-center justify-between pt-3 border-t border-[#e8ebf3] gap-2">
                                                         <div className="flex items-center gap-2">
                                                             <button
-                                                                onClick={() => handleManageInstanceModels(inst)}
+                                                                onClick={() => router.push(`/settings/instances/${encodeURIComponent(inst.id)}`)}
                                                                 className="px-3 py-1.5 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] text-xs font-semibold transition-all cursor-pointer"
                                                             >
                                                                 Models
@@ -488,7 +289,7 @@ export default function InstancesSettingsPage() {
                                                         </div>
                                                         <div className="flex items-center gap-1">
                                                             <button
-                                                                onClick={() => handleOpenEditInstanceModal(inst)}
+                                                                onClick={() => router.push(`/settings/instances/${encodeURIComponent(inst.id)}`)}
                                                                 className="p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9]"
                                                                 title="Edit"
                                                             >
@@ -519,10 +320,7 @@ export default function InstancesSettingsPage() {
                                         onClick={() => setInstanceSubView("list")}
                                         className="p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer"
                                     >
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <line x1="19" y1="12" x2="5" y2="12" />
-                                            <polyline points="12 19 5 12 12 5" />
-                                        </svg>
+                                        <ArrowLeftIcon className="w-5 h-5" />
                                     </button>
                                     <div>
                                         <h3 className="text-2xl font-bold text-[#202022]">Select Provider Type</h3>
@@ -564,16 +362,13 @@ export default function InstancesSettingsPage() {
                             <div className="space-y-6 animate-in fade-in duration-200">
                                 <div className="flex items-center gap-3">
                                     <button
-                                        onClick={() => setInstanceSubView(editingInstanceId ? "list" : "select-type")}
+                                        onClick={() => setInstanceSubView("select-type")}
                                         className="p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer"
                                     >
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <line x1="19" y1="12" x2="5" y2="12" />
-                                            <polyline points="12 19 5 12 12 5" />
-                                        </svg>
+                                        <ArrowLeftIcon className="w-5 h-5" />
                                     </button>
                                     <div>
-                                        <h3 className="text-2xl font-bold text-[#202022]">{editingInstanceId ? "Edit Instance" : `Add ${selectedInstanceType}`}</h3>
+                                        <h3 className="text-2xl font-bold text-[#202022]">Add {selectedInstanceType}</h3>
                                         <p className="text-xs text-[#7a7d90] mt-0.5">Configure connection and execution parameters</p>
                                     </div>
                                 </div>
@@ -642,129 +437,6 @@ export default function InstancesSettingsPage() {
                                             className="px-5 py-2 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold shadow-xs transition-all"
                                         >
                                             Save Instance
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        )}
-
-                        {/* View 4: Instance Models */}
-                        {instanceSubView === "instance-models" && selectedInstanceForModels && (
-                            <div className="space-y-6 animate-in fade-in duration-200">
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        onClick={() => setInstanceSubView("list")}
-                                        className="p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer"
-                                    >
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <line x1="19" y1="12" x2="5" y2="12" />
-                                            <polyline points="12 19 5 12 12 5" />
-                                        </svg>
-                                    </button>
-                                    <div>
-                                        <h3 className="text-2xl font-bold text-[#202022]">
-                                            Models — {selectedInstanceForModels.properties?.name || selectedInstanceForModels.type}
-                                        </h3>
-                                        <p className="text-xs text-[#7a7d90] mt-0.5">Configure voice and preferences for each model</p>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                                    {instanceModelsList.map((mod) => (
-                                        <div key={mod.id} className="p-4 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex items-center justify-between gap-3">
-                                            <div className="min-w-0">
-                                                <h4 className="text-sm font-bold text-[#202022] truncate">{mod.name || mod.id}</h4>
-                                                <span className="text-[11px] font-mono text-[#7a7d90] block truncate">{mod.id}</span>
-                                            </div>
-                                            <button
-                                                onClick={() => handleOpenEditModelModal(mod)}
-                                                className="px-3 py-1.5 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] text-xs font-semibold transition-all shrink-0"
-                                            >
-                                                Configure
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* View 5: Edit Model */}
-                        {instanceSubView === "edit-model" && editingModel && (
-                            <div className="space-y-6 animate-in fade-in duration-200">
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        onClick={() => setInstanceSubView("instance-models")}
-                                        className="p-2 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] transition-all cursor-pointer"
-                                    >
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <line x1="19" y1="12" x2="5" y2="12" />
-                                            <polyline points="12 19 5 12 12 5" />
-                                        </svg>
-                                    </button>
-                                    <div>
-                                        <h3 className="text-2xl font-bold text-[#202022]">Edit Model — {editingModel.name || editingModel.id}</h3>
-                                        <p className="text-xs text-[#7a7d90] mt-0.5">Configure persona details and TTS voice</p>
-                                    </div>
-                                </div>
-
-                                <form onSubmit={handleSaveModelPreference} className="bg-white p-6 rounded-2xl border border-[#e8ebf3] shadow-xs space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-[#202022] mb-1.5">Display Name</label>
-                                        <input
-                                            type="text"
-                                            value={editModelName}
-                                            onChange={(e) => setEditModelName(e.target.value)}
-                                            className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-4 py-2.5 text-sm text-[#202022] outline-none focus:border-[#7678ed] transition-all"
-                                            placeholder="Model Display Name"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-[#202022] mb-1.5">TTS Voice</label>
-                                        <input
-                                            type="text"
-                                            value={editModelVoice}
-                                            onChange={(e) => setEditModelVoice(e.target.value)}
-                                            className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-4 py-2.5 text-sm text-[#202022] font-mono outline-none focus:border-[#7678ed] transition-all"
-                                            placeholder="af_heart"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-[#202022] mb-1.5">Context Size (Tokens)</label>
-                                        <input
-                                            type="number"
-                                            value={editModelNumCtx}
-                                            onChange={(e) => setEditModelNumCtx(Number(e.target.value))}
-                                            className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-4 py-2.5 text-sm text-[#202022] font-mono outline-none focus:border-[#7678ed] transition-all"
-                                            placeholder="8192"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-semibold text-[#202022] mb-1.5">First Message (Greeting)</label>
-                                        <textarea
-                                            value={editModelFirstMessage}
-                                            onChange={(e) => setEditModelFirstMessage(e.target.value)}
-                                            rows={3}
-                                            className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-4 py-2.5 text-sm text-[#202022] outline-none focus:border-[#7678ed] transition-all resize-none"
-                                            placeholder="Initial greeting when starting new chat..."
-                                        />
-                                    </div>
-
-                                    <div className="pt-4 flex items-center justify-end gap-3 border-t border-[#e8ebf3]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setInstanceSubView("instance-models")}
-                                            className="px-4 py-2 rounded-xl text-xs font-semibold text-[#7a7d90] hover:text-[#202022] hover:bg-[#eaecf9] transition-all"
-                                        >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            className="px-5 py-2 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold shadow-xs transition-all"
-                                        >
-                                            Save Preferences
                                         </button>
                                     </div>
                                 </form>

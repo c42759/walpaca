@@ -2,6 +2,17 @@
 
 import React, { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import {
+    UploadIcon,
+    ServerIcon,
+    BoxIcon,
+    BookIcon,
+    UserIcon,
+    SlidersIcon,
+    InfoIcon,
+    SearchIcon,
+    ArrowLeftIcon,
+} from "@/components/icons/Icons";
 
 export type SettingsCategory = "import-chat" | "manage-instances" | "manage-model-preferences" | "preferences" | "manage-lorebook" | "manage-personas" | "about-walpaca";
 
@@ -69,93 +80,49 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
             label: "Import Chat",
             description: "Import conversation logs, JSON, or Markdown",
             gradient: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-            ),
+            icon: <UploadIcon className="w-5 h-5 text-white" />,
         },
         {
             id: "manage-instances",
             label: "Manage Instances",
             description: "Configure Ollama, OpenAI, & API backends",
             gradient: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                    <line x1="6" y1="6" x2="6.01" y2="6" />
-                    <line x1="6" y1="18" x2="6.01" y2="18" />
-                </svg>
-            ),
+            icon: <ServerIcon className="w-5 h-5 text-white" />,
         },
         {
             id: "manage-model-preferences",
             label: "Manage Model Preferences",
             description: "Customize character, avatar, voice, and context per model",
             gradient: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                    <line x1="12" y1="22.08" x2="12" y2="12" />
-                </svg>
-            ),
+            icon: <BoxIcon className="w-5 h-5 text-white" />,
         },
         {
             id: "manage-lorebook",
             label: "Manage Lorebook",
             description: "World info entries and context keywords",
             gradient: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                </svg>
-            ),
+            icon: <BookIcon className="w-5 h-5 text-white" />,
         },
         {
             id: "manage-personas",
             label: "Manage Personas",
             description: "Custom character profiles & avatars",
             gradient: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)",
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                    <circle cx="12" cy="7" r="4" />
-                </svg>
-            ),
+            icon: <UserIcon className="w-5 h-5 text-white" />,
         },
         {
             id: "preferences",
             label: "Preferences",
             description: "Global defaults, theme, and generation parameters",
             gradient: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="4" y1="21" x2="4" y2="14" />
-                    <line x1="4" y1="10" x2="4" y2="3" />
-                    <line x1="12" y1="21" x2="12" y2="12" />
-                    <line x1="12" y1="8" x2="12" y2="3" />
-                    <line x1="20" y1="21" x2="20" y2="16" />
-                    <line x1="20" y1="12" x2="20" y2="3" />
-                </svg>
-            ),
+            icon: <SlidersIcon className="w-5 h-5 text-white" />,
         },
         {
             id: "about-walpaca",
             label: "About Walpaca",
             description: "Version info, updates, and system details",
             gradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-            icon: (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="16" x2="12" y2="12" />
-                    <line x1="12" y1="8" x2="12.01" y2="8" />
-                </svg>
-            ),
+            icon: <InfoIcon className="w-5 h-5 text-white" />,
         },
     ];
 
@@ -193,20 +160,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
             {/* Search Bar Header matching ChatListPanel */}
             <div className="p-4 pb-3 flex items-center gap-2">
                 <div className="relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]">
-                    <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#7678ed"
-                        strokeWidth="2.2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="mr-2.5 shrink-0 opacity-80"
-                    >
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                    </svg>
+                    <SearchIcon className="w-4.5 h-4.5 text-[#7678ed] mr-2.5 shrink-0 opacity-80" />
                     <input
                         type="text"
                         placeholder="Search"
@@ -261,10 +215,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
                     onClick={handleBackToChat}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] font-semibold text-sm transition-all cursor-pointer shadow-xs"
                 >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="19" y1="12" x2="5" y2="12" />
-                        <polyline points="12 19 5 12 12 5" />
-                    </svg>
+                    <ArrowLeftIcon className="w-4 h-4" />
                     <span>Back to Chat</span>
                 </button>
             </div>

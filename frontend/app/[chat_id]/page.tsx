@@ -4208,23 +4208,7 @@ export default function ChatPage() {
                         {/* Modal Header */}
                         <div className="flex items-center justify-between pb-4 border-b border-[#eef0f6] shrink-0 mb-4">
                             <div className="flex items-center gap-2.5">
-                                <div className="w-10 h-10 rounded-2xl bg-[#7678ed]/10 text-[#7678ed] flex items-center justify-center font-bold shrink-0 shadow-xs border border-[#7678ed]/20">
-                                    <svg
-                                        width="20"
-                                        height="20"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2.2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    >
-                                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                                        <circle cx="9" cy="7" r="4" />
-                                        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                                    </svg>
-                                </div>
+                                
                                 <div>
                                     <h3 className="text-xl font-bold text-[#202022] tracking-tight">Select Model & Instance</h3>
                                     <p className="text-xs text-[#8e90a6] mt-0.5">Choose the responding AI model and server instance</p>
@@ -4297,19 +4281,11 @@ export default function ChatPage() {
                                     <div className="space-y-3">
                                         <div className="flex items-center justify-between px-1 bg-[#f9fafc] p-3 rounded-2xl border border-[#e8ebf3]">
                                             <div className="flex items-center gap-2">
-                                                <span className="text-base">💻</span>
                                                 <h4 className="font-bold text-sm text-[#202022]">{activeInstName}</h4>
-                                                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                    Active Instance
-                                                </span>
                                                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#eaecf9] text-[#7678ed]">
                                                     {activeInst.type}
                                                 </span>
                                             </div>
-                                            <span className="text-xs text-[#8e90a6] font-medium">
-                                                {matchingPrefs.length} {matchingPrefs.length === 1 ? "preference" : "preferences"} available
-                                            </span>
                                         </div>
 
                                         <div className="space-y-1.5 pl-2 border-l-2 border-[#7678ed]/20 ml-2">
