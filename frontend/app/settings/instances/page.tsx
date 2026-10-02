@@ -201,7 +201,7 @@ export default function InstancesSettingsPage() {
 
             {/* 2. MIDDLE SETTINGS CONTENT AREA */}
             <main className="flex-1 p-8 overflow-y-auto">
-                <div className="max-w-3xl mx-auto space-y-8">
+                <div className="mx-auto space-y-8">
                     <div>
                         {/* View 1: List */}
                         {instanceSubView === "list" && (

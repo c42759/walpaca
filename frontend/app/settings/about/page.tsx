@@ -17,7 +17,7 @@ export default function AboutSettingsPage() {
 
             {/* 2. MIDDLE SETTINGS CONTENT AREA */}
             <main className="flex-1 p-8 overflow-y-auto">
-                <div className="max-w-3xl mx-auto space-y-8">
+                <div className="mx-auto space-y-8">
                     <div className="space-y-6 animate-in fade-in duration-200 pb-8">
                         {/* Header */}
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs">

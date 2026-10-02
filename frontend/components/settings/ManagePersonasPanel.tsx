@@ -1,10 +1,12 @@
 /* eslint-disable @next/next/no-img-element */
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { Input, Textarea } from "../ui/Input";
 import { PlusIcon, EditIcon, TrashIcon, CheckIcon, SearchIcon, ChevronIcon } from "../icons/Icons";
 import { TTS_VOICE_GROUPS, getVoiceDisplayName } from "@/lib/voiceConstants";
+import { CardStacked } from "../ui/Card";
 
 export interface PersonaTemplate {
     filename: string;
@@ -78,6 +80,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
     setApplyPersonaSelectedModelId,
     setDeletingPersonaTemplate,
 }) => {
+    const router = useRouter();
     const [personaViewMode, setPersonaViewMode] = useState<"list" | "editor">("list");
     const [personaSearchQuery, setPersonaSearchQuery] = useState<string>("");
     const [editingPersonaTemplate, setEditingPersonaTemplate] = useState<PersonaTemplate | null>(null);
@@ -128,34 +131,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
     };
 
     const handleOpenEditPersonaEditor = (template: PersonaTemplate) => {
-        setEditingPersonaTemplate(template);
-        setPersonaFormName(template.name || "");
-        setPersonaFormDescription(template.description || template.personality || "");
-        setPersonaFormScenario(template.scenario || "");
-        setPersonaFormSystemPrompt(template.system_prompt || "");
-        setPersonaFormPostHistoryInstructions(template.post_history_instructions || "");
-        setPersonaFormFirstMes(template.first_mes || template.greeting || "");
-        setPersonaFormAlternateGreetings(Array.isArray(template.alternate_greetings) ? [...template.alternate_greetings] : []);
-        setPersonaFormVoice(template.voice || "af_heart");
-        setPersonaFormPicture(template.picture || "");
-        setPersonaAvatarPreview(template.picture || "");
-        setPersonaFormNumCtx(template.num_ctx || 8192);
-        setPersonaFormTemperature(template.generation_settings?.temperature ?? template.temperature ?? 0.7);
-        setPersonaFormTopP(template.generation_settings?.top_p ?? template.top_p ?? 0.9);
-        setPersonaFormTopK(template.generation_settings?.top_k ?? template.top_k ?? 40);
-        setPersonaFormRepeatPenalty(template.generation_settings?.repeat_penalty ?? template.repeat_penalty ?? 1.1);
-        setPersonaFormPresencePenalty(template.generation_settings?.presence_penalty ?? template.presence_penalty ?? 0.0);
-        setPersonaFormFrequencyPenalty(template.generation_settings?.frequency_penalty ?? template.frequency_penalty ?? 0.0);
-
-        const rawEntries = template.character_book?.entries || [];
-        const parsedEntries = rawEntries.map((e) => ({
-            name: e.name || "Entry",
-            keys: Array.isArray(e.keys) ? e.keys.join(", ") : e.keys || "",
-            content: e.content || "",
-            enabled: e.enabled !== false,
-        }));
-        setPersonaFormLorebookEntries(parsedEntries);
-        setPersonaViewMode("editor");
+        router.push(`/settings/personas/${encodeURIComponent(template.filename || template.name)}`);
     };
 
     const handlePersonaAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -344,9 +320,6 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
                         </div>
 
                         <div className="flex items-center gap-3 shrink-0">
-                            <Button type="button" variant="outline" onClick={() => setPersonaViewMode("list")}>
-                                Cancel
-                            </Button>
                             <Button type="submit" variant="primary" isLoading={personaSaving} disabled={!personaFormName.trim()}>
                                 Save Persona
                             </Button>
@@ -725,76 +698,57 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
                             }
 
                             return (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                                     {filtered.map((tmpl) => (
-                                        <div
+                                        <CardStacked
                                             key={tmpl.filename}
-                                            className="p-5 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs flex flex-col justify-between space-y-4 hover:border-[#7678ed]/40 transition-all"
-                                        >
-                                            <div className="space-y-3">
-                                                <div className="flex items-start gap-3.5">
-                                                    <div className="w-12 h-12 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/20 overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
-                                                        {tmpl.picture ? (
-                                                            <img src={tmpl.picture} alt={tmpl.name} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <span className="text-xl">🎭</span>
+                                            image={tmpl.picture || ``}
+                                            image_alt={tmpl.name}
+                                            title={tmpl.name}
+                                            content={
+                                                <>
+                                                    <p className="text-xs text-[#404252] font-medium leading-relaxed line-clamp-2">{tmpl.description}</p>
+                                                    <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-[#7a7d90] font-medium">
+                                                        <Badge variant="primary">Voice: {getVoiceDisplayName(tmpl.voice)}</Badge>
+                                                        {tmpl.num_ctx && <Badge variant="secondary">{tmpl.num_ctx} tokens</Badge>}
+                                                        {tmpl.character_book?.entries && tmpl.character_book.entries.length > 0 && (
+                                                            <Badge variant="success">📚 {tmpl.character_book.entries.length} Lorebook entries</Badge>
                                                         )}
                                                     </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h4 className="font-bold text-[#202022] text-base leading-snug truncate">{tmpl.name}</h4>
-                                                        <span className="text-[11px] font-mono text-[#a0a3b5] block mt-0.5">{tmpl.filename}</span>
+                                                </>
+                                            }
+                                            footer={
+                                                <div className={"flex items-center justify-between pt-3 border-t border-[#e8ebf3] gap-2 justify-end"}>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="primary"
+                                                        onClick={() => {
+                                                            setApplyPersonaModalTemplate(tmpl);
+                                                            setApplyPersonaSelectedModelId("");
+                                                        }}
+                                                        icon={<CheckIcon className="w-3.5 h-3.5" />}
+                                                    >
+                                                        Apply to Model
+                                                    </Button>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={() => handleOpenEditPersonaEditor(tmpl)}
+                                                            className="p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9]"
+                                                            title="Edit"
+                                                        >
+                                                            <EditIcon className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setDeletingPersonaTemplate(tmpl)}
+                                                            className="p-1.5 text-[#7a7d90] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50"
+                                                            title="Delete"
+                                                        >
+                                                            <TrashIcon className="w-4 h-4" />
+                                                        </button>
                                                     </div>
                                                 </div>
-
-                                                {tmpl.description && <p className="text-xs text-[#404252] font-medium leading-relaxed line-clamp-2">{tmpl.description}</p>}
-
-                                                {tmpl.system_prompt && (
-                                                    <div>
-                                                        <span className="text-[11px] font-bold text-[#a0a3b5] uppercase tracking-wider block mb-1">System Instructions</span>
-                                                        <p className="text-xs text-[#404252] bg-[#f9fafc] p-2.5 rounded-xl border border-[#e8ebf3] line-clamp-3 font-mono leading-relaxed whitespace-pre-wrap">
-                                                            {tmpl.system_prompt}
-                                                        </p>
-                                                    </div>
-                                                )}
-
-                                                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-[#7a7d90] font-medium">
-                                                    <Badge variant="primary">Voice: {getVoiceDisplayName(tmpl.voice)}</Badge>
-                                                    {tmpl.num_ctx && <Badge variant="secondary">{tmpl.num_ctx} tokens</Badge>}
-                                                    {tmpl.character_book?.entries && tmpl.character_book.entries.length > 0 && (
-                                                        <Badge variant="success">📚 {tmpl.character_book.entries.length} Lorebook entries</Badge>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className={"flex items-center justify-between pt-3 border-t border-[#e8ebf3] gap-2 justify-end"}>
-                                                <Button
-                                                    size="sm"
-                                                    variant="primary"
-                                                    onClick={() => {
-                                                        setApplyPersonaModalTemplate(tmpl);
-                                                        setApplyPersonaSelectedModelId("");
-                                                    }}
-                                                    icon={<CheckIcon className="w-3.5 h-3.5" />}
-                                                >
-                                                    Apply to Model
-                                                </Button>
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        onClick={() => handleOpenEditPersonaEditor(tmpl)}
-                                                        className="p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9]"
-                                                        title="Edit"
-                                                    >
-                                                        <EditIcon className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setDeletingPersonaTemplate(tmpl)}
-                                                        className="p-1.5 text-[#7a7d90] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50"
-                                                        title="Delete"
-                                                    >
-                                                        <TrashIcon className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
+                                            }
+                                        />
                                     ))}
                                 </div>
                             );

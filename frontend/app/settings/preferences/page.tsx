@@ -129,7 +129,7 @@ export default function PreferencesSettingsPage() {
 
             {/* 2. MIDDLE SETTINGS CONTENT AREA */}
             <main className="flex-1 p-8 overflow-y-auto">
-                <div className="max-w-3xl mx-auto space-y-8">
+                <div className="mx-auto space-y-8">
                     <div className="space-y-6 animate-in fade-in duration-200">
                         <div className="p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex items-center justify-between gap-3.5">
                             <div className="flex items-center gap-3.5">

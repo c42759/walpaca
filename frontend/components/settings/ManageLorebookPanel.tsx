@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { Input, Textarea } from "../ui/Input";
@@ -13,6 +14,7 @@ export interface ManageLorebookPanelProps {
 }
 
 export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({ lorebookTemplates, isLorebookLoading, getApiUrl, fetchLorebookTemplates }) => {
+    const router = useRouter();
     const [lorebookSearchQuery, setLorebookSearchQuery] = useState<string>("");
     const [isLorebookModalOpen, setIsLorebookModalOpen] = useState<boolean>(false);
     const [editingLorebookTemplate, setEditingLorebookTemplate] = useState<LorebookTemplate | null>(null);
@@ -31,11 +33,7 @@ export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({ lorebo
     };
 
     const handleOpenEditLorebookModal = (template: LorebookTemplate) => {
-        setEditingLorebookTemplate(template);
-        setLorebookFormName(template.name);
-        setLorebookFormKeys(Array.isArray(template.keys) ? template.keys.join(", ") : "");
-        setLorebookFormContent(template.content || "");
-        setIsLorebookModalOpen(true);
+        router.push(`/settings/lorebook/${encodeURIComponent(template.filename)}`);
     };
 
     const handleSaveLorebookTemplate = async (e: React.FormEvent) => {
@@ -49,7 +47,7 @@ export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({ lorebo
                 .map((k) => k.trim())
                 .filter((k) => k.length > 0);
 
-            const payload: any = {
+            const payload: Record<string, unknown> = {
                 name: lorebookFormName.trim(),
                 keys: keysArray,
                 content: lorebookFormContent,
@@ -76,9 +74,10 @@ export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({ lorebo
                 const errData = await res.json();
                 alert(errData.error || "Failed saving lorebook template");
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error saving lorebook template:", err);
-            alert(err.message || "Error saving template");
+            const message = err instanceof Error ? err.message : "Error saving template";
+            alert(message);
         } finally {
             setLorebookSaving(false);
         }
@@ -99,9 +98,10 @@ export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({ lorebo
                 const errData = await res.json();
                 alert(errData.error || "Failed deleting lorebook template");
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Error deleting lorebook template:", err);
-            alert(err.message || "Error deleting template");
+            const message = err instanceof Error ? err.message : "Error deleting template";
+            alert(message);
         }
     };
 
@@ -276,7 +276,7 @@ export const ManageLorebookPanel: React.FC<ManageLorebookPanelProps> = ({ lorebo
                     <div className="bg-[#202022] text-white border border-white/20 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
                         <h3 className="text-lg font-bold text-rose-400 mb-2">Delete Lorebook Template?</h3>
                         <p className="text-sm text-white/70 leading-relaxed mb-6">
-                            Are you sure you want to delete <strong className="text-white">"{deletingLorebookTemplate.name}"</strong> (
+                            Are you sure you want to delete <strong className="text-white">&ldquo;{deletingLorebookTemplate.name}&rdquo;</strong> (
                             <span className="font-mono text-xs text-white/50">{deletingLorebookTemplate.filename}</span>)? Action cannot be undone.
                         </p>
                         <div className="flex items-center justify-end gap-3">
