@@ -11,7 +11,7 @@ import { ManagePersonasPanel, PersonaTemplate, LorebookTemplate } from "@/compon
 import { CloseIcon } from "@/components/icons/Icons";
 
 export default function PersonasSettingsPage() {
-    const { setCurrentView, instances, fetchInstances, fetchInstanceModels, fetchModelPreferences } = useAppStore();
+    const { setCurrentView, instances, fetchInstances, fetchInstanceModels, fetchModelPreferences, setModelPreference, appPreferences, fetchAppPreferences } = useAppStore();
     const [activeSettingsCategory, setActiveSettingsCategory] = useState<SettingsCategory>("manage-personas");
 
     // --- Persona State & Modals ---
@@ -23,6 +23,10 @@ export default function PersonasSettingsPage() {
     const [isApplyingPersona, setIsApplyingPersona] = useState<boolean>(false);
     const [deletingPersonaTemplate, setDeletingPersonaTemplate] = useState<PersonaTemplate | null>(null);
     const [availableModelsList, setAvailableModelsList] = useState<any[]>([]);
+    const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
+
+    const activeInstanceId = appPreferences?.active_instance_id || instances[0]?.id;
+    const activeInstance = instances.find((i) => i.id === activeInstanceId) || instances[0];
 
     const fetchPersonaTemplates = async () => {
         setIsPersonaLoading(true);
@@ -55,59 +59,79 @@ export default function PersonasSettingsPage() {
         let isMounted = true;
         (async () => {
             if (!isMounted) return;
-            await Promise.all([fetchPersonaTemplates(), fetchLorebookTemplates(), fetchInstances()]);
+            await Promise.all([fetchPersonaTemplates(), fetchLorebookTemplates(), fetchInstances(), fetchAppPreferences()]);
         })();
         return () => {
             isMounted = false;
         };
-    }, [fetchInstances]);
+    }, [fetchInstances, fetchAppPreferences]);
 
     useEffect(() => {
         let isMounted = true;
+        const targetId = activeInstance?.id;
         (async () => {
-            if (instances.length > 0) {
-                const allMods: any[] = [];
-                for (const inst of instances) {
-                    try {
-                        const mods = await fetchInstanceModels(inst.id);
-                        if (Array.isArray(mods)) {
-                            allMods.push(...mods);
-                        }
-                    } catch (e) {
-                        console.warn("Could not fetch models for instance:", inst.id, e);
-                    }
-                }
+            if (!targetId) {
                 if (isMounted) {
-                    setAvailableModelsList(allMods);
+                    setAvailableModelsList([]);
+                }
+                return;
+            }
+            setIsLoadingModels(true);
+            try {
+                const mods = await fetchInstanceModels(targetId);
+                if (isMounted) {
+                    const sorted = Array.isArray(mods)
+                        ? [...mods].sort((a, b) =>
+                              (a.name || a.id || "").localeCompare(b.name || b.id || "", undefined, {
+                                  sensitivity: "base",
+                                  numeric: true,
+                              }),
+                          )
+                        : [];
+                    setAvailableModelsList(sorted);
+                }
+            } catch (e) {
+                console.warn("Could not fetch models for active instance:", targetId, e);
+                if (isMounted) {
+                    setAvailableModelsList([]);
+                }
+            } finally {
+                if (isMounted) {
+                    setIsLoadingModels(false);
                 }
             }
         })();
         return () => {
             isMounted = false;
         };
-    }, [instances, fetchInstanceModels]);
+    }, [activeInstance?.id, fetchInstanceModels]);
 
     const handleApplyPersonaToModel = async (template: PersonaTemplate, targetModelId: string) => {
         if (!targetModelId) return;
         setIsApplyingPersona(true);
         try {
+            const characterPayload = {
+                name: template.name,
+                description: template.description || "",
+                personality: template.description || "",
+                scenario: template.scenario || "",
+                system_prompt: template.system_prompt || "",
+                post_history_instructions: template.post_history_instructions || "",
+                first_mes: template.first_mes || "",
+                alternate_greetings: template.alternate_greetings || [],
+                voice: template.voice || "af_heart",
+                picture: template.picture || null,
+                num_ctx: template.num_ctx ? Number(template.num_ctx) : undefined,
+                character_book: template.character_book || null,
+                generation_settings: template.generation_settings || null,
+            };
+
             const payload = {
                 id: targetModelId,
                 picture: template.picture || null,
                 voice: template.voice || "af_heart",
                 num_ctx: template.num_ctx ? Number(template.num_ctx) : undefined,
-                character: {
-                    name: template.name,
-                    description: template.description || "",
-                    personality: template.description || "",
-                    scenario: template.scenario || "",
-                    system_prompt: template.system_prompt || "",
-                    post_history_instructions: template.post_history_instructions || "",
-                    first_mes: template.first_mes || "",
-                    alternate_greetings: template.alternate_greetings || [],
-                    character_book: template.character_book || null,
-                    generation_settings: template.generation_settings || null,
-                },
+                character: characterPayload,
             };
 
             const res = await fetch(`${getApiUrl()}/model-preferences`, {
@@ -117,8 +141,13 @@ export default function PersonasSettingsPage() {
             });
 
             if (res.ok) {
-                await fetchModelPreferences();
+                const saved = await res.json();
+                if (saved?.id) {
+                    setModelPreference(saved.id, saved);
+                }
+                await fetchModelPreferences(true);
                 setApplyPersonaModalTemplate(null);
+                setApplyPersonaSelectedModelId("");
                 alert(`Successfully applied persona '${template.name}' to model '${targetModelId}'!`);
             } else {
                 const errData = await res.json();
@@ -205,21 +234,48 @@ export default function PersonasSettingsPage() {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-white/80 mb-1.5">Select Target Model</label>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-xs font-semibold text-white/80">Select Target Model</label>
+                                    {activeInstance ? (
+                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#7678ed]/20 text-[#a5a6f6] border border-[#7678ed]/30 font-medium">
+                                            Active: {activeInstance.properties?.name || activeInstance.id} ({activeInstance.type})
+                                        </span>
+                                    ) : (
+                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-medium">
+                                            No active instance
+                                        </span>
+                                    )}
+                                </div>
                                 <select
                                     value={applyPersonaSelectedModelId}
+                                    disabled={isLoadingModels || availableModelsList.length === 0}
                                     onChange={(e) => setApplyPersonaSelectedModelId(e.target.value)}
-                                    className="w-full bg-white/10 border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-[#7678ed] transition-all cursor-pointer"
+                                    className="w-full bg-white/10 border border-white/15 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-[#7678ed] transition-all cursor-pointer disabled:opacity-50"
                                 >
-                                    <option value="" className="bg-[#202022] text-white">
-                                        Select a model...
-                                    </option>
-                                    {availableModelsList.map((mod) => (
-                                        <option key={mod.id} value={mod.id} className="bg-[#202022] text-white">
-                                            {mod.name || mod.id} ({mod.provider || "AI"})
+                                    {isLoadingModels ? (
+                                        <option value="" className="bg-[#202022] text-white">
+                                            Loading models from active instance...
                                         </option>
-                                    ))}
+                                    ) : availableModelsList.length === 0 ? (
+                                        <option value="" className="bg-[#202022] text-white">
+                                            No models found in active instance
+                                        </option>
+                                    ) : (
+                                        <>
+                                            <option value="" className="bg-[#202022] text-white">
+                                                Select a model...
+                                            </option>
+                                            {availableModelsList.map((mod) => (
+                                                <option key={mod.id} value={mod.id} className="bg-[#202022] text-white">
+                                                    {mod.name || mod.id} {mod.parameter_size ? `(${mod.parameter_size})` : ""}
+                                                </option>
+                                            ))}
+                                        </>
+                                    )}
                                 </select>
+                                <p className="text-[11px] text-white/50 mt-1.5">
+                                    Models listed are fetched strictly from your active instance. Applying creates or updates a Model Preference entry in the database.
+                                </p>
                             </div>
 
                             <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
