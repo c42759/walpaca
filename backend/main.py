@@ -5,10 +5,12 @@ from flask import Flask
 from flask import jsonify
 from flask_cors import CORS
 from routes.api import api_bp
+from utils.logger import init_logging_middleware
 
 
 def create_app(test_config=None):
     app = Flask(__name__)
+    init_logging_middleware(app)
 
     # Default configuration pointing to root alpaca.db
     base_dir = os.path.abspath(os.path.dirname(__file__))
