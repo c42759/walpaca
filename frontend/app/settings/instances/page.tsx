@@ -15,9 +15,6 @@ export default function InstancesSettingsPage() {
         fetchInstances,
         setInstances: setStoreInstances,
         setCurrentView,
-        appPreferences,
-        fetchAppPreferences,
-        setAppPreferences,
     } = useAppStore();
 
     const [activeSettingsCategory, setActiveSettingsCategory] = useState<SettingsCategory>("manage-instances");
@@ -44,8 +41,7 @@ export default function InstancesSettingsPage() {
     // Lifecycle
     useEffect(() => {
         fetchInstances();
-        fetchAppPreferences();
-    }, [fetchInstances, fetchAppPreferences]);
+    }, [fetchInstances]);
 
     // Handlers: Instances
     const handleOpenAddInstanceModal = () => {
@@ -104,14 +100,13 @@ export default function InstancesSettingsPage() {
     };
 
     const handleActivateInstance = async (id: string) => {
-        setAppPreferences({ active_instance_id: id });
         try {
-            await fetch(`${getApiUrl()}/preferences`, {
-                method: "POST",
+            await fetch(`${getApiUrl()}/instances/${encodeURIComponent(id)}`, {
+                method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ active_instance_id: id }),
+                body: JSON.stringify({ is_enabled: true }),
             });
-            fetchAppPreferences(true);
+            fetchInstances(true);
         } catch (err) {
             console.warn("Could not activate instance:", err);
         }
@@ -120,19 +115,6 @@ export default function InstancesSettingsPage() {
     const handleDeleteInstance = async (id: string) => {
         const remaining = instances.filter((item) => item.id !== id);
         setStoreInstances(remaining);
-        if (appPreferences.active_instance_id === id) {
-            const newActiveId = remaining[0]?.id || null;
-            setAppPreferences({ active_instance_id: newActiveId });
-            try {
-                await fetch(`${getApiUrl()}/preferences`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ active_instance_id: newActiveId }),
-                });
-            } catch (err) {
-                console.warn("Could not update active instance preference after delete:", err);
-            }
-        }
         try {
             await fetch(`${getApiUrl()}/instances/${id}`, { method: "DELETE" });
             fetchInstances(true);
@@ -238,7 +220,7 @@ export default function InstancesSettingsPage() {
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
                                         {instances.map((inst) => {
-                                            const isActive = appPreferences.active_instance_id ? appPreferences.active_instance_id === inst.id : instances[0]?.id === inst.id;
+                                            const isActive = Boolean(inst.is_enabled ?? (instances[0]?.id === inst.id));
 
                                             return (
                                                 <div

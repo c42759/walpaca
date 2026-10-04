@@ -188,5 +188,13 @@ export const DownloadIcon = ({ className = "w-4 h-4", strokeWidth = 2.5 }: { cla
     </svg>
 );
 
+export const AudioIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { className?: string; strokeWidth?: number | string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 18V5l12-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="16" r="3" />
+    </svg>
+);
+
 
 

@@ -3,6 +3,9 @@ import { getApiUrl } from "../lib/api";
 
 export interface ModelPreference {
     id: string;
+    instance_id?: string | null;
+    model_id?: string | null;
+    model_name?: string | null;
     name?: string;
     description?: string;
     first_message?: string;
@@ -20,7 +23,6 @@ export interface AppPreferences {
     play_sound_notification?: boolean;
     auto_scroll: boolean;
     default_audio_output: string;
-    active_instance_id?: string | null;
 }
 
 export interface InstanceProperties {
@@ -43,6 +45,8 @@ export interface InstanceProperties {
 export interface InstanceItem {
     id: string;
     pinned?: boolean;
+    is_enabled?: boolean;
+    enabled?: boolean;
     type: string;
     properties: InstanceProperties;
 }
@@ -292,6 +296,14 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
                             map[pref.id] = pref;
                             map[pref.id.toLowerCase()] = pref;
                         }
+                        if (pref && pref.model_id) {
+                            map[pref.model_id] = pref;
+                            map[pref.model_id.toLowerCase()] = pref;
+                        }
+                        if (pref && pref.model_name) {
+                            map[pref.model_name] = pref;
+                            map[pref.model_name.toLowerCase()] = pref;
+                        }
                     });
                 } else if (data && typeof data === "object") {
                     Object.values(data).forEach((val) => {
@@ -299,6 +311,14 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
                         if (p && p.id) {
                             map[p.id] = p;
                             map[p.id.toLowerCase()] = p;
+                        }
+                        if (p && p.model_id) {
+                            map[p.model_id] = p;
+                            map[p.model_id.toLowerCase()] = p;
+                        }
+                        if (p && p.model_name) {
+                            map[p.model_name] = p;
+                            map[p.model_name.toLowerCase()] = p;
                         }
                     });
                 }
@@ -361,14 +381,62 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
                 updated[id] = pref;
                 updated[id.toLowerCase()] = pref;
             }
+            if (pref.id) {
+                updated[pref.id] = pref;
+                updated[pref.id.toLowerCase()] = pref;
+            }
+            if (pref.model_id) {
+                updated[pref.model_id] = pref;
+                updated[pref.model_id.toLowerCase()] = pref;
+            }
+            if (pref.model_name) {
+                updated[pref.model_name] = pref;
+                updated[pref.model_name.toLowerCase()] = pref;
+            }
             return { modelPreferences: updated };
         }),
 
     removeModelPreference: (id) =>
         set((state) => {
+            if (!id) return state;
             const updated = { ...state.modelPreferences };
-            delete updated[id];
-            delete updated[id.toLowerCase()];
+            const lowerId = id.toLowerCase();
+            const target =
+                updated[id] ||
+                updated[lowerId] ||
+                Object.values(updated).find(
+                    (p) =>
+                        p?.id?.toLowerCase() === lowerId ||
+                        p?.model_id?.toLowerCase() === lowerId ||
+                        p?.model_name?.toLowerCase() === lowerId
+                );
+
+            const targetPrefId = target?.id?.toLowerCase() || lowerId;
+
+            for (const key of Object.keys(updated)) {
+                const item = updated[key];
+                if (
+                    key.toLowerCase() === targetPrefId ||
+                    (item?.id && item.id.toLowerCase() === targetPrefId)
+                ) {
+                    delete updated[key];
+                }
+            }
+
+            const targetModelName = target?.model_name;
+            if (targetModelName) {
+                const remainingSibling = Object.values(updated).find(
+                    (p) => p?.model_name?.toLowerCase() === targetModelName.toLowerCase()
+                );
+                if (remainingSibling) {
+                    updated[targetModelName] = remainingSibling;
+                    updated[targetModelName.toLowerCase()] = remainingSibling;
+                } else {
+                    delete updated[targetModelName];
+                    delete updated[targetModelName.toLowerCase()];
+                }
+            }
+
             return { modelPreferences: updated };
         }),
 

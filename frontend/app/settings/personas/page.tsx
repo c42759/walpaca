@@ -11,7 +11,7 @@ import { ManagePersonasPanel, PersonaTemplate, LorebookTemplate } from "@/compon
 import { CloseIcon } from "@/components/icons/Icons";
 
 export default function PersonasSettingsPage() {
-    const { setCurrentView, instances, fetchInstances, fetchInstanceModels, fetchModelPreferences, setModelPreference, appPreferences, fetchAppPreferences } = useAppStore();
+    const { setCurrentView, instances, fetchInstances, fetchInstanceModels, fetchModelPreferences, setModelPreference } = useAppStore();
     const [activeSettingsCategory, setActiveSettingsCategory] = useState<SettingsCategory>("manage-personas");
 
     // --- Persona State & Modals ---
@@ -25,8 +25,7 @@ export default function PersonasSettingsPage() {
     const [availableModelsList, setAvailableModelsList] = useState<any[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
 
-    const activeInstanceId = appPreferences?.active_instance_id || instances[0]?.id;
-    const activeInstance = instances.find((i) => i.id === activeInstanceId) || instances[0];
+    const activeInstance = instances.find((i) => i.is_enabled) || instances[0];
 
     const fetchPersonaTemplates = async () => {
         setIsPersonaLoading(true);
@@ -59,12 +58,12 @@ export default function PersonasSettingsPage() {
         let isMounted = true;
         (async () => {
             if (!isMounted) return;
-            await Promise.all([fetchPersonaTemplates(), fetchLorebookTemplates(), fetchInstances(), fetchAppPreferences()]);
+            await Promise.all([fetchPersonaTemplates(), fetchLorebookTemplates(), fetchInstances()]);
         })();
         return () => {
             isMounted = false;
         };
-    }, [fetchInstances, fetchAppPreferences]);
+    }, [fetchInstances]);
 
     useEffect(() => {
         let isMounted = true;
@@ -127,7 +126,8 @@ export default function PersonasSettingsPage() {
             };
 
             const payload = {
-                id: targetModelId,
+                model_id: targetModelId,
+                instance_id: activeInstance?.id,
                 picture: template.picture || null,
                 voice: template.voice || "af_heart",
                 num_ctx: template.num_ctx ? Number(template.num_ctx) : undefined,

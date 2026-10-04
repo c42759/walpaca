@@ -127,8 +127,15 @@ class Instance(db.Model):
 
     id = db.Column(db.String, primary_key=True)
     pinned = db.Column(db.Integer, nullable=False, default=0)
+    is_enabled = db.Column(db.Integer, nullable=False, default=0)
     type = db.Column(db.String, nullable=False)
     properties = db.Column(db.Text, nullable=False, default="{}")
+
+    models = db.relationship(
+        "InstanceModel",
+        backref="instance_ref",
+        cascade="all, delete-orphan",
+    )
 
     def get_properties(self) -> dict:
         try:
@@ -140,12 +147,27 @@ class Instance(db.Model):
         self.properties = json.dumps(prop_dict)
 
     def to_dict(self):
-        return {
-            "id": self.id,
-            "pinned": bool(self.pinned),
-            "type": self.type,
-            "properties": self.get_properties(),
-        }
+        return {"id": self.id,
+                "pinned": bool(self.pinned),
+                "is_enabled": bool(self.is_enabled),
+                "enabled": bool(self.is_enabled),
+                "type": self.type,
+                "properties": self.get_properties()}
+
+
+class InstanceModel(db.Model):
+    __tablename__ = "instance_model"
+
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    instance_id = db.Column(db.String, db.ForeignKey("instance.id"), nullable=False)
+    model_id = db.Column(db.String, nullable=False)
+
+    preferences = db.relationship("ModelPreferences", backref="instance_model_ref", cascade="all, delete-orphan")
+
+    def to_dict(self):
+        return {"id": self.id,
+                "instance_id": self.instance_id,
+                "model_id": self.model_id}
 
 
 class OnlineInstanceModelList(db.Model):
@@ -164,19 +186,26 @@ class OnlineInstanceModelList(db.Model):
         self.list = json.dumps(model_list)
 
     def to_dict(self):
-        return {
-            "id": self.id,
-            "list": self.get_list(),
-        }
+        return {"id": self.id,
+                "list": self.get_list()}
 
 
 class ModelPreferences(db.Model):
     __tablename__ = "model_preferences"
 
-    id = db.Column(db.String, primary_key=True)
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    instance_id = db.Column(db.String, db.ForeignKey("instance.id"), nullable=True)
+    model_id = db.Column(db.String, db.ForeignKey("instance_model.id"), nullable=True)
     picture = db.Column(db.Text, nullable=True)
     voice = db.Column(db.String, nullable=True)
     character = db.Column(db.Text, nullable=True)
+
+    model_ref = db.relationship(
+        "InstanceModel",
+        foreign_keys=[model_id],
+        lazy="joined",
+        overlaps="instance_model_ref,preferences",
+    )
 
     def _get_raw_character_dict(self) -> dict:
         try:
@@ -211,10 +240,32 @@ class ModelPreferences(db.Model):
         self.character = json.dumps(new_dict)
 
     def to_dict(self):
-        return {
-            "id": self.id,
-            "picture": self.picture,
-            "voice": self.voice,
-            "num_ctx": self.num_ctx,
-            "character": self.get_character(),
-        }
+        return {"id": self.id,
+                "instance_id": self.instance_id,
+                "model_id": self.model_id,
+                "model_name": self.model_ref.model_id if self.model_ref else None,
+                "picture": self.picture,
+                "voice": self.voice,
+                "num_ctx": self.num_ctx,
+                "character": self.get_character()}
+
+
+class Preference(db.Model):
+    __tablename__ = "preference"
+
+    key = db.Column(db.String, primary_key=True)
+    value = db.Column(db.Text, nullable=True)
+
+    def get_value(self):
+        try:
+            return json.loads(self.value) if self.value is not None else None
+        except Exception:
+            return self.value
+
+    def set_value(self, val):
+        self.value = json.dumps(val)
+
+    def to_dict(self):
+        return {"key": self.key,
+                "value": self.get_value()}
+

@@ -32,7 +32,7 @@ interface MessageAttachment {
 interface SelectedAttachment {
     id: string;
     name: string;
-    type: "image" | "plain_text" | "code";
+    type: "image" | "plain_text" | "code" | "audio";
     content: string;
     size?: number;
     extension?: string;
@@ -793,9 +793,12 @@ const renderMarkdownText = (text: string, activeLineIndex?: number, onLineContex
     return <>{elements}</>;
 };
 
-const getAttachmentType = (fileName: string, mimeType: string): "image" | "plain_text" | "code" => {
+const getAttachmentType = (fileName: string, mimeType: string): "image" | "plain_text" | "code" | "audio" => {
     if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("audio/")) return "audio";
     const ext = fileName.split(".").pop()?.toLowerCase() || "";
+    const audioExts = ["mp3", "wav", "ogg", "m4a", "flac", "aac", "wma"];
+    if (audioExts.includes(ext)) return "audio";
     const codeExts = [
         "c",
         "h",
@@ -890,7 +893,7 @@ export default function ChatPage() {
                 };
                 reader.onerror = () => reject(reader.error);
 
-                if (attType === "image") {
+                if (attType === "image" || attType === "audio") {
                     reader.readAsDataURL(file);
                 } else {
                     reader.readAsText(file);
@@ -2877,26 +2880,25 @@ export default function ChatPage() {
     // Requirement 1: Auto-select Instance if only 1 exists or unselected
     useEffect(() => {
         if (instances.length > 0) {
-            const activePrefId = appPreferences?.active_instance_id;
-            const validActive = activePrefId && instances.some((inst) => inst.id === activePrefId);
-            const targetId = validActive ? activePrefId : instances[0].id;
+            const activeInst = instances.find((i) => i.is_enabled) || instances[0];
+            const targetId = activeInst.id;
             if (instances.length === 1 || !selectedChatInstanceId || !instances.some((inst) => inst.id === selectedChatInstanceId)) {
                 setSelectedChatInstanceId(targetId);
                 fetchModelsForInstance(targetId);
             }
         }
-    }, [instances, appPreferences?.active_instance_id]);
+    }, [instances]);
 
     // Ensure active instance models are loaded whenever modal opens
     useEffect(() => {
         if (isSelectModelModalOpen) {
-            const activeInstId = appPreferences?.active_instance_id || instances[0]?.id;
-            if (activeInstId) {
-                fetchModelsForInstance(activeInstId);
-                fetchInstanceModels(activeInstId);
+            const activeInst = instances.find((i) => i.is_enabled) || instances[0];
+            if (activeInst?.id) {
+                fetchModelsForInstance(activeInst.id);
+                fetchInstanceModels(activeInst.id);
             }
         }
-    }, [isSelectModelModalOpen, appPreferences?.active_instance_id, instances]);
+    }, [isSelectModelModalOpen, instances]);
 
     // Requirement 2: Auto-select Model/Preference if only 1 exists or unselected
     useEffect(() => {
@@ -4254,8 +4256,7 @@ export default function ChatPage() {
                         {/* Scrollable Instances & Models List */}
                         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
                             {(() => {
-                                const activeInstanceId = appPreferences?.active_instance_id || instances[0]?.id;
-                                const activeInst = instances.find((i) => i.id === activeInstanceId) || instances[0];
+                                const activeInst = instances.find((i) => i.is_enabled) || instances[0];
 
                                 if (!activeInst || instances.length === 0) {
                                     return <div className="p-6 text-center text-[#8e90a6] text-sm italic">No active instance connected. Add an instance in settings.</div>;
@@ -4269,12 +4270,19 @@ export default function ChatPage() {
 
                                 const matchingPrefs = Array.from(new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values()).filter((pref) => {
                                     if (!pref || !pref.id) return false;
-                                    const matchesInstance = activeModelIdSet.has(pref.id.toLowerCase());
+                                    const matchesInstance =
+                                        (pref.instance_id && pref.instance_id === activeInst.id) ||
+                                        (pref.model_name && activeModelIdSet.has(pref.model_name.toLowerCase())) ||
+                                        (pref.model_id && activeModelIdSet.has(pref.model_id.toLowerCase())) ||
+                                        activeModelIdSet.has(pref.id.toLowerCase()) ||
+                                        (activeModels.length === 0 && (!pref.instance_id || pref.instance_id === activeInst.id));
                                     if (!matchesInstance) return false;
 
                                     if (!query) return true;
-                                    const prefName = (getCharacterName(pref.character) || pref.name || pref.id).toLowerCase();
-                                    return prefName.includes(query) || pref.id.toLowerCase().includes(query);
+                                    const prefName = (getCharacterName(pref.character) || pref.name || "").toLowerCase();
+                                    const modelName = (pref.model_name || "").toLowerCase();
+                                    const prefId = pref.id.toLowerCase();
+                                    return prefName.includes(query) || modelName.includes(query) || prefId.includes(query);
                                 });
 
                                 return (
@@ -4290,7 +4298,7 @@ export default function ChatPage() {
 
                                         <div className="space-y-1.5 pl-2 border-l-2 border-[#7678ed]/20 ml-2">
                                             {matchingPrefs.map((pref) => {
-                                                const prefName = getCharacterName(pref.character) || pref.name || pref.id;
+                                                const prefName = getCharacterName(pref.character) || pref.name || pref.model_name || pref.id;
                                                 const isSelected = selectedChatInstanceId === activeInst.id && selectedChatModelId === pref.id;
 
                                                 return (
@@ -4314,7 +4322,7 @@ export default function ChatPage() {
                                                             <div className="truncate">
                                                                 <p className="font-semibold text-xs truncate">{prefName}</p>
                                                                 <p className={`text-[10px] truncate ${isSelected ? "text-white/80" : "text-[#8e90a6]"}`}>
-                                                                    Model Preference • ID: {pref.id}
+                                                                    Model Preference • {pref.model_name ? `Model: ${pref.model_name}` : `ID: ${pref.id}`}
                                                                 </p>
                                                             </div>
                                                         </div>

@@ -7,6 +7,7 @@ from flask import request
 from flask import jsonify
 from models import db
 from models import Instance
+from models import InstanceModel
 from models import OnlineInstanceModelList
 from models import generate_uuid
 
@@ -391,7 +392,19 @@ def get_instances():
 
     instances = Instance.query.all()
 
+    # If instances exist but none enabled, enable first instance
+    if instances and not any(i.is_enabled for i in instances):
+        instances[0].is_enabled = 1
+        db.session.commit()
+
     return jsonify([i.to_dict() for i in instances])
+
+
+def set_instance_enabled(instance_id: str):
+    """Ensure only one instance is enabled at a time."""
+    Instance.query.filter(Instance.id != instance_id).update({"is_enabled": 0})
+    Instance.query.filter(Instance.id == instance_id).update({"is_enabled": 1})
+    db.session.commit()
 
 
 @instances_bp.route("/instances", methods=["POST", "PUT"])
@@ -419,6 +432,24 @@ def create_or_update_instance():
 
     db.session.commit()
 
+    if "is_enabled" in data or "enabled" in data:
+        enable_flag = bool(data.get("is_enabled") if "is_enabled" in data else data.get("enabled"))
+        if enable_flag:
+            set_instance_enabled(instance.id)
+        else:
+            instance.is_enabled = 0
+            other = Instance.query.filter(Instance.id != instance.id).first()
+            if other:
+                set_instance_enabled(other.id)
+            else:
+                db.session.commit()
+    else:
+        # If no instance is enabled, make this one enabled
+        any_enabled = Instance.query.filter_by(is_enabled=1).first()
+        if not any_enabled:
+            instance.is_enabled = 1
+            db.session.commit()
+
     return jsonify(instance.to_dict()), 200
 
 
@@ -445,15 +476,34 @@ def update_instance_by_id(instance_id):
 
     db.session.commit()
 
+    if "is_enabled" in data or "enabled" in data:
+        enable_flag = bool(data.get("is_enabled") if "is_enabled" in data else data.get("enabled"))
+        if enable_flag:
+            set_instance_enabled(instance.id)
+        else:
+            instance.is_enabled = 0
+            other = Instance.query.filter(Instance.id != instance.id).first()
+            if other:
+                set_instance_enabled(other.id)
+            else:
+                db.session.commit()
+
     return jsonify(instance.to_dict()), 200
 
 
 @instances_bp.route("/instances/<instance_id>", methods=["DELETE"])
 def delete_instance(instance_id):
     instance = Instance.query.get_or_404(instance_id)
+    was_enabled = bool(instance.is_enabled)
 
     db.session.delete(instance)
     db.session.commit()
+
+    if was_enabled:
+        next_inst = Instance.query.first()
+        if next_inst:
+            next_inst.is_enabled = 1
+            db.session.commit()
 
     return jsonify({"success": True, "deleted": instance_id})
 
@@ -471,12 +521,44 @@ def instance_models(instance_id):
                 record = OnlineInstanceModelList(id=instance_id)
                 db.session.add(record)
             record.set_list(live_models)
+
+            # Synchronize discovered models with InstanceModel table
+            for m in live_models:
+                mid = m.get("id")
+                if mid:
+                    im = InstanceModel.query.filter_by(instance_id=instance_id, model_id=mid).first()
+                    if not im:
+                        im = InstanceModel(instance_id=instance_id, model_id=mid)
+                        db.session.add(im)
+                        db.session.flush()
+                    m["uuid"] = im.id
+                    m["instance_model_id"] = im.id
+
             db.session.commit()
             return jsonify(live_models)
 
-        if not record:
-            return jsonify([])
-        return jsonify(record.get_list())
+        if record:
+            cached = record.get_list()
+            for m in cached:
+                mid = m.get("id")
+                if mid:
+                    im = InstanceModel.query.filter_by(instance_id=instance_id, model_id=mid).first()
+                    if im:
+                        m["uuid"] = im.id
+                        m["instance_model_id"] = im.id
+            return jsonify(cached)
+
+        db_models = InstanceModel.query.filter_by(instance_id=instance_id).all()
+        return jsonify([
+            {
+                "id": im.model_id,
+                "name": im.model_id,
+                "uuid": im.id,
+                "instance_model_id": im.id,
+                "provider": instance.type if instance else "Provider",
+            }
+            for im in db_models
+        ])
     else:
         data = request.json or {}
         model_list = data.get("list", [])
@@ -484,5 +566,14 @@ def instance_models(instance_id):
             record = OnlineInstanceModelList(id=instance_id)
             db.session.add(record)
         record.set_list(model_list)
+
+        for m in model_list:
+            mid = m.get("id") if isinstance(m, dict) else str(m)
+            if mid:
+                im = InstanceModel.query.filter_by(instance_id=instance_id, model_id=mid).first()
+                if not im:
+                    im = InstanceModel(instance_id=instance_id, model_id=mid)
+                    db.session.add(im)
+
         db.session.commit()
         return jsonify(record.to_dict())

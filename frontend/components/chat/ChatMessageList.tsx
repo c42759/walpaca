@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-img-element */
 
 import React, { useState } from "react";
-import { BrainIcon, MetadataIcon } from "../icons/Icons";
+import { BrainIcon, MetadataIcon, DownloadIcon, AudioIcon } from "../icons/Icons";
 import { isCharEnabled, getCharacterName, formatAvatarPicture, DEFAULT_MODEL_AVATAR } from "@/lib/characterUtils";
 
 export interface MessageAttachment {
@@ -59,6 +59,94 @@ export const getImageSrc = (att: MessageAttachment | any): string => {
         return contentStr;
     }
     return `data:image/png;base64,${contentStr}`;
+};
+
+export const isAudioAttachment = (att: MessageAttachment | any): boolean => {
+    if (!att) return false;
+    const typeStr = (att.type || "").toLowerCase();
+    if (typeStr.includes("audio") || typeStr.includes("mp3") || typeStr.includes("wav")) return true;
+    const name = (att.name || "").toLowerCase();
+    if (
+        name.endsWith(".mp3") ||
+        name.endsWith(".wav") ||
+        name.endsWith(".ogg") ||
+        name.endsWith(".m4a") ||
+        name.endsWith(".flac") ||
+        name.endsWith(".aac")
+    ) {
+        return true;
+    }
+    const contentStr = typeof att.content === "string" ? att.content.trim() : "";
+    if (contentStr.startsWith("data:audio/")) return true;
+    return false;
+};
+
+export interface AudioAttachmentCardProps {
+    attachment: MessageAttachment | any;
+    isSelf?: boolean;
+}
+
+export const AudioAttachmentCard: React.FC<AudioAttachmentCardProps> = ({ attachment, isSelf }) => {
+    const name = attachment.name || "audio.mp3";
+    const ext = (name.split(".").pop() || "audio").toLowerCase();
+    const src = attachment.content || "";
+
+    return (
+        <div
+            className={`rounded-2xl border p-3 my-1 w-full max-w-md transition-all ${
+                isSelf
+                    ? "bg-white/15 border-white/25 text-white shadow-xs backdrop-blur-xs"
+                    : "bg-white border-[#e2e5f1] text-[#202022] shadow-xs"
+            }`}
+        >
+            <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            isSelf ? "bg-white/20 text-white" : "bg-amber-500/15 text-amber-600"
+                        }`}
+                        title={ext.toUpperCase()}
+                    >
+                        <AudioIcon className="w-4 h-4" />
+                    </div>
+                    <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-sm font-semibold truncate" title={name}>
+                            {name}
+                        </span>
+                        <span className={`text-[10px] ${isSelf ? "text-white/70" : "text-[#8e90a6]"}`}>
+                            Audio attachment
+                        </span>
+                    </div>
+                </div>
+
+                {src && (
+                    <a
+                        href={src}
+                        download={name}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
+                            isSelf
+                                ? "hover:bg-white/20 text-white"
+                                : "hover:bg-[#f4f6fc] text-[#8e90a6] hover:text-[#7678ed]"
+                        }`}
+                        title="Download audio"
+                    >
+                        <DownloadIcon className="w-4 h-4" />
+                    </a>
+                )}
+            </div>
+
+            {src && (
+                <div className="w-full mt-1">
+                    <audio
+                        controls
+                        src={src}
+                        preload="metadata"
+                        className="w-full h-8 rounded-lg outline-none"
+                    />
+                </div>
+            )}
+        </div>
+    );
 };
 
 export interface DocumentAttachmentCardProps {
@@ -336,12 +424,20 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                                                       </div>
                                                   )}
                                                   {(() => {
+                                                      const audioAtts = (msg.attachments || []).filter(isAudioAttachment);
                                                       const docAtts = (msg.attachments || []).filter(
-                                                          (att) => att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att),
+                                                          (att) => att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att) && !isAudioAttachment(att),
                                                       );
-                                                      if (docAtts.length === 0) return null;
+                                                      if (audioAtts.length === 0 && docAtts.length === 0) return null;
                                                       return (
                                                           <div className="flex flex-col gap-2 mt-3 w-full max-w-full">
+                                                              {audioAtts.map((att, idx) => (
+                                                                  <AudioAttachmentCard
+                                                                      key={att.id || `audio-${idx}`}
+                                                                      attachment={att}
+                                                                      isSelf={msg.isSelf}
+                                                                  />
+                                                              ))}
                                                               {docAtts.map((att, idx) => {
                                                                   const ext = att.name ? att.name.split(".").pop()?.toLowerCase() || "txt" : "file";
                                                                   return (
@@ -671,12 +767,20 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                                                   })
                                               )}
                                               {(() => {
+                                                  const audioAtts = (msg.attachments || []).filter(isAudioAttachment);
                                                   const docAtts = (msg.attachments || []).filter(
-                                                      (att) => att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att),
+                                                      (att) => att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att) && !isAudioAttachment(att),
                                                   );
-                                                  if (docAtts.length === 0) return null;
+                                                  if (audioAtts.length === 0 && docAtts.length === 0) return null;
                                                   return (
                                                       <div className="flex flex-col gap-2 mt-3 w-full max-w-full">
+                                                          {audioAtts.map((att, idx) => (
+                                                              <AudioAttachmentCard
+                                                                  key={att.id || `audio-${idx}`}
+                                                                  attachment={att}
+                                                                  isSelf={false}
+                                                             />
+                                                          ))}
                                                           {docAtts.map((att, idx) => {
                                                               const ext = att.name ? att.name.split(".").pop()?.toLowerCase() || "txt" : "file";
                                                               return (

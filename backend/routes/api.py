@@ -27,3 +27,6 @@ api_bp.register_blueprint(generate_bp)
 api_bp.register_blueprint(lorebook_bp)
 api_bp.register_blueprint(personas_bp)
 api_bp.register_blueprint(preferences_bp)
+
+from routes.generate import evaluate_lorebook_entries
+from routes.generate import clean_base64_image

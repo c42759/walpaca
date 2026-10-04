@@ -39,6 +39,28 @@ def create_app(test_config=None):
     )
     db.init_app(app)
 
+    with app.app_context():
+        db.create_all()
+        try:
+            with db.engine.connect() as conn:
+                res_inst = conn.execute(db.text("PRAGMA table_info(instance)")).fetchall()
+                inst_cols = [r[1] for r in res_inst]
+                if "is_enabled" not in inst_cols and res_inst:
+                    conn.execute(db.text("ALTER TABLE instance ADD COLUMN is_enabled INTEGER NOT NULL DEFAULT 0"))
+                    conn.execute(db.text("UPDATE instance SET is_enabled = 1 WHERE rowid = (SELECT rowid FROM instance LIMIT 1)"))
+                    conn.commit()
+
+                res_pref = conn.execute(db.text("PRAGMA table_info(model_preferences)")).fetchall()
+                pref_cols = [r[1] for r in res_pref]
+                if "instance_id" not in pref_cols and res_pref:
+                    conn.execute(db.text("ALTER TABLE model_preferences ADD COLUMN instance_id TEXT"))
+                    conn.commit()
+                if "model_id" not in pref_cols and res_pref:
+                    conn.execute(db.text("ALTER TABLE model_preferences ADD COLUMN model_id TEXT"))
+                    conn.commit()
+        except Exception as e:
+            app.logger.warning(f"Database schema auto-check: {e}")
+
     app.register_blueprint(api_bp)
 
     @app.route("/health")

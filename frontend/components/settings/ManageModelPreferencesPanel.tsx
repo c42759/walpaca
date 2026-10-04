@@ -19,8 +19,6 @@ export const ManageModelPreferencesPanel: React.FC = () => {
         removeModelPreference: removeStoreModelPreference,
         instanceModelsMap,
         fetchInstanceModels,
-        appPreferences,
-        fetchAppPreferences,
     } = useAppStore();
 
     const router = useRouter();
@@ -31,12 +29,12 @@ export const ManageModelPreferencesPanel: React.FC = () => {
     const [deletingPref, setDeletingPref] = useState<ModelPreference | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Fetch instances, model preferences, and app preferences on mount
+    // Fetch instances and model preferences on mount
     useEffect(() => {
-        Promise.all([fetchInstances(), fetchModelPreferences(), fetchAppPreferences()]).finally(() => {
+        Promise.all([fetchInstances(), fetchModelPreferences()]).finally(() => {
             setIsLoading(false);
         });
-    }, [fetchInstances, fetchModelPreferences, fetchAppPreferences]);
+    }, [fetchInstances, fetchModelPreferences]);
 
     // Fetch models for each instance to correlate models with their hosting instance
     useEffect(() => {
@@ -146,10 +144,9 @@ export const ManageModelPreferencesPanel: React.FC = () => {
         [instances, instanceModelsMap],
     );
 
-    const activeInstanceId = appPreferences?.active_instance_id || instances[0]?.id;
     const activeInst = useMemo(
-        () => instances.find((i) => i.id === activeInstanceId) || instances[0],
-        [instances, activeInstanceId]
+        () => instances.find((i) => i.is_enabled) || instances[0],
+        [instances]
     );
 
     const isModelInActiveInstance = useCallback(
@@ -216,6 +213,8 @@ export const ManageModelPreferencesPanel: React.FC = () => {
             });
             if (res.ok) {
                 removeStoreModelPreference(deletingPref.id);
+                if (deletingPref.model_id) removeStoreModelPreference(deletingPref.model_id);
+                if (deletingPref.model_name) removeStoreModelPreference(deletingPref.model_name);
                 setDeletingPref(null);
             }
         } catch (err) {
@@ -226,7 +225,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
     };
 
     return (
-        <div className="p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200">
+        <div className="p-8 mx-auto space-y-6 animate-in fade-in duration-200">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs">
                 <div>
@@ -272,7 +271,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                     </p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-5">
                     {filteredPreferences.map((pref) => {
                         const charName = getCharacterName(pref.character) || pref.name || pref.id;
                         const avatarSrc = formatAvatarPicture(pref.picture);
@@ -319,7 +318,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                                                 @{instInfo.name}
                                             </Badge>
                                             <Badge variant="secondary" className="font-mono" title={pref.id}>
-                                                {pref.id}
+                                                {pref.model_name || pref.id}
                                             </Badge>
                                         </div>
                                     </div>
@@ -357,8 +356,8 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                         <h3 className="text-lg font-bold text-[#202022]">Delete Model Preference</h3>
                         <p className="text-xs text-[#7a7d90] leading-relaxed">
                             Are you sure you want to remove the model preference for{" "}
-                            <span className="font-bold text-[#202022]">{getCharacterName(deletingPref.character) || deletingPref.name || deletingPref.id}</span> (
-                            <code className="font-mono text-[#7678ed]">{deletingPref.id}</code>)? This will revert the model to default settings.
+                            <span className="font-bold text-[#202022]">{getCharacterName(deletingPref.character) || deletingPref.name || deletingPref.model_name || deletingPref.id}</span> (
+                            <code className="font-mono text-[#7678ed]">{deletingPref.model_name || deletingPref.id}</code>)? This will revert the model to default settings.
                         </p>
 
                         <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#e8ebf3]">

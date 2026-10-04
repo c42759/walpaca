@@ -38,9 +38,6 @@ export default function EditInstancePage() {
         modelPreferences,
         fetchModelPreferences,
         fetchInstanceModels,
-        appPreferences,
-        fetchAppPreferences,
-        setAppPreferences,
         setCurrentView,
     } = useAppStore();
 
@@ -74,7 +71,7 @@ export default function EditInstancePage() {
     useEffect(() => {
         let isMounted = true;
         const init = async () => {
-            await Promise.all([fetchInstances(), fetchModelPreferences(), fetchAppPreferences()]);
+            await Promise.all([fetchInstances(), fetchModelPreferences()]);
             if (isMounted) {
                 setIsLoadingInstance(false);
             }
@@ -83,7 +80,7 @@ export default function EditInstancePage() {
         return () => {
             isMounted = false;
         };
-    }, [fetchInstances, fetchModelPreferences, fetchAppPreferences]);
+    }, [fetchInstances, fetchModelPreferences]);
 
     // Match current instance from store
     const currentInstance: InstanceItem | undefined = useMemo(() => {
@@ -174,21 +171,18 @@ export default function EditInstancePage() {
 
     const isActive = useMemo(() => {
         if (!currentInstance) return false;
-        return appPreferences.active_instance_id
-            ? appPreferences.active_instance_id === currentInstance.id
-            : instances[0]?.id === currentInstance.id;
-    }, [appPreferences.active_instance_id, currentInstance, instances]);
+        return Boolean(currentInstance.is_enabled ?? (instances[0]?.id === currentInstance.id));
+    }, [currentInstance, instances]);
 
     const handleActivate = async () => {
         if (!currentInstance) return;
-        setAppPreferences({ active_instance_id: currentInstance.id });
         try {
-            await fetch(`${getApiUrl()}/preferences`, {
-                method: "POST",
+            await fetch(`${getApiUrl()}/instances/${encodeURIComponent(currentInstance.id)}`, {
+                method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ active_instance_id: currentInstance.id }),
+                body: JSON.stringify({ is_enabled: true }),
             });
-            fetchAppPreferences(true);
+            fetchInstances();
         } catch (err) {
             console.warn("Could not activate instance:", err);
         }

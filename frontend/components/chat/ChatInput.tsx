@@ -6,7 +6,7 @@ import { BrainIcon } from "../icons/Icons";
 export interface SelectedAttachment {
     id: string;
     name: string;
-    type: "image" | "plain_text" | "code";
+    type: "image" | "plain_text" | "code" | "audio";
     content: string;
     size?: number;
     extension?: string;
@@ -110,7 +110,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             <input
                 type="file"
                 ref={fileInputRef}
-                accept="image/*,.txt,.md,.css,.js,.jsx,.ts,.tsx,.php,.py,.html,.json,.xml,.csv,.c,.cpp,.h,.hpp,.cs,.java,.rb,.rs,.go,.sql,.sh,.yaml,.yml,.dockerfile,.env,.odt,.docx,.pptx,.pdf"
+                accept="image/*,.mp3,.wav,audio/*,.txt,.md,.css,.js,.jsx,.ts,.tsx,.php,.py,.html,.json,.xml,.csv,.c,.cpp,.h,.hpp,.cs,.java,.rb,.rs,.go,.sql,.sh,.yaml,.yml,.dockerfile,.env,.odt,.docx,.pptx,.pdf"
                 multiple
                 onChange={handleAttachmentSelect}
                 className="hidden"
@@ -129,6 +129,43 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                                     onClick={() => handleRemoveSelectedAttachment(idx)}
                                     className="absolute top-1 right-1 bg-black/60 hover:bg-[#ff4d4f] text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer shadow-sm"
                                     title="Remove image"
+                                >
+                                    <svg
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <line x1="18" y1="6" x2="6" y2="18" />
+                                        <line x1="6" y1="6" x2="18" y2="18" />
+                                    </svg>
+                                </button>
+                            </div>
+                        ) : att.type === "audio" ? (
+                            <div
+                                key={att.id || idx}
+                                className="relative group flex items-center gap-2.5 px-3 py-2 rounded-xl border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 transition-all shrink-0 max-w-[240px] shadow-2xs"
+                            >
+                                <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-600 flex items-center justify-center shrink-0 font-bold text-xs uppercase">
+                                    {att.extension || "mp3"}
+                                </div>
+                                <div className="flex flex-col min-w-0 flex-1 pr-1">
+                                    <span className="text-xs font-semibold text-[#2d3142] truncate" title={att.name}>
+                                        {att.name}
+                                    </span>
+                                    <span className="text-[10px] text-[#8e90a6] font-medium">
+                                        {att.size ? (att.size > 1024 * 1024 ? `${(att.size / (1024 * 1024)).toFixed(1)} MB` : `${(att.size / 1024).toFixed(1)} KB`) : "Audio"}
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveSelectedAttachment(idx)}
+                                    className="text-[#8e90a6] hover:text-[#ff4d4f] p-1 rounded-full hover:bg-black/5 transition-all cursor-pointer shrink-0"
+                                    title="Remove audio attachment"
                                 >
                                     <svg
                                         width="12"

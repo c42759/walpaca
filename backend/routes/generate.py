@@ -15,6 +15,7 @@ from models import Chat
 from models import Message
 from models import Attachment
 from models import Instance
+from models import InstanceModel
 from models import ModelPreferences
 from models import generate_uuid
 from models import current_alpaca_timestamp
@@ -238,7 +239,18 @@ def evaluate_lorebook_entries(
     Scans recent conversation messages for entry keywords and combines triggered lore and persona
     prompts into a final system prompt string.
     """
-    pref = ModelPreferences.query.get(model_id) if model_id else None
+    pref = None
+    if model_id:
+        pref = (
+            ModelPreferences.query.get(model_id)
+            or ModelPreferences.query.filter_by(model_id=model_id).first()
+        )
+        if not pref:
+            ims = InstanceModel.query.filter_by(model_id=model_id).all()
+            for im in ims:
+                pref = ModelPreferences.query.filter_by(model_id=im.id).first()
+                if pref:
+                    break
 
     if not pref:
         return base_system_prompt or ""
@@ -386,7 +398,41 @@ def generate_response(chat_id):
     app = current_app._get_current_object()
     data = request.json or {}
     instance_id = data.get("instance_id")
-    model = data.get("model") or "llama3"
+    model = data.get("model")
+
+    # If model doesn't come with request, use the one from latest message of assistant
+    if not model:
+        if chat_id:
+            latest_msg = (
+                Message.query.filter_by(chat_id=chat_id, role="assistant")
+                .filter(Message.model.isnot(None))
+                .order_by(Message.date_time.desc())
+                .first()
+            )
+            if latest_msg and latest_msg.model:
+                model = latest_msg.model
+        if not model:
+            latest_msg = (
+                Message.query.filter_by(role="assistant")
+                .filter(Message.model.isnot(None))
+                .order_by(Message.date_time.desc())
+                .first()
+            )
+            if latest_msg and latest_msg.model:
+                model = latest_msg.model
+        if not model:
+            model = "llama3"
+
+    # If instance_id doesn't come with request, use enabled instance
+    if not instance_id:
+        enabled_inst = Instance.query.filter_by(is_enabled=1).first()
+        if enabled_inst:
+            instance_id = enabled_inst.id
+        else:
+            first_inst = Instance.query.first()
+            if first_inst:
+                instance_id = first_inst.id
+
     prompt = data.get("prompt")
     messages = data.get("messages")
     system_prompt = data.get("system")
@@ -454,7 +500,11 @@ def generate_response(chat_id):
             db.session.commit()
             message_id = db_msg.id
 
-    instance = Instance.query.get(instance_id) if instance_id else Instance.query.first()
+    instance = (
+        Instance.query.get(instance_id)
+        if instance_id
+        else (Instance.query.filter_by(is_enabled=1).first() or Instance.query.first())
+    )
     props = instance.get_properties() if instance else {}
     inst_type = (instance.type if instance else "ollama").lower()
     host = props.get("url") or props.get("host") or props.get("endpoint") or ""
@@ -498,11 +548,25 @@ def generate_response(chat_id):
             elif "v1beta" not in host:
                 host = "https://generativelanguage.googleapis.com/v1beta/openai"
 
+    # Resolve model identifier to physical model name for upstream engine
+    resolved_model_name = model
+    pref_match = ModelPreferences.query.get(model)
+    if pref_match:
+        if pref_match.model_ref and pref_match.model_ref.model_id:
+            resolved_model_name = pref_match.model_ref.model_id
+        elif pref_match.model_id:
+            im = InstanceModel.query.get(pref_match.model_id)
+            resolved_model_name = im.model_id if im else pref_match.model_id
+    else:
+        im_match = InstanceModel.query.get(model)
+        if im_match and im_match.model_id:
+            resolved_model_name = im_match.model_id
+
     # Normalize dummy model IDs for Gemini
     if (inst_type == "gemini" or "generativelanguage.googleapis.com" in host) and (
-        "-m1" in model or "-m2" in model or not model
+        "-m1" in str(resolved_model_name) or "-m2" in str(resolved_model_name) or not resolved_model_name
     ):
-        model = "gemini-3.8-flash"
+        resolved_model_name = "gemini-3.8-flash"
 
     headers = {"Content-Type": "application/json", "User-Agent": "Walpaca/1.0"}
 
@@ -661,7 +725,7 @@ def generate_response(chat_id):
         if inst_type == "ollama":
             target_url = f"{host}/api/chat"
             payload = {
-                "model": model,
+                "model": resolved_model_name,
                 "messages": messages_payload,
                 "stream": True,
                 "think": bool(think),
@@ -825,7 +889,7 @@ def generate_response(chat_id):
                 )
             )
             payload = {
-                "model": model,
+                "model": resolved_model_name,
                 "messages": messages_payload,
                 "stream": True,
             }
