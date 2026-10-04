@@ -385,9 +385,6 @@ export function PersonaEditorForm({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                    <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>
-                        Cancel
-                    </Button>
                     <Button type="submit" form="persona-editor-form" disabled={isSaving || !name.trim()}>
                         {isSaving ? "Saving..." : saveButtonLabel}
                     </Button>
