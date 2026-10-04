@@ -70,6 +70,34 @@ services:
         max-file: "3"
     restart: always
 
+  whisper:
+    container_name: walpaca_whisper
+    image: hwdsl2/whisper-server:latest # Use `hwdsl2/whisper-server:cuda` if you have an NVIDIA GPU
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "${NETWORK_ADDRESS}:9000:9000"
+      - "${VPN_ADDRESS}:9000:9000"
+    volumes:
+      - whisper-data:/var/lib/whisper
+    environment:
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
+      WHISPER_MODEL: base # Options: tiny, base, small, medium, large-v3, large-v3-turbo
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
+    # Uncomment the block below if you are using an NVIDIA GPU and have the NVIDIA Container Toolkit installed
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
 volumes:
   kokoro-data:
   kokoro_cache:
+  whisper-data:
