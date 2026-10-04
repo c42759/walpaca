@@ -1,4 +1,28 @@
 services:
+  frontend:
+    container_name: walpaca_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "${NETWORK_ADDRESS}:3000:3000"
+      - "${VPN_ADDRESS}:3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      CORS_DOMAINS: "${CORS_DOMAINS}"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
+    restart: always
+    command: npm run dev
+
   backend:
     container_name: walpaca_backend
     build:
@@ -25,30 +49,6 @@ services:
         max-size: "1g"
         max-file: "3"
     restart: always
-
-  frontend:
-    container_name: walpaca_frontend
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:3000:3000"
-      - "${NETWORK_ADDRESS}:3000:3000"
-      - "${VPN_ADDRESS}:3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - backend
-    environment:
-      CORS_DOMAINS: "${CORS_DOMAINS}"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1g"
-        max-file: "3"
-    restart: always
-    command: npm run dev
 
   kokoro:
     container_name: walpaca_kokoro
