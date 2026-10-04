@@ -9,6 +9,7 @@ from flask import request
 from flask import Response
 from flask import stream_with_context
 from flask import current_app
+
 from models import db
 from models import Chat
 from models import Message
@@ -43,6 +44,28 @@ def _upsert_thought_attachment(message_id, thinking_content):
         pass
 
 
+def _upsert_metadata_attachment(message_id, metadata_table):
+    """Upsert an Attachment of type 'metadata' for a message."""
+    if not message_id or not metadata_table:
+        return
+    try:
+        att = Attachment.query.filter_by(message_id=message_id, type="metadata").first()
+        if att:
+            att.content = metadata_table
+        else:
+            att = Attachment(
+                id=generate_uuid(),
+                message_id=message_id,
+                type="metadata",
+                name="Metadata",
+                content=metadata_table,
+            )
+            db.session.add(att)
+        db.session.commit()
+    except Exception:
+        pass
+
+
 def format_duration(ns):
     """Format nanoseconds into human-readable duration (MM:SS or X seconds)."""
     if not ns or ns <= 0:
@@ -66,7 +89,9 @@ def format_rate(count, duration_ns):
     """Format token evaluation rate (tokens/s)."""
     if not count or not duration_ns or duration_ns <= 0:
         return "0.00 tokens/s"
+
     rate = count / (duration_ns / 1e9)
+
     return f"{rate:.2f} tokens/s"
 
 
@@ -95,31 +120,7 @@ def build_metadata_markdown(stats):
     )
 
 
-def _upsert_metadata_attachment(message_id, metadata_table):
-    """Upsert an Attachment of type 'metadata' for a message."""
-    if not message_id or not metadata_table:
-        return
-    try:
-        att = Attachment.query.filter_by(message_id=message_id, type="metadata").first()
-        if att:
-            att.content = metadata_table
-        else:
-            att = Attachment(
-                id=generate_uuid(),
-                message_id=message_id,
-                type="metadata",
-                name="Metadata",
-                content=metadata_table,
-            )
-            db.session.add(att)
-        db.session.commit()
-    except Exception:
-        pass
-
-
-def consume_upstream_to_completion(
-    resp, app, message_id, initial_content, inst_type, initial_thinking=""
-):
+def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_type, initial_thinking=""):
     """
     Continues consuming tokens from the upstream LLM HTTP response stream when the client disconnects,
     persisting response content, thinking attachment & metadata attachment to database.
@@ -131,16 +132,20 @@ def consume_upstream_to_completion(
         last_db_update = time.time()
         stats = {}
         token_count = 0
+
         try:
             for line in resp:
                 if not line:
                     continue
+
                 line_str = line.decode("utf-8").strip()
+
                 if not line_str:
                     continue
 
                 token = ""
                 thinking_token = ""
+
                 if inst_type == "ollama":
                     try:
                         chunk_data = json.loads(line_str)
@@ -361,20 +366,22 @@ def evaluate_lorebook_entries(
 
 
 def clean_base64_image(content: str) -> str:
-    """Extract raw base64 string from content or Data URL."""
+    """Extract a raw base64 string from content or Data URL."""
     if not content:
         return ""
+
     if "," in content and content.startswith("data:"):
         return content.split(",", 1)[1]
+
     return content.strip()
 
 
 @generate_bp.route("/generate", methods=["POST"])
 @generate_bp.route("/chats/<chat_id>/generate", methods=["POST"])
-def generate_response(chat_id=None):
+def generate_response(chat_id):
     """
     Triggers an LLM response from the target instance model and streams tokens directly to the API caller.
-    Persists updates to database incrementally and completes generation in background if client disconnects.
+    Persists updates to the database incrementally and completes generation in background if client disconnects.
     """
     app = current_app._get_current_object()
     data = request.json or {}

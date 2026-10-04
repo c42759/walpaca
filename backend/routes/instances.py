@@ -82,6 +82,7 @@ def fetch_live_instance_models(instance):
     props = instance.get_properties()
     inst_type = (instance.type or "ollama").lower()
     host = props.get("url") or props.get("host") or props.get("endpoint") or ""
+
     api_key = (
         props.get("apiKey")
         or props.get("api_key")
@@ -89,11 +90,13 @@ def fetch_live_instance_models(instance):
         or props.get("api")
         or ""
     )
+
     if api_key == "NOKEY":
         api_key = ""
 
     models = []
     headers = {"User-Agent": "AlpacaWeb/1.0"}
+
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
@@ -104,22 +107,26 @@ def fetch_live_instance_models(instance):
 
         # Try Ollama native /api/tags first
         target_url = f"{host}/api/tags"
+
         try:
             req = urllib.request.Request(target_url, headers=headers, method="GET")
+
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+
                 for m in data.get("models", []):
                     model_id = m.get("name") or m.get("model")
+
                     if model_id:
                         details = m.get("details") or {}
+
                         fam = details.get("family") or (
                             details.get("families")[0]
                             if details.get("families")
                             else None
                         )
-                        tag_str = (
-                            model_id.split(":")[-1] if ":" in model_id else model_id
-                        )
+
+                        tag_str = (model_id.split(":")[-1] if ":" in model_id else model_id)
 
                         models.append(
                             {
@@ -148,6 +155,7 @@ def fetch_live_instance_models(instance):
 
         # Fallback to /v1/models
         target_url = f"{host}/v1/models"
+
         try:
             req = urllib.request.Request(target_url, headers=headers, method="GET")
             with urllib.request.urlopen(req, timeout=5) as resp:
@@ -182,6 +190,7 @@ def fetch_live_instance_models(instance):
                         )
                 if models:
                     return models
+
         except Exception:
             pass
 
@@ -376,58 +385,83 @@ def fetch_live_instance_models(instance):
 
 @instances_bp.route("/instances", methods=["GET"])
 def get_instances():
+    """
+    Get all instances.
+    """
+
     instances = Instance.query.all()
+
     return jsonify([i.to_dict() for i in instances])
 
 
 @instances_bp.route("/instances", methods=["POST", "PUT"])
 def create_or_update_instance():
+    """
+    Create or update an instance.
+    """
+
     data = request.json or {}
     instance_id = data.get("id") or generate_uuid()
     instance = Instance.query.get(instance_id)
+
     if not instance:
         instance = Instance(id=instance_id)
         db.session.add(instance)
+
     if "pinned" in data:
         instance.pinned = 1 if data["pinned"] else 0
+
     if "type" in data:
         instance.type = data["type"]
+
     if "properties" in data:
         instance.set_properties(data.get("properties", {}))
+
     db.session.commit()
+
     return jsonify(instance.to_dict()), 200
 
 
 @instances_bp.route("/instances/<instance_id>", methods=["PUT"])
 def update_instance_by_id(instance_id):
     data = request.json or {}
+
     instance = Instance.query.get(instance_id)
+
     if not instance:
         instance = Instance(id=instance_id)
         db.session.add(instance)
+
     if "pinned" in data:
         instance.pinned = 1 if data["pinned"] else 0
+
     if "type" in data:
         instance.type = data["type"]
+
     if "properties" in data:
         props = instance.get_properties()
         props.update(data.get("properties", {}))
         instance.set_properties(props)
+
     db.session.commit()
+
     return jsonify(instance.to_dict()), 200
 
 
 @instances_bp.route("/instances/<instance_id>", methods=["DELETE"])
 def delete_instance(instance_id):
     instance = Instance.query.get_or_404(instance_id)
+
     db.session.delete(instance)
     db.session.commit()
+
     return jsonify({"success": True, "deleted": instance_id})
 
 
 @instances_bp.route("/instances/<instance_id>/models", methods=["GET", "POST"])
 def instance_models(instance_id):
     record = OnlineInstanceModelList.query.get(instance_id)
+
     if request.method == "GET":
         instance = Instance.query.get(instance_id)
         live_models = fetch_live_instance_models(instance) if instance else []

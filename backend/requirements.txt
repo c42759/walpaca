@@ -7,3 +7,6 @@ python-dotenv==1.2.4
 
 # Linter
 flake8==7.4.1
+
+# Others
+requests==2.34.2
