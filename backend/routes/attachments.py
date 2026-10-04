@@ -1,6 +1,7 @@
 from flask import request
 from flask import jsonify
 from flask import Blueprint
+
 from models import db
 from models import Message
 from models import Attachment

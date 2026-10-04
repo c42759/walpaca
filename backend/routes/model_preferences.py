@@ -2,11 +2,12 @@ from models import db
 from flask import request
 from flask import jsonify
 from flask import Blueprint
-from models import ModelPreferences
+
+from models import Message
 from models import Instance
 from models import InstanceModel
-from models import Message
 from models import generate_uuid
+from models import ModelPreferences
 
 model_preferences_bp = Blueprint("model_preferences", __name__)
 

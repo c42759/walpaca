@@ -1,5 +1,6 @@
 from models import db
 from models import Preference
+
 from flask import Blueprint
 from flask import request
 from flask import jsonify

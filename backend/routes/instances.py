@@ -5,6 +5,7 @@ import urllib.request
 from flask import Blueprint
 from flask import request
 from flask import jsonify
+
 from models import db
 from models import Instance
 from models import InstanceModel
