@@ -87,10 +87,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 
     // Form State
     const [personaFormName, setPersonaFormName] = useState<string>("");
-    const [personaFormDescription, setPersonaFormDescription] = useState<string>("");
-    const [personaFormScenario, setPersonaFormScenario] = useState<string>("");
     const [personaFormSystemPrompt, setPersonaFormSystemPrompt] = useState<string>("");
-    const [personaFormPostHistoryInstructions, setPersonaFormPostHistoryInstructions] = useState<string>("");
     const [personaFormFirstMes, setPersonaFormFirstMes] = useState<string>("");
     const [personaFormAlternateGreetings, setPersonaFormAlternateGreetings] = useState<string[]>([]);
     const [personaFormVoice, setPersonaFormVoice] = useState<string>("af_heart");
@@ -110,10 +107,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
     const handleOpenCreatePersonaEditor = () => {
         setEditingPersonaTemplate(null);
         setPersonaFormName("");
-        setPersonaFormDescription("");
-        setPersonaFormScenario("");
         setPersonaFormSystemPrompt("");
-        setPersonaFormPostHistoryInstructions("");
         setPersonaFormFirstMes("");
         setPersonaFormAlternateGreetings([]);
         setPersonaFormVoice("af_heart");
@@ -232,11 +226,11 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const payload: any = {
                 name: personaFormName.trim(),
-                description: personaFormDescription.trim(),
-                personality: personaFormDescription.trim(),
-                scenario: personaFormScenario.trim(),
+                description: personaFormSystemPrompt.trim(),
+                personality: personaFormSystemPrompt.trim(),
+                scenario: "",
                 system_prompt: personaFormSystemPrompt.trim(),
-                post_history_instructions: personaFormPostHistoryInstructions.trim(),
+                post_history_instructions: "",
                 first_mes: personaFormFirstMes.trim(),
                 alternate_greetings: personaFormAlternateGreetings.filter((g) => g.trim().length > 0),
                 voice: personaFormVoice,
@@ -395,37 +389,17 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
                         </div>
                     </div>
 
-                    {/* 2. Prompts & Personality Card */}
+                    {/* 2. System Prompt Card */}
                     <div className="p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4">
-                        <h4 className="text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2">2. Personality & System Prompts</h4>
+                        <h4 className="text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2">2. System Prompt</h4>
                         <Textarea
-                            label="Description / Personality Bio"
-                            rows={3}
-                            value={personaFormDescription}
-                            onChange={(e) => setPersonaFormDescription(e.target.value)}
-                            placeholder="Brief backstory, role, personality traits, and overall character tone..."
-                        />
-                        <Textarea
-                            label="Scenario / Context"
-                            rows={2}
-                            value={personaFormScenario}
-                            onChange={(e) => setPersonaFormScenario(e.target.value)}
-                            placeholder="Current setting or environment (e.g. Modern office, futuristic space station...)"
-                        />
-                        <Textarea
-                            label="System Instructions / Main System Prompt"
-                            rows={4}
+                            label="System Prompt *"
+                            rows={10}
                             value={personaFormSystemPrompt}
                             onChange={(e) => setPersonaFormSystemPrompt(e.target.value)}
-                            placeholder="Core system prompt directing AI behavior, output constraints, formatting, etc."
-                            className="font-mono"
-                        />
-                        <Textarea
-                            label="Post-History Instructions (Suffix)"
-                            rows={2}
-                            value={personaFormPostHistoryInstructions}
-                            onChange={(e) => setPersonaFormPostHistoryInstructions(e.target.value)}
-                            placeholder="Instructions injected at the very end of chat history..."
+                            placeholder="Core system instructions, character personality, backstory, world scenario, and behavioral constraints..."
+                            helperText="Unified system prompt directing the AI character's identity, background, tone, scenario, and output format."
+                            className="font-mono text-xs"
                         />
                     </div>
 
@@ -475,66 +449,54 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
                     {/* 4. Generation Settings & Samplers */}
                     <div className="p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4">
                         <h4 className="text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2">4. Generation Settings & Samplers</h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-                            <div>
-                                <label className="block text-[11px] font-bold text-[#5d6075] mb-1">Temperature</label>
-                                <input
-                                    type="number"
-                                    step="0.05"
-                                    value={personaFormTemperature}
-                                    onChange={(e) => setPersonaFormTemperature(parseFloat(e.target.value) || 0.7)}
-                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-[#5d6075] mb-1">Top P</label>
-                                <input
-                                    type="number"
-                                    step="0.05"
-                                    value={personaFormTopP}
-                                    onChange={(e) => setPersonaFormTopP(parseFloat(e.target.value) || 0.9)}
-                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-[#5d6075] mb-1">Top K</label>
-                                <input
-                                    type="number"
-                                    value={personaFormTopK}
-                                    onChange={(e) => setPersonaFormTopK(parseInt(e.target.value, 10) || 40)}
-                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-[#5d6075] mb-1">Rep. Penalty</label>
-                                <input
-                                    type="number"
-                                    step="0.05"
-                                    value={personaFormRepeatPenalty}
-                                    onChange={(e) => setPersonaFormRepeatPenalty(parseFloat(e.target.value) || 1.1)}
-                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-[#5d6075] mb-1">Pres. Penalty</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    value={personaFormPresencePenalty}
-                                    onChange={(e) => setPersonaFormPresencePenalty(parseFloat(e.target.value) || 0.0)}
-                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-[#5d6075] mb-1">Freq. Penalty</label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    value={personaFormFrequencyPenalty}
-                                    onChange={(e) => setPersonaFormFrequencyPenalty(parseFloat(e.target.value) || 0.0)}
-                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3 py-2 text-xs font-semibold text-[#202022] outline-none focus:bg-white focus:border-[#7678ed]"
-                                />
-                            </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <Input
+                                label="Temperature"
+                                type="number"
+                                step="0.05"
+                                value={personaFormTemperature}
+                                onChange={(e) => setPersonaFormTemperature(parseFloat(e.target.value) || 0.7)}
+                                helperText="Controls randomness. Lower values (0.2–0.5) are focused and coherent; higher values (0.7–1.2) increase creativity."
+                            />
+                            <Input
+                                label="Top P"
+                                type="number"
+                                step="0.05"
+                                value={personaFormTopP}
+                                onChange={(e) => setPersonaFormTopP(parseFloat(e.target.value) || 0.9)}
+                                helperText="Nucleus sampling threshold. Evaluates only tokens within top cumulative probability (e.g. 0.9 = top 90%)."
+                            />
+                            <Input
+                                label="Top K"
+                                type="number"
+                                value={personaFormTopK}
+                                onChange={(e) => setPersonaFormTopK(parseInt(e.target.value, 10) || 40)}
+                                helperText="Limits candidate tokens to the K highest probabilities. Lower values reduce chaotic outputs; 0 disables."
+                            />
+                            <Input
+                                label="Repeat Penalty"
+                                type="number"
+                                step="0.05"
+                                value={personaFormRepeatPenalty}
+                                onChange={(e) => setPersonaFormRepeatPenalty(parseFloat(e.target.value) || 1.1)}
+                                helperText="Penalizes recently used tokens to prevent word repetition and loops (1.0 = none, 1.1–1.2 = recommended)."
+                            />
+                            <Input
+                                label="Presence Penalty"
+                                type="number"
+                                step="0.05"
+                                value={personaFormPresencePenalty}
+                                onChange={(e) => setPersonaFormPresencePenalty(parseFloat(e.target.value) || 0.0)}
+                                helperText="Encourages introducing new topics by penalizing tokens that have appeared in the output at all (-2.0 to 2.0)."
+                            />
+                            <Input
+                                label="Frequency Penalty"
+                                type="number"
+                                step="0.05"
+                                value={personaFormFrequencyPenalty}
+                                onChange={(e) => setPersonaFormFrequencyPenalty(parseFloat(e.target.value) || 0.0)}
+                                helperText="Reduces verbatim repetition based on how often tokens already appeared in the output (-2.0 to 2.0)."
+                            />
                         </div>
                     </div>
 

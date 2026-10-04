@@ -52,11 +52,11 @@ export interface PersonaTemplateItem {
 
 export interface PersonaFormData {
     name: string;
-    description: string;
-    personality: string;
-    scenario: string;
+    description?: string;
+    personality?: string;
+    scenario?: string;
     system_prompt: string;
-    post_history_instructions: string;
+    post_history_instructions?: string;
     first_mes: string;
     alternate_greetings: string[];
     voice: string;
@@ -111,10 +111,7 @@ export function PersonaEditorForm({
     onCancel,
 }: PersonaEditorFormProps) {
     const [name, setName] = useState<string>("");
-    const [description, setDescription] = useState<string>("");
-    const [scenario, setScenario] = useState<string>("");
     const [systemPrompt, setSystemPrompt] = useState<string>("");
-    const [postHistoryInstructions, setPostHistoryInstructions] = useState<string>("");
     const [firstMes, setFirstMes] = useState<string>("");
     const [alternateGreetings, setAlternateGreetings] = useState<string[]>([]);
     const [voice, setVoice] = useState<string>("af_heart");
@@ -139,10 +136,22 @@ export function PersonaEditorForm({
     const populateForm = useCallback((data: Partial<PersonaFormData>) => {
         if (!data) return;
         setName(data.name || "");
-        setDescription(data.description || data.personality || "");
-        setScenario(data.scenario || "");
-        setSystemPrompt(data.system_prompt || "");
-        setPostHistoryInstructions(data.post_history_instructions || "");
+        let initialSystem = data.system_prompt || "";
+        if (!initialSystem) {
+            initialSystem = [data.description || data.personality, data.scenario].filter(Boolean).join("\n\n");
+        } else {
+            const extraParts: string[] = [];
+            if (data.description && data.description !== initialSystem && !initialSystem.includes(data.description)) {
+                extraParts.push(data.description);
+            }
+            if (data.scenario && !initialSystem.includes(data.scenario)) {
+                extraParts.push(data.scenario);
+            }
+            if (extraParts.length > 0) {
+                initialSystem = `${extraParts.join("\n\n")}\n\n${initialSystem}`;
+            }
+        }
+        setSystemPrompt(initialSystem);
         setFirstMes(data.first_mes || "");
         setAlternateGreetings(
             Array.isArray(data.alternate_greetings) ? [...data.alternate_greetings] : []
@@ -290,11 +299,10 @@ export function PersonaEditorForm({
         const tmpl = availablePersonaTemplates.find((p) => p.filename === filename);
         if (!tmpl) return;
 
-        if (tmpl.description && !description) setDescription(tmpl.description);
-        if (tmpl.scenario && !scenario) setScenario(tmpl.scenario);
-        if (tmpl.system_prompt && !systemPrompt) setSystemPrompt(tmpl.system_prompt);
-        if (tmpl.post_history_instructions && !postHistoryInstructions)
-            setPostHistoryInstructions(tmpl.post_history_instructions);
+        if (tmpl.system_prompt || tmpl.description || tmpl.scenario) {
+            const combined = tmpl.system_prompt || [tmpl.description || tmpl.personality, tmpl.scenario].filter(Boolean).join("\n\n");
+            if (!systemPrompt) setSystemPrompt(combined);
+        }
         if (tmpl.first_mes && !firstMes) setFirstMes(tmpl.first_mes);
         if (Array.isArray(tmpl.alternate_greetings) && tmpl.alternate_greetings.length > 0) {
             setAlternateGreetings(tmpl.alternate_greetings);
@@ -322,11 +330,11 @@ export function PersonaEditorForm({
 
         const payload: PersonaFormData = {
             name: name.trim(),
-            description: description.trim(),
-            personality: description.trim(),
-            scenario: scenario.trim(),
+            description: systemPrompt.trim(),
+            personality: systemPrompt.trim(),
+            scenario: "",
             system_prompt: systemPrompt.trim(),
-            post_history_instructions: postHistoryInstructions.trim(),
+            post_history_instructions: "",
             first_mes: firstMes.trim(),
             alternate_greetings: alternateGreetings.filter((g) => g.trim().length > 0),
             voice,
@@ -358,7 +366,7 @@ export function PersonaEditorForm({
     };
 
     return (
-        <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in duration-200">
+        <div className="mx-auto space-y-8 animate-in fade-in duration-200">
             {/* Header Bar */}
             <div className="p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -420,108 +428,84 @@ export function PersonaEditorForm({
                     <h4 className="text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2">
                         1. Identity &amp; Audio Settings
                     </h4>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input
-                            label="Persona / Character Name *"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="e.g. Sora Assistant"
-                            required
-                        />
-                        <div className="space-y-1.5">
-                            <label className="block text-xs font-bold text-[#5d6075]">Default TTS Voice</label>
-                            <select
-                                value={voice}
-                                onChange={(e) => setVoice(e.target.value)}
-                                className="w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all cursor-pointer"
-                            >
-                                {TTS_VOICE_GROUPS.map((group) => (
-                                    <optgroup key={group.gender} label={`${group.gender} Voices`}>
-                                        {group.voices.map((v) => (
-                                            <option key={v.id} value={v.id}>
-                                                {v.label}
-                                            </option>
-                                        ))}
-                                    </optgroup>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
+                        <div className="space-y-4">
+                            <label className="block grid grid-cols-1 md:grid-cols-2 font-bold text-[#5d6075] mb-1">Profile Avatar Image</label>
+                            <div className="flex items-center gap-4 bg-[#f9fafc] p-4 rounded-xl border border-[#e8ebf3]">
+                                <div className="w-42 h-42 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/30 overflow-hidden flex items-center justify-center shrink-0 shadow-sm relative group">
+                                    {avatarPreview || picture ? (
+                                        <img src={avatarPreview || picture || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <span className="text-2xl">🎭</span>
+                                    )}
+                                    {isUploadingAvatar && (
+                                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold">
+                                            Converting...
+                                        </div>
+                                    )}
+                                </div>
 
-                    <div className="space-y-4">
-                        <label className="block text-xs font-bold text-[#5d6075] mb-1">Profile Avatar Image</label>
-                        <div className="flex items-center gap-4 bg-[#f9fafc] p-4 rounded-xl border border-[#e8ebf3]">
-                            <div className="w-30 h-30 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/30 overflow-hidden flex items-center justify-center shrink-0 shadow-sm relative group">
-                                {avatarPreview || picture ? (
-                                    <img src={avatarPreview || picture || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
-                                ) : (
-                                    <span className="text-2xl">🎭</span>
-                                )}
-                                {isUploadingAvatar && (
-                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold">
-                                        Converting...
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex-1 space-y-1.5">
-                                <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold cursor-pointer transition-all shadow-xs">
-                                    <span>{isUploadingAvatar ? "Uploading & Converting..." : "Choose Image File..."}</span>
-                                    <input type="file" accept="image/*" onChange={handleAvatarFileChange} className="hidden" />
-                                </label>
-                                <p className="text-[11px] text-[#7a7d90]">
-                                    Select an image file (.png, .jpg, .webp). Uploaded image automatically saves to avatar storage.
-                                </p>
+                                <div className="flex-1 space-y-1.5">
+                                    <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold cursor-pointer transition-all shadow-xs">
+                                        <span>{isUploadingAvatar ? "Uploading & Converting..." : "Choose Image File..."}</span>
+                                        <input type="file" accept="image/*" onChange={handleAvatarFileChange} className="hidden" />
+                                    </label>
+                                    <p className="text-[11px] text-[#7a7d90]">
+                                        Select an image file (.png, .jpg, .webp). Uploaded image automatically saves to avatar storage.
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-                    <div>
-                        <Input
-                            label="Context Window Size (tokens)"
-                            type="number"
-                            value={numCtx}
-                            onChange={(e) => setNumCtx(Number(e.target.value) || 8192)}
-                            placeholder="8192"
-                        />
+                        <div className="gap-4 space-y-4">
+                            <Input
+                                label="Persona / Character Name *"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="e.g. Sora Assistant"
+                                required
+                            />
+                            <div className="space-y-1.5">
+                                <label className="block text-xs font-bold text-[#5d6075]">Default TTS Voice</label>
+                                <select
+                                    value={voice}
+                                    onChange={(e) => setVoice(e.target.value)}
+                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] text-[#202022] rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:bg-white focus:border-[#7678ed] transition-all cursor-pointer"
+                                >
+                                    {TTS_VOICE_GROUPS.map((group) => (
+                                        <optgroup key={group.gender} label={`${group.gender} Voices`}>
+                                            {group.voices.map((v) => (
+                                                <option key={v.id} value={v.id}>
+                                                    {v.label}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    ))}
+                                </select>
+                            </div>
+                            <Input
+                                label="Context Window Size (tokens)"
+                                type="number"
+                                value={numCtx}
+                                onChange={(e) => setNumCtx(Number(e.target.value) || 8192)}
+                                placeholder="8192"
+                            />
+                        </div>
                     </div>
                 </div>
 
-                {/* 2. Prompts & Personality Card */}
+                {/* 2. System Prompt Card */}
                 <div className="p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4">
                     <h4 className="text-sm font-bold text-[#7678ed] uppercase tracking-wider border-b border-[#e8ebf3] pb-2">
-                        2. Personality &amp; System Prompts
+                        2. System Prompt
                     </h4>
                     <Textarea
-                        label="Description / Personality Bio"
-                        rows={3}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Brief backstory, role, personality traits, and overall character tone..."
-                    />
-                    <Textarea
-                        label="Scenario / Context"
-                        rows={2}
-                        value={scenario}
-                        onChange={(e) => setScenario(e.target.value)}
-                        placeholder="Current setting or environment (e.g. Modern office, futuristic space station...)"
-                    />
-                    <Textarea
-                        label="System Instructions / Main System Prompt"
-                        rows={4}
+                        label="System Prompt *"
+                        rows={12}
                         value={systemPrompt}
                         onChange={(e) => setSystemPrompt(e.target.value)}
-                        placeholder="Core system prompt directing AI behavior, output constraints, formatting, etc."
-                        className="font-mono"
-                    />
-                    <Textarea
-                        label="Post-History Instructions (In-Chat Bias)"
-                        rows={2}
-                        value={postHistoryInstructions}
-                        onChange={(e) => setPostHistoryInstructions(e.target.value)}
-                        placeholder="Appended after recent dialogue turns to emphasize persistent behavior..."
-                        className="font-mono"
+                        placeholder="Core system instructions, character personality, backstory, world scenario, and behavioral constraints..."
+                        helperText="Unified system prompt directing the AI character's identity, background, tone, scenario, and output format."
+                        className="font-mono text-xs"
                     />
                 </div>
 
@@ -590,6 +574,7 @@ export function PersonaEditorForm({
                             step="0.05"
                             value={temperature}
                             onChange={(e) => setTemperature(parseFloat(e.target.value) || 0.7)}
+                            helperText="Controls randomness. Lower values (0.2–0.5) are focused and coherent; higher values (0.7–1.2) increase creativity."
                         />
                         <Input
                             label="Top P"
@@ -597,12 +582,14 @@ export function PersonaEditorForm({
                             step="0.05"
                             value={topP}
                             onChange={(e) => setTopP(parseFloat(e.target.value) || 0.9)}
+                            helperText="Nucleus sampling threshold. Evaluates only tokens within top cumulative probability (e.g. 0.9 = top 90%)."
                         />
                         <Input
                             label="Top K"
                             type="number"
                             value={topK}
                             onChange={(e) => setTopK(parseInt(e.target.value, 10) || 40)}
+                            helperText="Limits candidate tokens to the K highest probabilities. Lower values reduce chaotic outputs; 0 disables."
                         />
                         <Input
                             label="Repeat Penalty"
@@ -610,6 +597,7 @@ export function PersonaEditorForm({
                             step="0.05"
                             value={repeatPenalty}
                             onChange={(e) => setRepeatPenalty(parseFloat(e.target.value) || 1.1)}
+                            helperText="Penalizes recently used tokens to prevent word repetition and loops (1.0 = none, 1.1–1.2 = recommended)."
                         />
                         <Input
                             label="Presence Penalty"
@@ -617,6 +605,7 @@ export function PersonaEditorForm({
                             step="0.05"
                             value={presencePenalty}
                             onChange={(e) => setPresencePenalty(parseFloat(e.target.value) || 0.0)}
+                            helperText="Encourages introducing new topics by penalizing tokens that have appeared in the output at all (-2.0 to 2.0)."
                         />
                         <Input
                             label="Frequency Penalty"
@@ -624,6 +613,7 @@ export function PersonaEditorForm({
                             step="0.05"
                             value={frequencyPenalty}
                             onChange={(e) => setFrequencyPenalty(parseFloat(e.target.value) || 0.0)}
+                            helperText="Reduces verbatim repetition based on how often tokens already appeared in the output (-2.0 to 2.0)."
                         />
                     </div>
                 </div>
@@ -719,7 +709,7 @@ export function PersonaEditorForm({
 
                                     <Textarea
                                         label="Lore Entry Content"
-                                        rows={3}
+                                        rows={7}
                                         value={entry.content}
                                         onChange={(e) => handleUpdateLorebookEntry(idx, "content", e.target.value)}
                                         placeholder="Information automatically passed to the model when trigger keywords appear in conversation..."

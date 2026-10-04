@@ -176,7 +176,7 @@ export default function EditPersonaPage() {
                         Loading persona template...
                     </div>
                 ) : !currentPersona ? (
-                    <div className="max-w-3xl mx-auto p-8 rounded-2xl border border-dashed border-rose-200 bg-rose-50/50 text-center space-y-3">
+                    <div className="mx-auto p-8 rounded-2xl border border-dashed border-rose-200 bg-rose-50/50 text-center space-y-3">
                         <p className="text-base font-bold text-rose-800">Persona Not Found</p>
                         <p className="text-xs text-[#7a7d90]">
                             No persona template matching <code className="font-mono">{personaId}</code> exists.
