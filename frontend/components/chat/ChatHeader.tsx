@@ -10,16 +10,40 @@ export interface ChatHeaderProps {
     onOpenExport: () => void;
     onOpenDelete: () => void;
     onSearchClick?: () => void;
+    avatar?: string;
+    onAvatarClick?: () => void;
 }
 
-export const ChatHeader: React.FC<ChatHeaderProps> = ({ title, subtitle = "Active chat session", onOpenRename, onOpenDuplicate, onOpenExport, onOpenDelete, onSearchClick }) => {
+export const ChatHeader: React.FC<ChatHeaderProps> = ({
+    title,
+    subtitle = "Active chat session",
+    onOpenRename,
+    onOpenDuplicate,
+    onOpenExport,
+    onOpenDelete,
+    onSearchClick,
+    avatar,
+    onAvatarClick,
+}) => {
     const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
 
     return (
         <div className="h-[76px] px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0">
-            <div>
-                <h2 className="text-2xl font-bold text-[#202022] tracking-tight">{title}</h2>
-                <p className="text-base text-[#8e90a6] font-medium mt-0.5">{subtitle}</p>
+            <div className="flex items-center gap-3.5">
+                {avatar && (
+                    <button
+                        type="button"
+                        onClick={onAvatarClick}
+                        className="w-11 h-11 rounded-2xl overflow-hidden shrink-0 shadow-sm border border-[#eef0f6] hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                        title="View persona details"
+                    >
+                        <img src={avatar} alt={title} className="w-full h-full object-cover" />
+                    </button>
+                )}
+                <div>
+                    <h2 className="text-2xl font-bold text-[#202022] tracking-tight">{title}</h2>
+                    <p className="text-base text-[#8e90a6] font-medium mt-0.5">{subtitle}</p>
+                </div>
             </div>
 
             {/* Action Icons */}

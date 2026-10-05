@@ -289,6 +289,7 @@ export interface ChatMessageListProps {
     highlightCodeTokens?: (code: string, lang?: string) => React.ReactNode;
     handleCallForAnswer?: () => void;
     messagesEndRef?: React.RefObject<HTMLDivElement | null>;
+    onAvatarClick?: (msg: Message, pref?: any) => void;
 }
 
 export const ChatMessageList: React.FC<ChatMessageListProps> = ({
@@ -296,6 +297,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
     selectedChatModelId = "",
     modelPreferences = {},
     handleUseCharacterFirstMes,
+    onAvatarClick,
     editingMsgId,
     editingMsgContent,
     setEditingMsgContent,
@@ -560,7 +562,13 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
 
                           return (
                               <div key={msg.id} className="flex items-start gap-3.5 w-full">
-                                  <img src={avatarSrc} alt={displayName} className="w-10 h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm" />
+                                  <img
+                                      src={avatarSrc}
+                                      alt={displayName}
+                                      onClick={() => onAvatarClick?.(msg, pref)}
+                                      className="w-10 h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm cursor-pointer hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all"
+                                      title={`View ${displayName} persona details`}
+                                  />
                                   <div className="flex flex-col items-start flex-1 w-full min-w-0">
                                       <div className="bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-5 py-4 text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full">
                                           <div className="flex items-center justify-between gap-3 mb-1.5">

@@ -11,6 +11,7 @@ import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatEmptyState } from "@/components/chat/ChatEmptyState";
 import { ChatMessageList } from "@/components/chat/ChatMessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { PersonaDetailsModal, PersonaDetailsData } from "@/components/chat/PersonaDetailsModal";
 import { BrainIcon, MetadataIcon, ServerIcon } from "@/components/icons/Icons";
 import { WidgetSimple, WidgetToggle, WidgetWithCustomHeader } from "@/components/ui/Widget";
 
@@ -122,6 +123,7 @@ interface BackendMessage {
     chat_id: string;
     role: string;
     model?: string;
+    instance_id?: string;
     date_time: string;
     content: string;
     attachments?: any[];
@@ -338,6 +340,9 @@ const mapBackendMsgToMessage = (m: BackendMessage, prefMap?: Record<string, Mode
         id: m.id,
         senderName: isSelf ? "You" : displayName,
         senderAvatar: isSelf ? undefined : avatarFromPref,
+        senderRole: isSelf ? "user" : "assistant",
+        model: m.model,
+        instanceId: m.instance_id,
         isSelf,
         content: m.content,
         time: timeStr || "now",
@@ -1434,9 +1439,17 @@ export default function ChatPage() {
     const [isThinkingEnabled, setIsThinkingEnabled] = useState<boolean>(false);
     const [isSelectModelModalOpen, setIsSelectModelModalOpen] = useState<boolean>(false);
     const [modelModalSearchQuery, setModelModalSearchQuery] = useState<string>("");
+    const [selectedModalInstanceId, setSelectedModalInstanceId] = useState<string>("");
 
     // Chat Drag & Drop to Folders State & Handler
     const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
+
+    // Persona Details Read-Only Modal State
+    const [personaDetailsData, setPersonaDetailsData] = useState<PersonaDetailsData | null>(null);
+    const [isPersonaDetailsModalOpen, setIsPersonaDetailsModalOpen] = useState<boolean>(false);
+    const handleClosePersonaDetailsModal = useCallback(() => {
+        setIsPersonaDetailsModalOpen(false);
+    }, []);
 
     // Import Chat State & Handlers
     const [isImporting, setIsImporting] = useState<boolean>(false);
@@ -2892,13 +2905,16 @@ export default function ChatPage() {
     // Ensure active instance models are loaded whenever modal opens
     useEffect(() => {
         if (isSelectModelModalOpen) {
-            const activeInst = instances.find((i) => i.is_enabled) || instances[0];
-            if (activeInst?.id) {
-                fetchModelsForInstance(activeInst.id);
-                fetchInstanceModels(activeInst.id);
+            const initialInstId = (selectedChatInstanceId && instances.some((i) => i.id === selectedChatInstanceId))
+                ? selectedChatInstanceId
+                : (instances.find((i) => i.is_enabled)?.id || instances[0]?.id || "");
+            setSelectedModalInstanceId(initialInstId);
+            if (initialInstId) {
+                fetchModelsForInstance(initialInstId);
+                fetchInstanceModels(initialInstId);
             }
         }
-    }, [isSelectModelModalOpen, instances]);
+    }, [isSelectModelModalOpen, selectedChatInstanceId, instances]);
 
     // Requirement 2: Auto-select Model/Preference if only 1 exists or unselected
     useEffect(() => {
@@ -3367,6 +3383,148 @@ export default function ChatPage() {
         }
     };
 
+    const handleOpenPersonaDetails = useCallback(
+        (target: Message | string | any, explicitPref?: any) => {
+            let modelId = "";
+            let instanceId = "";
+            let senderName = "";
+            let avatarSrc = "";
+
+            if (typeof target === "string") {
+                senderName = target;
+                modelId = target;
+            } else if (target && typeof target === "object") {
+                senderName = target.senderName || target.name || "";
+                modelId = target.model || target.modelId || target.id || "";
+                instanceId = target.instanceId || "";
+                avatarSrc = target.senderAvatar || target.avatar || "";
+            }
+
+            const senderKey = (senderName || "").toLowerCase();
+            const modelKey = (modelId || "").toLowerCase();
+            const chatModelKey = (selectedChatModelId || "").toLowerCase();
+
+            // Find matching preference
+            const pref: ModelPreference | any =
+                explicitPref ||
+                (modelKey ? modelPreferences[modelId] || modelPreferences[modelKey] : undefined) ||
+                (senderKey ? modelPreferences[senderName] || modelPreferences[senderKey] : undefined) ||
+                (chatModelKey ? modelPreferences[selectedChatModelId] || modelPreferences[chatModelKey] : undefined) ||
+                Object.values(modelPreferences).find((p) => {
+                    const pId = (p.id || "").toLowerCase();
+                    const pName = (p.name || "").toLowerCase();
+                    const cName = (getCharacterName(p.character) || "").toLowerCase();
+                    return (
+                        (modelKey && (pId === modelKey || pName === modelKey)) ||
+                        (senderKey && (cName === senderKey || pName === senderKey || pId === senderKey))
+                    );
+                });
+
+            // Resolve the actual underlying AI model name being used (not the preference/persona name)
+            let actualModelName =
+                pref?.model_name ||
+                pref?.model_id ||
+                (pref as any)?.model ||
+                "";
+
+            if (!actualModelName) {
+                const candidates = [modelId, (target as any)?.model, selectedChatModelId].filter(Boolean);
+                for (const cand of candidates) {
+                    const found = instanceModelsList.find(
+                        (m) => m.id?.toLowerCase() === cand.toLowerCase() || m.name?.toLowerCase() === cand.toLowerCase()
+                    );
+                    if (found) {
+                        actualModelName = found.name || found.id;
+                        break;
+                    }
+                    for (const instKey of Object.keys(instanceModelsMap)) {
+                        const instList = instanceModelsMap[instKey] || [];
+                        const foundInMap = instList.find(
+                            (m) => m.id?.toLowerCase() === cand.toLowerCase() || m.name?.toLowerCase() === cand.toLowerCase()
+                        );
+                        if (foundInMap) {
+                            actualModelName = foundInMap.name || foundInMap.id;
+                            break;
+                        }
+                    }
+                    if (actualModelName) break;
+                }
+            }
+
+            // Find matching instance
+            const effectiveInstanceId = instanceId || pref?.instance_id || selectedChatInstanceId;
+            const inst = instances.find((i) => i.id === effectiveInstanceId);
+            const instanceName = inst?.properties?.name || inst?.type || "";
+
+            const char = pref?.character || {};
+            const charData = (char as any).data || char || {};
+            const isCustom = Boolean(pref && (isCharEnabled(pref.character) || pref.picture || pref.voice || pref.description || charData.system_prompt));
+
+            // Unified system prompt
+            let unifiedSystem = charData.system_prompt || "";
+            if (!unifiedSystem) {
+                unifiedSystem = [charData.description || charData.personality || pref?.description, charData.scenario]
+                    .filter(Boolean)
+                    .join("\n\n");
+            } else {
+                const extraParts: string[] = [];
+                const desc = charData.description || charData.personality || pref?.description;
+                if (desc && desc !== unifiedSystem && !unifiedSystem.includes(desc)) {
+                    extraParts.push(desc);
+                }
+                if (charData.scenario && !unifiedSystem.includes(charData.scenario)) {
+                    extraParts.push(charData.scenario);
+                }
+                if (extraParts.length > 0) {
+                    unifiedSystem = `${extraParts.join("\n\n")}\n\n${unifiedSystem}`;
+                }
+            }
+
+            const effectiveName =
+                getCharacterName(char) ||
+                (pref as any)?.name ||
+                senderName ||
+                (modelId ? (instanceModelsList.find((m) => m.id === modelId)?.name || modelId) : "AI Assistant");
+
+            const effectiveAvatar =
+                formatAvatarPicture(pref?.picture) ||
+                avatarSrc ||
+                DEFAULT_MODEL_AVATAR;
+
+            const modalPayload: PersonaDetailsData = {
+                name: effectiveName,
+                avatar: effectiveAvatar,
+                modelName: actualModelName || undefined,
+                modelId: actualModelName || modelId || pref?.model_name || pref?.id || selectedChatModelId || undefined,
+                preferenceName: pref?.name || (pref?.id !== actualModelName ? pref?.id : undefined),
+                instanceName: instanceName || undefined,
+                voice: pref?.voice || charData.voice || "af_heart",
+                numCtx: pref?.num_ctx || charData.num_ctx || (inst?.properties as any)?.num_ctx || 4096,
+                systemPrompt: unifiedSystem,
+                firstMes: (charData.first_mes || charData.first_message || pref?.first_message || "").trim(),
+                alternateGreetings: Array.isArray(charData.alternate_greetings)
+                    ? charData.alternate_greetings
+                    : Array.isArray(pref?.alternate_greetings)
+                    ? pref.alternate_greetings
+                    : [],
+                generationSettings: charData.generation_settings || pref?.generation_settings || {
+                    temperature: 0.7,
+                    top_p: 0.9,
+                    top_k: 40,
+                    repeat_penalty: 1.1,
+                    presence_penalty: 0.0,
+                    frequency_penalty: 0.0,
+                },
+                characterBook: charData.character_book || char.character_book || undefined,
+                isCustomPersona: isCustom,
+            };
+
+            setPersonaDetailsData(modalPayload);
+            setIsPersonaDetailsModalOpen(true);
+        },
+        [modelPreferences, selectedChatModelId, selectedChatInstanceId, instances, instanceModelsList, instanceModelsMap]
+    );
+
     const handleGoToRoot = useCallback(() => {
         setCurrentView("chat");
         setActiveTab("all");
@@ -3419,13 +3577,28 @@ export default function ChatPage() {
                     return (
                         <section className="flex-1 flex flex-col bg-white overflow-hidden">
                             {/* Header */}
-                            <ChatHeader
-                                title={activeChatObj.name}
-                                onOpenRename={handleOpenRenameModal}
-                                onOpenDuplicate={handleOpenDuplicateModal}
-                                onOpenExport={handleOpenExportModal}
-                                onOpenDelete={handleOpenDeleteModal}
-                            />
+                            {(() => {
+                                const activeChatAssistantAvatar =
+                                    formatAvatarPicture(
+                                        modelPreferences[selectedChatModelId]?.picture ||
+                                        modelPreferences[selectedChatModelId?.toLowerCase()]?.picture ||
+                                        activeChatObj.avatarImg
+                                    ) ||
+                                    activeChatObj.avatarImg ||
+                                    DEFAULT_MODEL_AVATAR;
+
+                                return (
+                                    <ChatHeader
+                                        title={activeChatObj.name}
+                                        avatar={activeChatAssistantAvatar}
+                                        onAvatarClick={() => handleOpenPersonaDetails(selectedChatModelId)}
+                                        onOpenRename={handleOpenRenameModal}
+                                        onOpenDuplicate={handleOpenDuplicateModal}
+                                        onOpenExport={handleOpenExportModal}
+                                        onOpenDelete={handleOpenDeleteModal}
+                                    />
+                                );
+                            })()}
 
                             {/* Conversation Messages */}
                             <ChatMessageList
@@ -3433,6 +3606,7 @@ export default function ChatPage() {
                                 selectedChatModelId={selectedChatModelId}
                                 modelPreferences={modelPreferences}
                                 handleUseCharacterFirstMes={handleUseCharacterFirstMes}
+                                onAvatarClick={handleOpenPersonaDetails}
                                 editingMsgId={editingMsgId}
                                 editingMsgContent={editingMsgContent}
                                 setEditingMsgContent={setEditingMsgContent}
@@ -3607,7 +3781,13 @@ export default function ChatPage() {
                                                                 </svg>
                                                             </div>
                                                         ) : (
-                                                            <img src={p.avatar} alt={p.name} className="w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0" />
+                                                            <img
+                                                                src={p.avatar}
+                                                                alt={p.name}
+                                                                onClick={() => handleOpenPersonaDetails(p.id)}
+                                                                className="w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0 cursor-pointer hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all"
+                                                                title={`View ${p.name} persona details`}
+                                                            />
                                                         )}
                                                         <div className="flex-1 min-w-0">
                                                             <h5 className="font-semibold text-base text-[#202022] truncate">{p.name}</h5>
@@ -4203,17 +4383,16 @@ export default function ChatPage() {
                 </div>
             )}
 
-            {/* Select Model & Instance Modal */}
+            {/* Select Model Modal */}
             {isSelectModelModalOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none">
-                    <div className="bg-white text-[#202022] rounded-3xl p-6 w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl border border-[#e8ebf3] animate-in fade-in zoom-in duration-200">
+                    <div className="bg-white text-[#202022] rounded-3xl p-6 w-full max-w-xl sm:max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border border-[#e8ebf3] animate-in fade-in zoom-in duration-200">
                         {/* Modal Header */}
                         <div className="flex items-center justify-between pb-4 border-b border-[#eef0f6] shrink-0 mb-4">
                             <div className="flex items-center gap-2.5">
-                                
                                 <div>
-                                    <h3 className="text-xl font-bold text-[#202022] tracking-tight">Select Model & Instance</h3>
-                                    <p className="text-xs text-[#8e90a6] mt-0.5">Choose the responding AI model and server instance</p>
+                                    <h3 className="text-xl font-bold text-[#202022] tracking-tight">Select Model</h3>
+                                    <p className="text-xs text-[#8e90a6] mt-0.5">Choose the responding AI model</p>
                                 </div>
                             </div>
                             <button
@@ -4227,6 +4406,45 @@ export default function ChatPage() {
                                 </svg>
                             </button>
                         </div>
+
+                        {/* Instance Switcher Tabs if multiple instances exist */}
+                        {instances.length > 1 && (
+                            <div className="mb-4 space-y-1.5 shrink-0">
+                                <label className="block text-[11px] font-bold text-[#5d6075] uppercase tracking-wider">Instance</label>
+                                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                                    {instances.map((inst) => {
+                                        const isInstSelected = inst.id === (selectedModalInstanceId || selectedChatInstanceId || instances.find((i) => i.is_enabled)?.id || instances[0]?.id);
+                                        const instName = inst.properties?.name || inst.type;
+                                        return (
+                                            <button
+                                                key={`inst-tab-${inst.id}`}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedModalInstanceId(inst.id);
+                                                    fetchModelsForInstance(inst.id);
+                                                    fetchInstanceModels(inst.id);
+                                                }}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border ${
+                                                    isInstSelected
+                                                        ? "bg-[#7678ed] text-white border-[#7678ed] shadow-xs"
+                                                        : "bg-[#f9fafc] text-[#5d6075] hover:bg-[#eaecf9] hover:text-[#202022] border-[#e8ebf3]"
+                                                }`}
+                                            >
+                                                {inst.is_enabled && (
+                                                    <span className={`w-2 h-2 rounded-full ${isInstSelected ? "bg-emerald-300" : "bg-emerald-500"}`} title="Default instance" />
+                                                )}
+                                                <span>{instName}</span>
+                                                <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.2 rounded-md ${
+                                                    isInstSelected ? "bg-white/20 text-white" : "bg-[#eaecf9] text-[#7678ed]"
+                                                }`}>
+                                                    {inst.type}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Search Input */}
                         <div className="mb-4 relative shrink-0">
@@ -4246,7 +4464,7 @@ export default function ChatPage() {
                             </svg>
                             <input
                                 type="text"
-                                placeholder="Search models or instances..."
+                                placeholder="Search models..."
                                 value={modelModalSearchQuery}
                                 onChange={(e) => setModelModalSearchQuery(e.target.value)}
                                 className="w-full bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium border border-[#e8ebf3]"
@@ -4256,7 +4474,10 @@ export default function ChatPage() {
                         {/* Scrollable Instances & Models List */}
                         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
                             {(() => {
-                                const activeInst = instances.find((i) => i.is_enabled) || instances[0];
+                                const activeInst = instances.find((i) => i.id === selectedModalInstanceId)
+                                    || (selectedChatInstanceId ? instances.find((i) => i.id === selectedChatInstanceId) : null)
+                                    || instances.find((i) => i.is_enabled)
+                                    || instances[0];
 
                                 if (!activeInst || instances.length === 0) {
                                     return <div className="p-6 text-center text-[#8e90a6] text-sm italic">No active instance connected. Add an instance in settings.</div>;
@@ -4287,19 +4508,33 @@ export default function ChatPage() {
 
                                 return (
                                     <div className="space-y-3">
-                                        <div className="flex items-center justify-between px-1 bg-[#f9fafc] p-3 rounded-2xl border border-[#e8ebf3]">
-                                            <div className="flex items-center gap-2">
+                                        <div className="flex items-center justify-between px-3 bg-[#f9fafc] p-3 rounded-2xl border border-[#e8ebf3]">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 <h4 className="font-bold text-sm text-[#202022]">{activeInstName}</h4>
                                                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#eaecf9] text-[#7678ed]">
                                                     {activeInst.type}
                                                 </span>
+                                                {activeInst.is_enabled ? (
+                                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                        Default
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                        Selected
+                                                    </span>
+                                                )}
                                             </div>
+                                            <span className="text-xs font-semibold text-[#8e90a6]">
+                                                {matchingPrefs.length} {matchingPrefs.length === 1 ? "model" : "models"}
+                                            </span>
                                         </div>
 
-                                        <div className="space-y-1.5 pl-2 border-l-2 border-[#7678ed]/20 ml-2">
+                                        <div className="space-y-2.5">
                                             {matchingPrefs.map((pref) => {
                                                 const prefName = getCharacterName(pref.character) || pref.name || pref.model_name || pref.id;
                                                 const isSelected = selectedChatInstanceId === activeInst.id && selectedChatModelId === pref.id;
+                                                const avatarSrc = getModelAvatarPicture(pref);
+                                                const hasCustomAvatar = avatarSrc && avatarSrc !== DEFAULT_MODEL_AVATAR;
 
                                                 return (
                                                     <button
@@ -4311,35 +4546,66 @@ export default function ChatPage() {
                                                             fetchModelsForInstance(activeInst.id);
                                                             setIsSelectModelModalOpen(false);
                                                         }}
-                                                        className={`w-full text-left p-2.5 rounded-xl transition-all flex items-center justify-between cursor-pointer border ${
+                                                        className={`w-full text-left p-3.5 sm:p-4 rounded-2xl transition-all flex items-center justify-between cursor-pointer border ${
                                                             isSelected
                                                                 ? "bg-[#7678ed] text-white border-[#7678ed] shadow-md shadow-[#7678ed]/20"
-                                                                : "bg-white hover:bg-[#eaecf9] text-[#202022] border-[#e8ebf3]"
+                                                                : "bg-white hover:bg-[#eaecf9]/60 text-[#202022] border-[#e8ebf3] hover:border-[#7678ed]/40"
                                                         }`}
                                                     >
-                                                        <div className="flex items-center gap-2.5 truncate">
-                                                            <span className="text-sm shrink-0">✨</span>
-                                                            <div className="truncate">
-                                                                <p className="font-semibold text-xs truncate">{prefName}</p>
-                                                                <p className={`text-[10px] truncate ${isSelected ? "text-white/80" : "text-[#8e90a6]"}`}>
-                                                                    Model Preference • {pref.model_name ? `Model: ${pref.model_name}` : `ID: ${pref.id}`}
-                                                                </p>
+                                                        <div className="flex items-center gap-3.5 sm:gap-4 truncate">
+                                                            <div
+                                                                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden flex items-center justify-center shrink-0 border shadow-xs ${
+                                                                    isSelected ? "border-white/30 bg-white/10" : "border-[#e8ebf3] bg-[#eaecf9]"
+                                                                }`}
+                                                            >
+                                                                {hasCustomAvatar ? (
+                                                                    <img
+                                                                        src={avatarSrc}
+                                                                        alt={prefName}
+                                                                        className="w-full h-full object-cover"
+                                                                        onError={(e) => {
+                                                                            (e.target as HTMLElement).style.display = "none";
+                                                                        }}
+                                                                    />
+                                                                ) : (
+                                                                    <span className={`text-base sm:text-lg font-bold uppercase ${isSelected ? "text-white" : "text-[#7678ed]"}`}>
+                                                                        {prefName.slice(0, 2)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="truncate space-y-1">
+                                                                <h4 className={`font-bold text-base sm:text-lg leading-tight truncate ${isSelected ? "text-white" : "text-[#202022]"}`}>
+                                                                    {prefName}
+                                                                </h4>
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <span className={`text-xs font-medium truncate ${isSelected ? "text-white/80" : "text-[#7a7d90]"}`}>
+                                                                        {pref.model_name ? `Model: ${pref.model_name}` : `ID: ${pref.id}`}
+                                                                    </span>
+                                                                    {pref.voice && (
+                                                                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
+                                                                            isSelected ? "bg-white/20 text-white" : "bg-[#eaecf9] text-[#7678ed]"
+                                                                        }`}>
+                                                                            {pref.voice}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                         {isSelected && (
-                                                            <svg
-                                                                width="16"
-                                                                height="16"
-                                                                viewBox="0 0 24 24"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                strokeWidth="3"
-                                                                strokeLinecap="round"
-                                                                strokeLinejoin="round"
-                                                                className="shrink-0 ml-2"
-                                                            >
-                                                                <polyline points="20 6 9 17 4 12" />
-                                                            </svg>
+                                                            <div className="w-6 h-6 rounded-full bg-white text-[#7678ed] flex items-center justify-center shrink-0 ml-3 shadow-xs">
+                                                                <svg
+                                                                    width="14"
+                                                                    height="14"
+                                                                    viewBox="0 0 24 24"
+                                                                    fill="none"
+                                                                    stroke="currentColor"
+                                                                    strokeWidth="3.5"
+                                                                    strokeLinecap="round"
+                                                                    strokeLinejoin="round"
+                                                                >
+                                                                    <polyline points="20 6 9 17 4 12" />
+                                                                </svg>
+                                                            </div>
                                                         )}
                                                     </button>
                                                 );
@@ -4590,6 +4856,13 @@ export default function ChatPage() {
                     </div>
                 </div>
             )}
+
+            {/* Persona Details Read-Only Modal */}
+            <PersonaDetailsModal
+                isOpen={isPersonaDetailsModalOpen}
+                onClose={handleClosePersonaDetailsModal}
+                data={personaDetailsData}
+            />
         </>
     );
 }
