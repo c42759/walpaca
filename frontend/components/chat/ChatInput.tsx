@@ -106,7 +106,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
 
     return (
-        <form onSubmit={handleSendMessage} className="p-4 px-8 border-t border-[#eef0f6] bg-white flex flex-col gap-3">
+        <form onSubmit={handleSendMessage} className="p-2.5 sm:p-4 px-3 sm:px-6 md:px-8 border-t border-[#eef0f6] bg-white flex flex-col gap-2 sm:gap-3 pb-[calc(0.6rem+env(safe-area-inset-bottom,0px))]">
             <input
                 type="file"
                 ref={fileInputRef}
@@ -225,15 +225,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 </div>
             )}
 
-            <div className="flex items-center gap-2.5 w-full">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 w-full">
                 {/* Combined Model & Instance Selector Button */}
                 <button
                     type="button"
                     onClick={() => setIsSelectModelModalOpen(true)}
-                    className="group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2.5 hover:px-3.5 hover:bg-[#eaecf9] transition-all duration-300 ease-in-out shadow-xs cursor-pointer text-xs font-bold text-[#202022] max-w-[42px] hover:max-w-[340px] overflow-hidden"
+                    className="group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2 sm:p-2.5 hover:px-3 hover:bg-[#eaecf9] transition-all duration-300 ease-in-out shadow-xs cursor-pointer text-xs font-bold text-[#202022] max-w-[125px] sm:max-w-[160px] md:max-w-[42px] md:hover:max-w-[340px] overflow-hidden"
                     title={`Model: ${selectedModelName} @ ${selectedInstName}`}
                 >
-                    <div className="flex items-center gap-2 pl-1 shrink-0">
+                    <div className="flex items-center gap-1.5 sm:gap-2 pl-0.5 sm:pl-1 shrink-0">
                         <svg
                             width="18"
                             height="18"
@@ -249,7 +249,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                             <line x1="8" y1="21" x2="16" y2="21" />
                             <line x1="12" y1="17" x2="12" y2="21" />
                         </svg>
-                        <div className="flex items-center gap-1.5 opacity-0 max-w-0 group-hover:opacity-100 group-hover:max-w-[280px] transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden">
+                        <div className="flex items-center gap-1.5 opacity-100 max-w-[85px] sm:max-w-[120px] md:opacity-0 md:max-w-0 md:group-hover:opacity-100 md:group-hover:max-w-[280px] transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden">
                             <span className="truncate">{selectedModelName}</span>
                             <span className="text-[#8e90a6] font-semibold">@</span>
                             <span className="text-[#7678ed] truncate">{selectedInstName}</span>
@@ -330,10 +330,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                             }
                         }
                     }}
-                    className="flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-5 py-3.5 text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]"
+                    className="flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-3.5 py-2.5 sm:px-5 sm:py-3.5 text-base sm:text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]"
                 />
 
-                <button type="button" className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0" title="Emoji">
+                <button type="button" className="hidden sm:flex p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0" title="Emoji">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10" />
                         <path d="M8 14s1.5 2 4 2 4-2 4-2" />
@@ -344,7 +344,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
                 <button
                     type="submit"
-                    className="w-11 h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0"
+                    className="w-10 h-10 sm:w-11 sm:h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0 cursor-pointer"
                     title="Send"
                 >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

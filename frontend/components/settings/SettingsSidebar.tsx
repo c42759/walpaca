@@ -156,69 +156,110 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
     };
 
     return (
-        <section className="w-[350px] border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0">
-            {/* Search Bar Header matching ChatListPanel */}
-            <div className="p-4 pb-3 flex items-center gap-2">
-                <div className="relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]">
-                    <SearchIcon className="w-4.5 h-4.5 text-[#7678ed] mr-2.5 shrink-0 opacity-80" />
-                    <input
-                        type="text"
-                        placeholder="Search"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="bg-transparent text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium"
-                    />
+        <>
+            {/* 1. Desktop & Tablet Vertical Sidebar (md:flex) */}
+            <section className="hidden md:flex w-[260px] lg:w-[320px] xl:w-[350px] h-full border-r border-[#e8ebf3] flex-col bg-[#f9fafc] shrink-0">
+                {/* Search Bar Header matching ChatListPanel */}
+                <div className="p-4 pb-3 flex items-center gap-2">
+                    <div className="relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]">
+                        <SearchIcon className="w-4.5 h-4.5 text-[#7678ed] mr-2.5 shrink-0 opacity-80" />
+                        <input
+                            type="text"
+                            placeholder="Search"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="bg-transparent text-base lg:text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium"
+                        />
+                    </div>
+                </div>
+
+                {/* Category List */}
+                <div className="flex-1 overflow-y-auto px-3 space-y-1.5 custom-scrollbar pb-4">
+                    {filteredCategories.map((cat) => {
+                        const isActive = (currentActive || activeSettingsCategory) === cat.id;
+
+                        return (
+                            <div
+                                key={cat.id}
+                                draggable={true}
+                                onClick={() => handleCategoryClick(cat.id)}
+                                className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
+                                    isActive ? "bg-[#eaecf9] shadow-xs" : "hover:bg-[#f0f2f9]"
+                                }`}
+                            >
+                                {/* Avatar */}
+                                <div
+                                    style={{ background: defaultGetAvatarColor(cat.label) }}
+                                    className="w-10 h-10 lg:w-12 lg:h-12 rounded-2xl text-white flex items-center justify-center font-bold text-base lg:text-lg tracking-wide shrink-0 shadow-sm"
+                                >
+                                    {cat.icon}
+                                </div>
+
+                                {/* Info */}
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                                        <h4 className="font-semibold text-base lg:text-lg text-[#202022] truncate">{cat.label}</h4>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-1">
+                                        <p className={`text-xs ${isActive ? "text-[#7678ed] font-medium" : "text-[#7a7d90]"} truncate`}>{cat.description}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {filteredCategories.length === 0 && (
+                        <div className="p-8 text-center text-xs text-[#8e90a6] font-medium">No settings found matching &ldquo;{searchQuery}&rdquo;</div>
+                    )}
+                </div>
+
+                {/* Back to Chat Footer */}
+                <div className="p-3 border-t border-[#e8ebf3] bg-[#f9fafc]">
+                    <button
+                        onClick={handleBackToChat}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] font-semibold text-sm transition-all cursor-pointer shadow-xs"
+                    >
+                        <ArrowLeftIcon className="w-4 h-4" />
+                        <span>Back to Chat</span>
+                    </button>
+                </div>
+            </section>
+
+            {/* 2. Mobile Horizontal Category Navigation Strip (< md) */}
+            <div className="md:hidden w-full bg-[#f9fafc] border-b border-[#e8ebf3] px-3 py-2 flex flex-col gap-2 shrink-0 select-none">
+                <div className="flex items-center justify-between">
+                    <button
+                        type="button"
+                        onClick={handleBackToChat}
+                        className="flex items-center gap-1.5 text-xs font-bold text-[#7678ed] hover:text-[#5d5fb8] cursor-pointer"
+                    >
+                        <ArrowLeftIcon className="w-4 h-4" />
+                        <span>Back to Chat</span>
+                    </button>
+                    <span className="text-xs font-bold text-[#8e90a6] uppercase tracking-wider">Settings</span>
+                </div>
+
+                {/* Horizontal Scrollable Category Pills */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                    {categories.map((cat) => {
+                        const isActive = (currentActive || activeSettingsCategory) === cat.id;
+                        return (
+                            <button
+                                key={cat.id}
+                                type="button"
+                                onClick={() => handleCategoryClick(cat.id)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                                    isActive
+                                        ? "bg-[#7678ed] text-white shadow-xs"
+                                        : "bg-[#eaecf9] text-[#202022] hover:bg-[#dfe2f7]"
+                                }`}
+                            >
+                                <span>{cat.label}</span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
-
-            {/* Category List */}
-            <div className="flex-1 overflow-y-auto px-3 space-y-1.5 custom-scrollbar pb-4">
-                {filteredCategories.map((cat) => {
-                    const isActive = (currentActive || activeSettingsCategory) === cat.id;
-
-                    return (
-                        <div
-                            key={cat.id}
-                            draggable={true}
-                            onClick={() => handleCategoryClick(cat.id)}
-                            className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all`}
-                        >
-                            {/* Avatar */}
-                            <div
-                                style={{ background: defaultGetAvatarColor(cat.label) }}
-                                className="w-12 h-12 rounded-2xl text-white flex items-center justify-center font-bold text-lg tracking-wide shrink-0 shadow-sm"
-                            >
-                                {cat.icon}
-                            </div>
-
-                            {/* Info */}
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between gap-1 mb-0.5">
-                                    <h4 className="font-semibold text-lg text-[#202022] truncate">{cat.label}</h4>
-                                </div>
-                                <div className="flex items-center justify-between gap-1">
-                                    <p className={`text-xs ${isActive ? "text-[#7678ed] font-medium" : "text-[#7a7d90]"}`}>{cat.description}</p>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-
-                {filteredCategories.length === 0 && (
-                    <div className="p-8 text-center text-xs text-[#8e90a6] font-medium">No settings found matching &ldquo;{searchQuery}&rdquo;</div>
-                )}
-            </div>
-
-            {/* Back to Chat Footer */}
-            <div className="p-3 border-t border-[#e8ebf3] bg-[#f9fafc]">
-                <button
-                    onClick={handleBackToChat}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-[#eaecf8] hover:bg-[#e0e3f5] text-[#202022] font-semibold text-sm transition-all cursor-pointer shadow-xs"
-                >
-                    <ArrowLeftIcon className="w-4 h-4" />
-                    <span>Back to Chat</span>
-                </button>
-            </div>
-        </section>
+        </>
     );
 };

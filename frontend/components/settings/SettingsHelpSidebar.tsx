@@ -9,7 +9,7 @@ export interface SettingsHelpSidebarProps {
 
 export const SettingsHelpSidebar: React.FC<SettingsHelpSidebarProps> = ({ activeSettingsCategory }) => {
     return (
-        <aside className="w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-6 flex flex-col gap-5 overflow-y-auto shrink-0 select-none">
+        <aside className="hidden xl:flex w-[280px] 2xl:w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 lg:p-6 flex-col gap-4 lg:gap-5 overflow-y-auto shrink-0 select-none">
             <div className="flex items-center gap-2 text-[#7678ed] font-bold text-lg border-b border-[#e8ebf3] pb-3">
                 <TipIcon className="w-5 h-5" />
                 <span>Help &amp; Tips</span>

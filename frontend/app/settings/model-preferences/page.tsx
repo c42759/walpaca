@@ -11,7 +11,7 @@ export default function ModelPreferencesSettingsPage() {
     const [activeSettingsCategory, setActiveSettingsCategory] = useState<SettingsCategory>("manage-model-preferences");
 
     return (
-        <div className="flex-1 flex overflow-hidden bg-white rounded-l-[32px] select-text">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-white rounded-none md:rounded-l-[32px] w-full h-full select-text">
             {/* 1. SETTINGS CATEGORIES SIDEBAR */}
             <SettingsSidebar activeSettingsCategory={activeSettingsCategory} setActiveSettingsCategory={setActiveSettingsCategory} setCurrentView={setCurrentView} />
 

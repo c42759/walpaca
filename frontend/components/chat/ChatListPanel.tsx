@@ -1,6 +1,5 @@
-"use client";
-
 import React from "react";
+import { useAppStore } from "@/store/useAppStore";
 
 export interface ChatItem {
     id: string;
@@ -66,6 +65,7 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
     setDragOverFolderTarget,
     getAvatarColor = defaultGetAvatarColor,
 }) => {
+    const { setIsMobileNavOpen } = useAppStore();
     const filteredChats = chatItems.filter((chat) => {
         const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesFolder = activeTab === "none" || activeTab === "all" ? !chat.folder || chat.folder === "none" : chat.folder === activeTab;
@@ -73,9 +73,23 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
     });
 
     return (
-        <section className="w-[350px] border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0">
+        <section className="w-full md:w-[280px] lg:w-[350px] h-full md:border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0">
             {/* Search Bar Header */}
-            <div className="p-4 pb-3 flex items-center gap-2">
+            <div className="p-3 sm:p-4 pb-3 flex items-center gap-2">
+                {/* Mobile Drawer Hamburger Trigger (< md) */}
+                <button
+                    type="button"
+                    onClick={() => setIsMobileNavOpen(true)}
+                    className="p-2.5 md:hidden bg-[#eaecf9] hover:bg-[#dfe2f7] text-[#202022] rounded-2xl flex items-center justify-center transition-all shrink-0 cursor-pointer"
+                    title="Open navigation menu"
+                >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="3" y1="12" x2="21" y2="12" />
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="3" y1="18" x2="21" y2="18" />
+                    </svg>
+                </button>
+
                 <div className="relative flex-1 flex items-center bg-[#eaecf9] rounded-2xl px-3.5 py-2.5 transition-colors focus-within:bg-[#e2e5f8]">
                     <svg
                         width="18"
@@ -96,7 +110,7 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
                         placeholder="Search"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="bg-transparent text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium"
+                        className="bg-transparent text-base sm:text-lg text-[#202022] placeholder-[#8e90a6] outline-none w-full font-medium"
                     />
                 </div>
                 <button

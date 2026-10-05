@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
+import { useAppStore } from "@/store/useAppStore";
+import { ArrowLeftIcon, ServerIcon } from "../icons/Icons";
 
 export interface ChatHeaderProps {
     title: string;
     subtitle?: string;
+    onBack?: () => void;
     onOpenRename: () => void;
     onOpenDuplicate: () => void;
     onOpenExport: () => void;
@@ -17,6 +20,7 @@ export interface ChatHeaderProps {
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
     title,
     subtitle = "Active chat session",
+    onBack,
     onOpenRename,
     onOpenDuplicate,
     onOpenExport,
@@ -26,28 +30,53 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     onAvatarClick,
 }) => {
     const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
+    const { isRightDrawerOpen, setIsRightDrawerOpen } = useAppStore();
 
     return (
-        <div className="h-[76px] px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3.5">
+        <div className="h-16 sm:h-[76px] px-3 sm:px-6 md:px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0 bg-white">
+            <div className="flex items-center gap-2 sm:gap-3.5 min-w-0 flex-1 mr-2">
+                {/* Mobile Back to Chat List Button (< md) */}
+                {onBack && (
+                    <button
+                        type="button"
+                        onClick={onBack}
+                        className="p-2 md:hidden text-[#202022] hover:bg-[#f4f6fc] rounded-xl transition-all cursor-pointer shrink-0"
+                        title="Back to chat list"
+                    >
+                        <ArrowLeftIcon className="w-5 h-5" />
+                    </button>
+                )}
+
                 {avatar && (
                     <button
                         type="button"
                         onClick={onAvatarClick}
-                        className="w-11 h-11 rounded-2xl overflow-hidden shrink-0 shadow-sm border border-[#eef0f6] hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+                        className="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl overflow-hidden shrink-0 shadow-sm border border-[#eef0f6] hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                         title="View persona details"
                     >
                         <img src={avatar} alt={title} className="w-full h-full object-cover" />
                     </button>
                 )}
-                <div>
-                    <h2 className="text-2xl font-bold text-[#202022] tracking-tight">{title}</h2>
-                    <p className="text-base text-[#8e90a6] font-medium mt-0.5">{subtitle}</p>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-base sm:text-xl md:text-2xl font-bold text-[#202022] tracking-tight truncate">{title}</h2>
+                    <p className="text-xs sm:text-sm md:text-base text-[#8e90a6] font-medium mt-0.5 truncate hidden sm:block">{subtitle}</p>
                 </div>
             </div>
 
             {/* Action Icons */}
-            <div className="flex items-center gap-4 text-[#8e90a6] relative">
+            <div className="flex items-center gap-1.5 sm:gap-3 text-[#8e90a6] relative shrink-0">
+                {/* Context Drawer Toggle for Mobile / Tablet (< lg) */}
+                <button
+                    type="button"
+                    onClick={() => setIsRightDrawerOpen(!isRightDrawerOpen)}
+                    className={`p-2 rounded-xl transition-colors cursor-pointer lg:hidden ${
+                        isRightDrawerOpen ? "text-[#7678ed] bg-[#7678ed]/10" : "hover:text-[#202022] hover:bg-[#f4f6fc]"
+                    }`}
+                    title="Toggle context details"
+                >
+                    <ServerIcon className="w-5 h-5" />
+                </button>
+
                 <button onClick={onSearchClick} className="p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer" title="Search in chat">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="11" cy="11" r="8" />

@@ -12,7 +12,7 @@ import { ChatEmptyState } from "@/components/chat/ChatEmptyState";
 import { ChatMessageList } from "@/components/chat/ChatMessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { PersonaDetailsModal, PersonaDetailsData } from "@/components/chat/PersonaDetailsModal";
-import { BrainIcon, MetadataIcon, ServerIcon } from "@/components/icons/Icons";
+import { BrainIcon, MetadataIcon, ServerIcon, CloseIcon } from "@/components/icons/Icons";
 import { WidgetSimple, WidgetToggle, WidgetWithCustomHeader } from "@/components/ui/Widget";
 
 // --- Types ---
@@ -947,6 +947,8 @@ export default function ChatPage() {
         setFolderContextMenu,
         isCreatingFolder,
         setIsCreatingFolder,
+        isRightDrawerOpen,
+        setIsRightDrawerOpen,
     } = useAppStore();
 
     const [activeAttachmentModal, setActiveAttachmentModal] = useState<{ title: string; type: string; content: string } | null>(null);
@@ -3544,38 +3546,51 @@ export default function ChatPage() {
         };
     }, [handleGoToRoot, handleDropChatToFolder]);
 
+    const handleBackToList = useCallback(() => {
+        setActiveChatId("");
+        if (typeof window !== "undefined") {
+            window.history.pushState(null, "", "/");
+        }
+    }, [setActiveChatId]);
+
     return (
         <>
             {/* Inner App Container with Rounded Right / Light Theme Area */}
-            <div className="flex-1 flex overflow-hidden bg-[#f9fafc] rounded-l-[32px]">
+            <div className="flex-1 flex overflow-hidden bg-[#f9fafc] rounded-none md:rounded-l-[32px] w-full h-full relative">
                 {/* ========================================================= */}
-                {/* 2. CHAT LIST PANEL (#f9fafc) */}
+                {/* 2. CHAT LIST PANEL (#f9fafc) - Master view */}
                 {/* ========================================================= */}
-                <ChatListPanel
-                    searchQuery={searchQuery}
-                    setSearchQuery={setSearchQuery}
-                    handleOpenNewChatModal={handleOpenNewChatModal}
-                    chatItems={chatItems}
-                    activeTab={activeTab}
-                    activeChatId={activeChatId}
-                    setActiveChatId={setActiveChatId}
-                    draggedChatId={draggedChatId}
-                    setDraggedChatId={setDraggedChatId}
-                    setDragOverFolderTarget={setDragOverFolderTarget}
-                    getAvatarColor={getAvatarColor}
-                />
+                <div className={`h-full ${activeChatId ? "hidden md:flex shrink-0" : "flex w-full md:w-auto shrink-0"}`}>
+                    <ChatListPanel
+                        searchQuery={searchQuery}
+                        setSearchQuery={setSearchQuery}
+                        handleOpenNewChatModal={handleOpenNewChatModal}
+                        chatItems={chatItems}
+                        activeTab={activeTab}
+                        activeChatId={activeChatId}
+                        setActiveChatId={setActiveChatId}
+                        draggedChatId={draggedChatId}
+                        setDraggedChatId={setDraggedChatId}
+                        setDragOverFolderTarget={setDragOverFolderTarget}
+                        getAvatarColor={getAvatarColor}
+                    />
+                </div>
 
                 {/* ========================================================= */}
-                {/* 3. MAIN CHAT AREA (WHITE) */}
+                {/* 3. MAIN CHAT AREA (WHITE) - Detail view */}
                 {/* ========================================================= */}
                 {(() => {
                     const activeChatObj = chatItems.find((c) => c.id === activeChatId) || activeChat;
                     if (!activeChatId || !activeChatObj) {
-                        return <ChatEmptyState />;
+                        return (
+                            <div className="hidden md:flex flex-1 overflow-hidden">
+                                <ChatEmptyState />
+                            </div>
+                        );
                     }
 
                     return (
-                        <section className="flex-1 flex flex-col bg-white overflow-hidden">
+                        <section className="flex-1 flex flex-col bg-white overflow-hidden w-full h-full">
                             {/* Header */}
                             {(() => {
                                 const activeChatAssistantAvatar =
@@ -3591,6 +3606,7 @@ export default function ChatPage() {
                                     <ChatHeader
                                         title={activeChatObj.name}
                                         avatar={activeChatAssistantAvatar}
+                                        onBack={handleBackToList}
                                         onAvatarClick={() => handleOpenPersonaDetails(selectedChatModelId)}
                                         onOpenRename={handleOpenRenameModal}
                                         onOpenDuplicate={handleOpenDuplicateModal}
@@ -3657,8 +3673,9 @@ export default function ChatPage() {
                 {/* ========================================================= */}
                 {/* 4. RIGHT INFO DRAWER (#f9fafc) */}
                 {/* ========================================================= */}
-                {activeChatId && (chatItems.some((c) => c.id === activeChatId) || activeChat?.id === activeChatId) ? (
-                    <aside className="w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+                {activeChatId && (chatItems.some((c) => c.id === activeChatId) || activeChat?.id === activeChatId) ? (() => {
+                    const drawerCards = (
+                        <>
                         {/* Context Card */}
                         {(() => {
                             const selectedInst = instances.find((i) => i.id === selectedChatInstanceId);
@@ -3882,8 +3899,42 @@ export default function ChatPage() {
                                 </>
                             );
                         })()}
-                    </aside>
-                ) : null}
+                        </>
+                    );
+
+                    return (
+                        <>
+                            {/* Desktop permanent column (>= lg) */}
+                            <aside className="hidden lg:flex w-[290px] xl:w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex-col gap-4 overflow-y-auto shrink-0">
+                                {drawerCards}
+                            </aside>
+
+                            {/* Mobile / Tablet Slide-over Drawer (< lg) */}
+                            {isRightDrawerOpen && (
+                                <div className="fixed inset-0 z-50 lg:hidden flex justify-end animate-in fade-in duration-200">
+                                    <div
+                                        className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+                                        onClick={() => setIsRightDrawerOpen(false)}
+                                    />
+                                    <aside className="relative z-10 w-[85vw] max-w-[340px] h-full bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex flex-col gap-4 overflow-y-auto shadow-2xl animate-in slide-in-from-right duration-200">
+                                        <div className="flex items-center justify-between pb-2 border-b border-[#e8ebf3] shrink-0">
+                                            <span className="font-bold text-base text-[#202022]">Details &amp; Context</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsRightDrawerOpen(false)}
+                                                className="p-1.5 rounded-xl hover:bg-[#eaecf9] text-[#8e90a6] hover:text-[#202022] transition-colors cursor-pointer"
+                                                title="Close details"
+                                            >
+                                                <CloseIcon className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                        {drawerCards}
+                                    </aside>
+                                </div>
+                            )}
+                        </>
+                    );
+                })() : null}
             </div>
             {/* Create Folder Modal */}
             {isCreatingFolder && (
@@ -4385,8 +4436,8 @@ export default function ChatPage() {
 
             {/* Select Model Modal */}
             {isSelectModelModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none">
-                    <div className="bg-white text-[#202022] rounded-3xl p-6 w-full max-w-xl sm:max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border border-[#e8ebf3] animate-in fade-in zoom-in duration-200">
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 select-none">
+                    <div className="bg-white text-[#202022] rounded-2xl sm:rounded-3xl p-4 sm:p-6 w-[calc(100vw-24px)] sm:w-full max-w-xl sm:max-w-2xl max-h-[88dvh] flex flex-col shadow-2xl border border-[#e8ebf3] animate-in fade-in zoom-in duration-200">
                         {/* Modal Header */}
                         <div className="flex items-center justify-between pb-4 border-b border-[#eef0f6] shrink-0 mb-4">
                             <div className="flex items-center gap-2.5">
@@ -4764,7 +4815,7 @@ export default function ChatPage() {
                             </button>
                         </div>
                         <p className="text-sm text-white/70 leading-relaxed mb-6">
-                            Are you sure you want to delete <strong className="text-white">"{deletingFolder.name}"</strong>? Chats in this folder will be moved to No Folder.
+                            Are you sure you want to delete <strong className="text-white">&ldquo;{deletingFolder.name}&rdquo;</strong>? Chats in this folder will be moved to No Folder.
                         </p>
                         <div className="flex items-center justify-end gap-3">
                             <button

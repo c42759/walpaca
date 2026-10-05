@@ -264,7 +264,7 @@ export default function EditInstancePage() {
     };
 
     return (
-        <div className="flex-1 flex overflow-hidden bg-white rounded-l-[32px] select-text">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-white rounded-none md:rounded-l-[32px] w-full h-full select-text">
             {/* 1. SETTINGS CATEGORIES SIDEBAR */}
             <SettingsSidebar
                 activeSettingsCategory={activeSettingsCategory}
@@ -273,7 +273,7 @@ export default function EditInstancePage() {
             />
 
             {/* 2. MIDDLE SETTINGS CONTENT AREA */}
-            <main className="flex-1 p-8 overflow-y-auto">
+            <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto">
                 <div className="max-w-3xl mx-auto space-y-8">
                     {/* Top Bar Navigation */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs">

@@ -102,6 +102,12 @@ interface AppStoreState {
     isCreatingFolder: boolean;
     setIsCreatingFolder: (isCreating: boolean) => void;
 
+    // Responsive Mobile/Tablet Shell States
+    isMobileNavOpen: boolean;
+    setIsMobileNavOpen: (open: boolean) => void;
+    isRightDrawerOpen: boolean;
+    setIsRightDrawerOpen: (open: boolean) => void;
+
     // Long-lived Data States
     instances: InstanceItem[];
     instancesLoaded: boolean;
@@ -196,6 +202,11 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
     isCreatingFolder: false,
     setIsCreatingFolder: (isCreating) => set({ isCreatingFolder: isCreating }),
+
+    isMobileNavOpen: false,
+    setIsMobileNavOpen: (open) => set({ isMobileNavOpen: open }),
+    isRightDrawerOpen: false,
+    setIsRightDrawerOpen: (open) => set({ isRightDrawerOpen: open }),
 
     instances: [],
     instancesLoaded: false,

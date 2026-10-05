@@ -37,6 +37,8 @@ export const viewport: Viewport = {
     themeColor: "#7678ed",
     width: "device-width",
     initialScale: 1,
+    maximumScale: 5,
+    viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -47,7 +49,6 @@ export default function RootLayout({
     return (
         <html lang="en" className={`${poppins.variable} ${robotoMono.variable} font-sans h-full`}>
             <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                 <script
                     dangerouslySetInnerHTML={{
                         __html: `
@@ -62,7 +63,7 @@ export default function RootLayout({
                     }}
                 />
             </head>
-            <body className="min-h-full flex flex-col antialiased">
+            <body className="h-dvh min-h-dvh flex flex-col antialiased overflow-hidden">
                 <AppShell>{children}</AppShell>
                 <PWAInstallPrompt />
             </body>

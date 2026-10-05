@@ -73,12 +73,12 @@ export default function ImportSettingsPage() {
     };
 
     return (
-        <div className="flex-1 flex overflow-hidden bg-white rounded-l-[32px] select-text">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-white rounded-none md:rounded-l-[32px] w-full h-full select-text">
             {/* 1. SETTINGS CATEGORIES SIDEBAR */}
             <SettingsSidebar activeSettingsCategory={activeSettingsCategory} setActiveSettingsCategory={setActiveSettingsCategory} setCurrentView={setCurrentView} />
 
             {/* 2. MIDDLE SETTINGS CONTENT AREA */}
-            <main className="flex-1 p-8 overflow-y-auto">
+            <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto">
                 <div className="mx-auto space-y-8">
                     <div className="space-y-6 animate-in fade-in duration-200">
                         {/* Header */}

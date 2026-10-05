@@ -4,6 +4,8 @@
 import React, { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
+import { useAppStore } from "@/store/useAppStore";
+
 export interface ChatFolder {
     id: string;
     name: string;
@@ -45,12 +47,14 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
 }) => {
     const router = useRouter();
     const pathname = usePathname();
+    const { setIsMobileNavOpen } = useAppStore();
     const isSettings = pathname.startsWith("/settings") || currentView === "settings";
     const [dragOverFolderTarget, setDragOverFolderTarget] = useState<string | null>(null);
 
     const handleNavigateChatTab = (tab: string) => {
         setActiveTab(tab);
         setCurrentView("chat");
+        setIsMobileNavOpen(false);
         if (pathname.startsWith("/settings")) {
             router.push("/");
         }
@@ -58,18 +62,20 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
 
     const handleNavigateSettings = () => {
         setCurrentView("settings");
+        setIsMobileNavOpen(false);
         router.push("/settings/import");
     };
 
     const handleLogoClick = () => {
         handleGoToRoot();
+        setIsMobileNavOpen(false);
         if (pathname.startsWith("/settings")) {
             router.push("/");
         }
     };
 
     return (
-        <aside className="w-[100px] bg-[#202022] flex flex-col items-center justify-between py-6 px-2 select-none shrink-0 border-r border-[#202022]">
+        <aside className="w-[90px] md:w-[76px] lg:w-[100px] h-full bg-[#202022] flex flex-col items-center justify-between py-5 sm:py-6 px-1.5 sm:px-2 select-none shrink-0 border-r border-[#202022]">
             {/* Top Alpaca Prism Logo */}
             <div className="flex flex-col items-center gap-8 w-full">
                 <div onClick={handleLogoClick} className="w-12 h-12 flex items-center justify-center text-white cursor-pointer hover:opacity-85 transition-opacity">

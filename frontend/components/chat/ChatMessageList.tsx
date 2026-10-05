@@ -321,7 +321,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
     messagesEndRef,
 }) => {
     return (
-        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6 flex flex-col">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 flex flex-col">
             {messages.length === 0
                 ? (() => {
                       const selectedPrefKey = (selectedChatModelId || "").toLowerCase();
@@ -334,12 +334,12 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                       const firstMes = (charData.first_mes || charData.first_message || selectedPref?.first_message || "").trim();
 
                       return (
-                          <div className="flex flex-col items-center justify-center h-full min-h-[350px] text-center p-8 select-none my-auto">
-                              <div className="w-24 h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-6 text-[#7678ed] shadow-inner">
-                                  <img src="/icon-black.svg" alt="Alpaca Logo" className="w-14 h-14 opacity-70" />
+                          <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center p-4 sm:p-8 select-none my-auto">
+                              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-4 sm:mb-6 text-[#7678ed] shadow-inner">
+                                  <img src="/icon-black.svg" alt="Alpaca Logo" className="w-12 h-12 sm:w-14 sm:h-14 opacity-70" />
                               </div>
-                              <h3 className="text-2xl font-bold text-[#202022] mb-2">No messages yet</h3>
-                              <p className="text-base text-[#8e90a6] max-w-sm mb-6">Start a conversation by typing a message below or using a character template.</p>
+                              <h3 className="text-xl sm:text-2xl font-bold text-[#202022] mb-2">No messages yet</h3>
+                              <p className="text-sm sm:text-base text-[#8e90a6] max-w-sm mb-6">Start a conversation by typing a message below or using a character template.</p>
                               {selectedPref && firstMes ? (
                                   <button
                                       type="button"
@@ -367,9 +367,9 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                           const isEditingUser = editingMsgId === msg.id;
 
                           return (
-                              <div key={msg.id} className="flex items-start justify-end gap-3.5 w-full">
+                              <div key={msg.id} className="flex items-start justify-end gap-2.5 sm:gap-3.5 w-full">
                                   <div className="flex flex-col items-end flex-1 w-full min-w-0">
-                                      <div className="bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-5 py-4 text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full">
+                                      <div className="bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 text-base sm:text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full">
                                           {isEditingUser ? (
                                               <div className="flex flex-col gap-3 w-full my-1">
                                                   <textarea
@@ -561,16 +561,16 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                           const metadataAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === "metadata" || a.type?.toLowerCase() === "data");
 
                           return (
-                              <div key={msg.id} className="flex items-start gap-3.5 w-full">
+                              <div key={msg.id} className="flex items-start gap-2.5 sm:gap-3.5 w-full">
                                   <img
                                       src={avatarSrc}
                                       alt={displayName}
                                       onClick={() => onAvatarClick?.(msg, pref)}
-                                      className="w-10 h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm cursor-pointer hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all"
+                                      className="w-8 h-8 sm:w-10 sm:h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm cursor-pointer hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all"
                                       title={`View ${displayName} persona details`}
                                   />
                                   <div className="flex flex-col items-start flex-1 w-full min-w-0">
-                                      <div className="bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-5 py-4 text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full">
+                                      <div className="bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 text-base sm:text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full">
                                           <div className="flex items-center justify-between gap-3 mb-1.5">
                                               <div className="flex items-center gap-2">
                                                   {/* TTS Controls in front of displayName */}
