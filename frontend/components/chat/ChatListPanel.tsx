@@ -26,6 +26,7 @@ export interface ChatListPanelProps {
     setDraggedChatId: (id: string | null) => void;
     setDragOverFolderTarget: (target: string | null) => void;
     getAvatarColor?: (name: string) => string;
+    onChatContextMenu?: (e: React.MouseEvent, chat: ChatItem) => void;
 }
 
 const defaultGetAvatarColor = (name: string): string => {
@@ -64,6 +65,7 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
     setDraggedChatId,
     setDragOverFolderTarget,
     getAvatarColor = defaultGetAvatarColor,
+    onChatContextMenu,
 }) => {
     const { setIsMobileNavOpen } = useAppStore();
     const filteredChats = chatItems.filter((chat) => {
@@ -148,6 +150,11 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
                                 if (typeof window !== "undefined") {
                                     window.history.pushState(null, "", `/${chat.id}`);
                                 }
+                            }}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onChatContextMenu?.(e, chat);
                             }}
                             className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer active:cursor-grabbing transition-all ${
                                 isBeingDragged ? "opacity-40 scale-95 border-2 border-dashed border-[#7678ed]" : ""

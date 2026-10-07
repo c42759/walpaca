@@ -1759,14 +1759,79 @@ export default function ChatPage() {
     const [renameFolderNameInput, setRenameFolderNameInput] = useState<string>("");
     const [deletingFolder, setDeletingFolder] = useState<{ id: string; name: string } | null>(null);
 
+    // Chat Item Context Menu State
+    const [chatContextMenu, setChatContextMenu] = useState<{
+        chatId: string;
+        chatName: string;
+        x: number;
+        y: number;
+    } | null>(null);
+
     useEffect(() => {
         const handleGlobalClick = () => {
             setFolderContextMenu(null);
             setLineContextMenu(null);
+            setChatContextMenu(null);
+        };
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                setFolderContextMenu(null);
+                setLineContextMenu(null);
+                setChatContextMenu(null);
+            }
         };
         window.addEventListener("click", handleGlobalClick);
-        return () => window.removeEventListener("click", handleGlobalClick);
+        window.addEventListener("keydown", handleKeyDown);
+        return () => {
+            window.removeEventListener("click", handleGlobalClick);
+            window.removeEventListener("keydown", handleKeyDown);
+        };
     }, []);
+
+    const handleChatContextMenu = (e: React.MouseEvent, chat: ChatItem) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setFolderContextMenu(null);
+        setLineContextMenu(null);
+        const menuWidth = 180;
+        const menuHeight = 200;
+        const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
+        const y = Math.min(e.clientY, window.innerHeight - menuHeight - 8);
+        setChatContextMenu({
+            chatId: chat.id,
+            chatName: chat.name,
+            x: Math.max(8, x),
+            y: Math.max(8, y),
+        });
+    };
+
+    const handleContextMenuRenameChat = (chatId: string, chatName: string) => {
+        setChatContextMenu(null);
+        setActiveChatId(chatId);
+        setRenameInputVal(chatName);
+        setIsRenameModalOpen(true);
+    };
+
+    const handleContextMenuDuplicateChat = (chatId: string) => {
+        setChatContextMenu(null);
+        setActiveChatId(chatId);
+        setIsDuplicateModalOpen(true);
+    };
+
+    const handleContextMenuExportChat = async (chatId: string) => {
+        setChatContextMenu(null);
+        if (activeChatId !== chatId) {
+            setActiveChatId(chatId);
+            await fetchChatMessages(chatId);
+        }
+        setIsExportModalOpen(true);
+    };
+
+    const handleContextMenuDeleteChat = (chatId: string) => {
+        setChatContextMenu(null);
+        setActiveChatId(chatId);
+        setIsDeleteModalOpen(true);
+    };
 
     const handleStartRenameFolder = (folderId: string, folderName: string) => {
         setFolderContextMenu(null);
@@ -3769,6 +3834,7 @@ export default function ChatPage() {
                         setDraggedChatId={setDraggedChatId}
                         setDragOverFolderTarget={setDragOverFolderTarget}
                         getAvatarColor={getAvatarColor}
+                        onChatContextMenu={handleChatContextMenu}
                     />
                 </div>
 
@@ -4940,6 +5006,63 @@ export default function ChatPage() {
                         type="button"
                         onClick={() => handleStartDeleteFolder(folderContextMenu.folderId, folderContextMenu.folderName)}
                         className="w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] text-rose-400 hover:text-rose-300 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                        Delete
+                    </button>
+                </div>
+            )}
+
+            {/* Chat Item Context Menu */}
+            {chatContextMenu && (
+                <div
+                    className="fixed z-[9999] bg-[#28282b] text-white border border-[#3e3e42] rounded-2xl p-1.5 shadow-2xl min-w-[170px] animate-in fade-in zoom-in-95 duration-150 select-none"
+                    style={{ left: `${chatContextMenu.x}px`, top: `${chatContextMenu.y}px` }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="px-3 py-1.5 border-b border-[#3e3e42] mb-1">
+                        <p className="text-[11px] font-bold text-[#8b8d97] uppercase tracking-wider truncate max-w-[140px]">{chatContextMenu.chatName}</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => handleContextMenuRenameChat(chatContextMenu.chatId, chatContextMenu.chatName)}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] hover:text-[#7678ed] flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                        </svg>
+                        Rename
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => handleContextMenuDuplicateChat(chatContextMenu.chatId)}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] hover:text-[#7678ed] flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        Duplicate
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => handleContextMenuExportChat(chatContextMenu.chatId)}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] hover:text-[#7678ed] flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        Export Chat
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => handleContextMenuDeleteChat(chatContextMenu.chatId)}
+                        className="w-full text-left px-3 py-2 text-xs font-semibold rounded-xl hover:bg-[#38383c] text-rose-400 hover:text-rose-300 flex items-center gap-2.5 transition-colors cursor-pointer"
                     >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="3 6 5 6 21 6" />
