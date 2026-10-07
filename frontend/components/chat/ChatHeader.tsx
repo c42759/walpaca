@@ -15,6 +15,13 @@ export interface ChatHeaderProps {
     onSearchClick?: () => void;
     avatar?: string;
     onAvatarClick?: () => void;
+    isSearchOpen?: boolean;
+    searchQuery?: string;
+    onSearchQueryChange?: (query: string) => void;
+    matchCount?: number;
+    activeMatchIndex?: number;
+    onNextMatch?: () => void;
+    onPrevMatch?: () => void;
 }
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
@@ -28,9 +35,23 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     onSearchClick,
     avatar,
     onAvatarClick,
+    isSearchOpen = false,
+    searchQuery = "",
+    onSearchQueryChange,
+    matchCount = 0,
+    activeMatchIndex = 0,
+    onNextMatch,
+    onPrevMatch,
 }) => {
     const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
     const { isRightDrawerOpen, setIsRightDrawerOpen } = useAppStore();
+    const searchInputRef = React.useRef<HTMLInputElement | null>(null);
+
+    React.useEffect(() => {
+        if (isSearchOpen) {
+            searchInputRef.current?.focus();
+        }
+    }, [isSearchOpen]);
 
     return (
         <div className="h-16 sm:h-[76px] px-3 sm:px-6 md:px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0 bg-white">
@@ -77,7 +98,87 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                     <ServerIcon className="w-5 h-5" />
                 </button>
 
-                <button onClick={onSearchClick} className="p-2 hover:text-[#202022] hover:bg-[#f4f6fc] rounded-full transition-colors cursor-pointer" title="Search in chat">
+                {/* Collapsible Slide-Left Search Box */}
+                <div
+                    className={`overflow-hidden transition-all duration-300 ease-in-out flex items-center ${
+                        isSearchOpen
+                            ? "max-w-[280px] sm:max-w-xs md:max-w-sm opacity-100 mr-1 sm:mr-2"
+                            : "max-w-0 opacity-0 pointer-events-none"
+                    }`}
+                >
+                    <div className="flex items-center bg-[#f4f6fc] border border-[#e2e5f1] focus-within:border-[#7678ed] focus-within:ring-2 focus-within:ring-[#7678ed]/20 rounded-xl px-2.5 py-1 text-sm gap-1.5 shadow-xs w-[240px] sm:w-[280px]">
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => onSearchQueryChange?.(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    if (e.shiftKey) onPrevMatch?.();
+                                    else onNextMatch?.();
+                                } else if (e.key === "Escape") {
+                                    onSearchClick?.();
+                                }
+                            }}
+                            placeholder="Search in chat..."
+                            className="w-full bg-transparent border-none outline-none text-[#202022] placeholder-[#8e90a6] text-xs sm:text-sm font-medium"
+                        />
+
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={() => onSearchQueryChange?.("")}
+                                className="text-[#8e90a6] hover:text-[#202022] p-0.5 rounded cursor-pointer transition-colors"
+                                title="Clear search"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        )}
+
+                        {searchQuery ? (
+                            <span className="text-[11px] sm:text-xs font-semibold px-1.5 py-0.5 rounded-md bg-white border border-[#e2e5f1] text-[#5d6075] shrink-0 select-none">
+                                {matchCount > 0 ? `${activeMatchIndex + 1}/${matchCount}` : "0/0"}
+                            </span>
+                        ) : null}
+
+                        <div className="flex items-center gap-0.5 border-l border-[#e2e5f1] pl-1 shrink-0">
+                            <button
+                                type="button"
+                                onClick={onPrevMatch}
+                                disabled={matchCount === 0}
+                                className="p-1 text-[#8e90a6] hover:text-[#202022] disabled:opacity-30 disabled:hover:text-[#8e90a6] rounded hover:bg-white/60 transition-colors cursor-pointer"
+                                title="Previous match (Shift+Enter)"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="18 15 12 9 6 15" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onNextMatch}
+                                disabled={matchCount === 0}
+                                className="p-1 text-[#8e90a6] hover:text-[#202022] disabled:opacity-30 disabled:hover:text-[#8e90a6] rounded hover:bg-white/60 transition-colors cursor-pointer"
+                                title="Next match (Enter)"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <button
+                    onClick={onSearchClick}
+                    className={`p-2 rounded-full transition-colors cursor-pointer ${
+                        isSearchOpen ? "text-[#7678ed] bg-[#7678ed]/10" : "hover:text-[#202022] hover:bg-[#f4f6fc]"
+                    }`}
+                    title={isSearchOpen ? "Close search" : "Search in chat"}
+                >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="11" cy="11" r="8" />
                         <line x1="21" y1="21" x2="16.65" y2="16.65" />

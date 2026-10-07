@@ -261,6 +261,7 @@ export const DocumentAttachmentCard: React.FC<DocumentAttachmentCardProps> = ({ 
 
 export interface ChatMessageListProps {
     messages: Message[];
+    activeSearchMsgId?: string | null;
     selectedChatModelId?: string;
     modelPreferences?: Record<string, any>;
     handleUseCharacterFirstMes?: () => void;
@@ -294,6 +295,7 @@ export interface ChatMessageListProps {
 
 export const ChatMessageList: React.FC<ChatMessageListProps> = ({
     messages,
+    activeSearchMsgId,
     selectedChatModelId = "",
     modelPreferences = {},
     handleUseCharacterFirstMes,
@@ -365,9 +367,16 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                           });
 
                           const isEditingUser = editingMsgId === msg.id;
+                          const isSearchActive = activeSearchMsgId === msg.id;
 
                           return (
-                              <div key={msg.id} className="flex items-start justify-end gap-2.5 sm:gap-3.5 w-full">
+                              <div
+                                  key={msg.id}
+                                  id={`chat-message-${msg.id}`}
+                                  className={`flex items-start justify-end gap-2.5 sm:gap-3.5 w-full transition-all duration-300 rounded-2xl ${
+                                      isSearchActive ? "ring-4 ring-amber-400 ring-offset-2 scale-[1.005]" : ""
+                                  }`}
+                              >
                                   <div className="flex flex-col items-end flex-1 w-full min-w-0">
                                       <div className="bg-[#7678ed] text-white rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 text-base sm:text-lg shadow-[0_4px_14px_rgba(118,120,237,0.35)] w-full">
                                           {isEditingUser ? (
@@ -559,9 +568,16 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
 
                           const thoughtAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === "thought" || a.type?.toLowerCase() === "brain");
                           const metadataAtt = msg.attachments?.find((a) => a.type?.toLowerCase() === "metadata" || a.type?.toLowerCase() === "data");
+                          const isSearchActive = activeSearchMsgId === msg.id;
 
                           return (
-                              <div key={msg.id} className="flex items-start gap-2.5 sm:gap-3.5 w-full">
+                              <div
+                                  key={msg.id}
+                                  id={`chat-message-${msg.id}`}
+                                  className={`flex items-start gap-2.5 sm:gap-3.5 w-full transition-all duration-300 rounded-2xl ${
+                                      isSearchActive ? "ring-4 ring-[#7678ed] ring-offset-2 scale-[1.005]" : ""
+                                  }`}
+                              >
                                   <img
                                       src={avatarSrc}
                                       alt={displayName}

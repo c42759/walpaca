@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAppStore, registerGoToRootHandler, registerDropChatToFolderHandler } from "@/store/useAppStore";
 import { getApiUrl } from "@/lib/api";
 import { applyAudioOutputDevice } from "@/lib/audioUtils";
+import {
+    updateMediaSessionMetadata,
+    setMediaSessionPlaybackState,
+    registerMediaSessionHandlers,
+    clearMediaSession,
+} from "@/lib/mediaSession";
 
 import { ChatListPanel } from "@/components/chat/ChatListPanel";
 import { ChatHeader } from "@/components/chat/ChatHeader";
@@ -2368,6 +2374,7 @@ export default function ChatPage() {
             audioRef.current = null;
         }
         updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
+        clearMediaSession();
     };
 
     const handlePauseTTS = () => {
@@ -2375,6 +2382,7 @@ export default function ChatPage() {
             audioRef.current.pause();
         }
         updateTTSState((prev) => ({ ...prev, status: "paused" }));
+        setMediaSessionPlaybackState("paused");
     };
 
     const handleResumeTTS = () => {
@@ -2382,7 +2390,74 @@ export default function ChatPage() {
             audioRef.current.play().catch(console.warn);
         }
         updateTTSState((prev) => ({ ...prev, status: "playing" }));
+        setMediaSessionPlaybackState("playing");
     };
+
+    // Media Session handlers & Hardware Media Keys registration
+    useEffect(() => {
+        const cleanupMediaSession = registerMediaSessionHandlers({
+            onPlay: () => {
+                if (ttsStateRef.current.status === "paused") {
+                    handleResumeTTS();
+                }
+            },
+            onPause: () => {
+                if (ttsStateRef.current.status === "playing") {
+                    handlePauseTTS();
+                }
+            },
+            onStop: () => {
+                handleStopTTS();
+            },
+            onSeekBackward: (offset) => {
+                if (audioRef.current) {
+                    audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - (offset || 5));
+                }
+            },
+            onSeekForward: (offset) => {
+                if (audioRef.current) {
+                    const dur = audioRef.current.duration;
+                    if (dur && !isNaN(dur)) {
+                        audioRef.current.currentTime = Math.min(dur, audioRef.current.currentTime + (offset || 5));
+                    } else {
+                        audioRef.current.currentTime += (offset || 5);
+                    }
+                }
+            },
+        });
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "MediaPlayPause" || e.code === "MediaPlayPause") {
+                e.preventDefault();
+                if (ttsStateRef.current.status === "playing") {
+                    handlePauseTTS();
+                } else if (ttsStateRef.current.status === "paused") {
+                    handleResumeTTS();
+                }
+            } else if (e.key === "MediaStop" || e.code === "MediaStop") {
+                e.preventDefault();
+                handleStopTTS();
+            } else if (e.key === "MediaTrackNext" || e.code === "MediaTrackNext") {
+                e.preventDefault();
+                if (audioRef.current && audioRef.current.duration) {
+                    audioRef.current.currentTime = audioRef.current.duration;
+                }
+            } else if (e.key === "MediaTrackPrevious" || e.code === "MediaTrackPrevious") {
+                e.preventDefault();
+                if (audioRef.current) {
+                    audioRef.current.currentTime = 0;
+                }
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            cleanupMediaSession();
+            window.removeEventListener("keydown", handleKeyDown);
+            clearMediaSession();
+        };
+    }, []);
 
     const fetchTTSBlob = async (text: string, voice: string, signal: AbortSignal): Promise<Blob | null> => {
         try {
@@ -2443,6 +2518,12 @@ export default function ChatPage() {
 
         if (validLines.length === 0) return;
 
+        const targetMsg = messages.find((m) => m.id === msgId);
+        const activeChatObj = chatItems.find((c) => c.id === activeChatId) || activeChat;
+        const speakerName = targetMsg?.senderName || "AI Assistant";
+        const speakerAvatar = targetMsg?.senderAvatar || activeChatObj?.avatarImg || "";
+        const chatTitle = activeChatObj?.name || "Walpaca Chat";
+
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
@@ -2471,6 +2552,14 @@ export default function ChatPage() {
             const defaultOutput = useAppStore.getState().appPreferences?.default_audio_output;
             await applyAudioOutputDevice(audio, defaultOutput);
 
+            updateMediaSessionMetadata({
+                title: currentItem.cleanText.length > 80 ? currentItem.cleanText.slice(0, 77) + "..." : currentItem.cleanText,
+                artist: speakerName,
+                album: chatTitle,
+                artworkSrc: speakerAvatar,
+            });
+            setMediaSessionPlaybackState("playing");
+
             await new Promise<void>((resolve) => {
                 audio.onended = () => {
                     URL.revokeObjectURL(audioUrl);
@@ -2485,11 +2574,13 @@ export default function ChatPage() {
                 const checkAndPlay = () => {
                     const st = ttsStateRef.current.status;
                     if (st === "paused") {
+                        setMediaSessionPlaybackState("paused");
                         const interval = setInterval(() => {
                             const currentSt = ttsStateRef.current.status;
                             if (currentSt === "playing" || (currentSt as string) === "stopped") {
                                 clearInterval(interval);
                                 if (currentSt === "playing") {
+                                    setMediaSessionPlaybackState("playing");
                                     audio.play().catch(resolve);
                                 } else {
                                     resolve();
@@ -2499,6 +2590,7 @@ export default function ChatPage() {
                     } else if (st === "stopped" || ttsStateRef.current.msgId !== msgId) {
                         resolve();
                     } else {
+                        setMediaSessionPlaybackState("playing");
                         audio.play().catch((err) => {
                             console.warn("audio.play() error:", err);
                             resolve();
@@ -2512,6 +2604,7 @@ export default function ChatPage() {
 
         if (ttsStateRef.current.msgId === msgId) {
             updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
+            clearMediaSession();
         }
     };
 
@@ -2535,6 +2628,12 @@ export default function ChatPage() {
 
         if (!cleanText) return;
 
+        const targetMsg = messages.find((m) => m.id === msgId);
+        const activeChatObj = chatItems.find((c) => c.id === activeChatId) || activeChat;
+        const speakerName = targetMsg?.senderName || "AI Assistant";
+        const speakerAvatar = targetMsg?.senderAvatar || activeChatObj?.avatarImg || "";
+        const chatTitle = activeChatObj?.name || "Walpaca Chat";
+
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
@@ -2543,6 +2642,7 @@ export default function ChatPage() {
         const blob = await fetchTTSBlob(cleanText, voice || "af_heart", controller.signal);
         if (!blob || ttsStateRef.current.msgId !== msgId || (ttsStateRef.current.status as string) === "stopped") {
             updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
+            clearMediaSession();
             return;
         }
 
@@ -2551,6 +2651,14 @@ export default function ChatPage() {
         audioRef.current = audio;
         const defaultOutput = useAppStore.getState().appPreferences?.default_audio_output;
         await applyAudioOutputDevice(audio, defaultOutput);
+
+        updateMediaSessionMetadata({
+            title: cleanText.length > 80 ? cleanText.slice(0, 77) + "..." : cleanText,
+            artist: speakerName,
+            album: chatTitle,
+            artworkSrc: speakerAvatar,
+        });
+        setMediaSessionPlaybackState("playing");
 
         await new Promise<void>((resolve) => {
             audio.onended = () => {
@@ -2570,6 +2678,7 @@ export default function ChatPage() {
 
         if (ttsStateRef.current.msgId === msgId) {
             updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
+            clearMediaSession();
         }
     };
 
@@ -2804,6 +2913,67 @@ export default function ChatPage() {
 
     const [chatItems, setChatItems] = useState<ChatItem[]>(initialMockChatList);
     const [messages, setMessages] = useState<Message[]>([]);
+
+    // --- In-Chat Search State & Match Navigation ---
+    const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+    const [chatSearchQuery, setChatSearchQuery] = useState<string>("");
+    const [activeMatchIndex, setActiveMatchIndex] = useState<number>(0);
+
+    // Compute matching message IDs in current chat
+    const matchingMessageIds = useMemo(() => {
+        const q = chatSearchQuery.trim().toLowerCase();
+        if (!q) return [];
+        return messages
+            .filter((m) => (m.content || "").toLowerCase().includes(q))
+            .map((m) => m.id);
+    }, [chatSearchQuery, messages]);
+
+    // Update active match index when matching list changes
+    useEffect(() => {
+        if (matchingMessageIds.length > 0) {
+            setActiveMatchIndex(matchingMessageIds.length - 1);
+        } else {
+            setActiveMatchIndex(0);
+        }
+    }, [matchingMessageIds.length]);
+
+    // Reset search when active chat changes
+    useEffect(() => {
+        setIsSearchOpen(false);
+        setChatSearchQuery("");
+        setActiveMatchIndex(0);
+    }, [activeChatId]);
+
+    // Scroll to active matching message smoothly
+    useEffect(() => {
+        if (!isSearchOpen || matchingMessageIds.length === 0) return;
+        const targetId = matchingMessageIds[activeMatchIndex];
+        if (!targetId) return;
+        const el = document.getElementById(`chat-message-${targetId}`);
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+    }, [activeMatchIndex, matchingMessageIds, isSearchOpen]);
+
+    const handleToggleSearch = () => {
+        setIsSearchOpen((prev) => {
+            if (prev) {
+                setChatSearchQuery("");
+                return false;
+            }
+            return true;
+        });
+    };
+
+    const handleNextMatch = () => {
+        if (matchingMessageIds.length === 0) return;
+        setActiveMatchIndex((prev) => (prev + 1) % matchingMessageIds.length);
+    };
+
+    const handlePrevMatch = () => {
+        if (matchingMessageIds.length === 0) return;
+        setActiveMatchIndex((prev) => (prev - 1 + matchingMessageIds.length) % matchingMessageIds.length);
+    };
 
     const API_URL = getApiUrl();
 
@@ -3612,6 +3782,14 @@ export default function ChatPage() {
                                         onOpenDuplicate={handleOpenDuplicateModal}
                                         onOpenExport={handleOpenExportModal}
                                         onOpenDelete={handleOpenDeleteModal}
+                                        onSearchClick={handleToggleSearch}
+                                        isSearchOpen={isSearchOpen}
+                                        searchQuery={chatSearchQuery}
+                                        onSearchQueryChange={setChatSearchQuery}
+                                        matchCount={matchingMessageIds.length}
+                                        activeMatchIndex={activeMatchIndex}
+                                        onNextMatch={handleNextMatch}
+                                        onPrevMatch={handlePrevMatch}
                                     />
                                 );
                             })()}
@@ -3619,6 +3797,7 @@ export default function ChatPage() {
                             {/* Conversation Messages */}
                             <ChatMessageList
                                 messages={messages}
+                                activeSearchMsgId={isSearchOpen && matchingMessageIds.length > 0 ? matchingMessageIds[activeMatchIndex] : null}
                                 selectedChatModelId={selectedChatModelId}
                                 modelPreferences={modelPreferences}
                                 handleUseCharacterFirstMes={handleUseCharacterFirstMes}
