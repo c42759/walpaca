@@ -3006,6 +3006,19 @@ export default function ChatPage() {
                 setActiveChat(mapped);
                 const rawMsgs = Array.isArray(data.messages) ? data.messages : [];
                 setMessages(rawMsgs.map((m) => mapBackendMsgToMessage(m, modelPreferences)));
+
+                // Direct chat load: seed model & instance from last assistant response
+                const lastAssistant = [...rawMsgs].reverse().find((m) => m.role === "assistant" || (m.model && m.role !== "user"));
+                if (lastAssistant) {
+                    if (lastAssistant.model) {
+                        setSelectedChatModelId(lastAssistant.model);
+                    }
+                    if (lastAssistant.instance_id) {
+                        setSelectedChatInstanceId(lastAssistant.instance_id);
+                        fetchModelsForInstance(lastAssistant.instance_id);
+                        fetchInstanceModels(lastAssistant.instance_id);
+                    }
+                }
             } else {
                 setMessages([]);
             }
@@ -3090,12 +3103,15 @@ export default function ChatPage() {
 
     // Requirement 2: Auto-select Model/Preference if only 1 exists or unselected
     useEffect(() => {
+        const hasAssistantMsg = messages.some((m) => !m.isSelf && (m.senderRole === "assistant" || m.model));
+        if (hasAssistantMsg) return;
+
         const prefs = Array.from(new Map(Object.values(modelPreferences).map((p) => [p.id.toLowerCase(), p])).values());
         const options = [...prefs.map((p) => p.id), ...instanceModelsList.map((m) => m.id)];
         if (options.length === 1 || (!selectedChatModelId && options.length > 0)) {
             setSelectedChatModelId(options[0]);
         }
-    }, [instanceModelsList, modelPreferences, selectedChatInstanceId]);
+    }, [instanceModelsList, modelPreferences, selectedChatInstanceId, messages, selectedChatModelId]);
 
     // Requirement 3: Auto-select Instance & Model based on last assistant message in active chat
     useEffect(() => {
@@ -3110,11 +3126,18 @@ export default function ChatPage() {
                 const matchingPref = prefsList.find(
                     (p) =>
                         p.id.toLowerCase() === targetModelIdentifier.toLowerCase() ||
+                        (p.model_name && p.model_name.toLowerCase() === targetModelIdentifier.toLowerCase()) ||
+                        (p.model_id && p.model_id.toLowerCase() === targetModelIdentifier.toLowerCase()) ||
                         (getCharacterName(p.character) && getCharacterName(p.character)?.toLowerCase() === targetModelIdentifier.toLowerCase()),
                 );
 
                 if (matchingPref) {
                     setSelectedChatModelId(matchingPref.id);
+                    if (matchingPref.instance_id && (!lastAssistantMsg.instanceId || !instances.some((inst) => inst.id === lastAssistantMsg.instanceId))) {
+                        setSelectedChatInstanceId(matchingPref.instance_id);
+                        fetchModelsForInstance(matchingPref.instance_id);
+                        fetchInstanceModels(matchingPref.instance_id);
+                    }
                 } else {
                     const matchingMod = instanceModelsList.find(
                         (m) =>
@@ -3122,19 +3145,22 @@ export default function ChatPage() {
                     );
                     if (matchingMod) {
                         setSelectedChatModelId(matchingMod.id);
+                    } else {
+                        setSelectedChatModelId(targetModelIdentifier);
                     }
                 }
 
-                if ((lastAssistantMsg as any).instanceId) {
-                    const matchingInst = instances.find((inst) => inst.id === (lastAssistantMsg as any).instanceId);
+                if (lastAssistantMsg.instanceId) {
+                    const matchingInst = instances.find((inst) => inst.id === lastAssistantMsg.instanceId);
                     if (matchingInst) {
                         setSelectedChatInstanceId(matchingInst.id);
                         fetchModelsForInstance(matchingInst.id);
+                        fetchInstanceModels(matchingInst.id);
                     }
                 }
             }
         }
-    }, [messages, activeChatId]);
+    }, [messages, activeChatId, modelPreferences, instanceModelsList, instances]);
 
     const handleCreateFolderSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -3763,19 +3789,48 @@ export default function ChatPage() {
                         <section className="flex-1 flex flex-col bg-white overflow-hidden w-full h-full">
                             {/* Header */}
                             {(() => {
-                                const activeChatAssistantAvatar =
-                                    formatAvatarPicture(
-                                        modelPreferences[selectedChatModelId]?.picture ||
-                                        modelPreferences[selectedChatModelId?.toLowerCase()]?.picture ||
-                                        activeChatObj.avatarImg
-                                    ) ||
-                                    activeChatObj.avatarImg ||
-                                    DEFAULT_MODEL_AVATAR;
+                                const selectedPrefKey = (selectedChatModelId || "").toLowerCase();
+                                const selectedPref =
+                                    modelPreferences[selectedChatModelId] ||
+                                    modelPreferences[selectedPrefKey] ||
+                                    Object.values(modelPreferences).find(
+                                        (p: any) =>
+                                            p?.id?.toLowerCase() === selectedPrefKey ||
+                                            p?.model_id?.toLowerCase() === selectedPrefKey ||
+                                            p?.model_name?.toLowerCase() === selectedPrefKey ||
+                                            (getCharacterName(p?.character) && getCharacterName(p?.character)?.toLowerCase() === selectedPrefKey),
+                                    );
+                                const selectedMod = instanceModelsList.find(
+                                    (m) => m.id === selectedChatModelId || String(m.name || "").toLowerCase() === selectedPrefKey,
+                                );
+                                const currentModelAvatar = getModelAvatarPicture(selectedPref, selectedMod);
+
+                                const charName = isCharEnabled(selectedPref?.character) ? getCharacterName(selectedPref?.character) : undefined;
+                                const modelDisplayName =
+                                    charName ||
+                                    selectedPref?.name ||
+                                    selectedPref?.model_name ||
+                                    selectedMod?.name ||
+                                    selectedChatModelId ||
+                                    "Model";
+
+                                const activeInst =
+                                    instances.find((i) => i.id === selectedChatInstanceId) ||
+                                    (selectedPref?.instance_id ? instances.find((i) => i.id === selectedPref.instance_id) : undefined) ||
+                                    instances.find((i) => i.is_enabled) ||
+                                    instances[0];
+                                const instanceDisplayName =
+                                    activeInst?.properties?.name ||
+                                    activeInst?.type ||
+                                    "Instance";
+
+                                const headerSubtitle = `${modelDisplayName} @ ${instanceDisplayName}`;
 
                                 return (
                                     <ChatHeader
                                         title={activeChatObj.name}
-                                        avatar={activeChatAssistantAvatar}
+                                        subtitle={headerSubtitle}
+                                        avatar={currentModelAvatar}
                                         onBack={handleBackToList}
                                         onAvatarClick={() => handleOpenPersonaDetails(selectedChatModelId)}
                                         onOpenRename={handleOpenRenameModal}
