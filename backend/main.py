@@ -1,8 +1,8 @@
 import os
+import re
 
-from models import db
-from flask import Flask
-from flask import jsonify
+from models import db, Preference, PinSession
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from routes.api import api_bp
 from utils.logger import init_logging_middleware
@@ -27,15 +27,17 @@ def create_app(test_config=None):
     if cors_domains_env and cors_domains_env != "*":
         origins = [domain.strip() for domain in cors_domains_env.split(",") if domain.strip()]
     else:
-        origins = "*"
+        origins = [re.compile(r"^https?://.*$"), re.compile(r"^null$")]
 
     CORS(
         app,
+        supports_credentials=True,
         resources={
             r"/*": {
                 "origins": origins,
                 "allow_headers": "*",
                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                "supports_credentials": True,
             }
         },
     )
@@ -64,6 +66,50 @@ def create_app(test_config=None):
             app.logger.warning(f"Database schema auto-check: {e}")
 
     app.register_blueprint(api_bp)
+
+    @app.before_request
+    def enforce_pin_security():
+        if request.method == "OPTIONS" or request.path == "/health":
+            return None
+
+        # Public auth routes
+        if request.path.startswith("/api/auth/"):
+            return None
+
+        # Guard all protected API routes if PIN security is enabled
+        if request.path.startswith("/api/"):
+            try:
+                pref = db.session.get(Preference, "pin_security_enabled")
+                if pref and pref.get_value() is True:
+                    token = request.cookies.get("walpaca_session")
+                    if not token:
+                        auth_header = request.headers.get("Authorization", "")
+                        if auth_header.startswith("Bearer "):
+                            token = auth_header[7:].strip()
+                        elif request.headers.get("X-Walpaca-Session"):
+                            token = request.headers.get("X-Walpaca-Session").strip()
+
+                    if not token:
+                        return jsonify({
+                            "error": "PIN authentication required",
+                            "auth_required": True,
+                        }), 401
+
+                    session = db.session.get(PinSession, token)
+                    if not session or not session.is_valid():
+                        if session and not session.is_valid():
+                            db.session.delete(session)
+                            db.session.commit()
+                        return jsonify({
+                            "error": "PIN session expired or invalid",
+                            "auth_required": True,
+                        }), 401
+            except Exception as e:
+                app.logger.error(f"Error checking PIN security: {e}")
+                # In case table or query fails during startup/migration
+                pass
+
+        return None
 
     @app.route("/health")
     def health():

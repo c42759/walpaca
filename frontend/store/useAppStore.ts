@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getApiUrl } from "../lib/api";
+import { getApiUrl, apiFetch, setOnAuthRequired, setSessionToken } from "../lib/api";
 
 export interface ModelPreference {
     id: string;
@@ -23,6 +23,8 @@ export interface AppPreferences {
     play_sound_notification?: boolean;
     auto_scroll: boolean;
     default_audio_output: string;
+    pin_security_enabled?: boolean;
+    pin_auto_lock_timeout?: string;
 }
 
 export interface InstanceProperties {
@@ -125,6 +127,20 @@ interface AppStoreState {
     appPreferencesLoaded: boolean;
     appPreferencesLoading: boolean;
 
+    // PIN Security & Authentication States
+    pinSecurityEnabled: boolean;
+    isAuthenticated: boolean;
+    isAuthChecking: boolean;
+    authLockoutSeconds: number;
+
+    // PIN Security Actions
+    checkAuthStatus: () => Promise<{ pin_enabled: boolean; authenticated: boolean }>;
+    verifyPin: (pin: string) => Promise<{ success: boolean; error?: string; lockout?: boolean; remaining_seconds?: number }>;
+    setupPin: (pin: string, currentPin?: string) => Promise<{ success: boolean; error?: string }>;
+    disablePin: (currentPin: string) => Promise<{ success: boolean; error?: string }>;
+    logoutPin: () => Promise<void>;
+    setAuthenticated: (authenticated: boolean) => void;
+
     // Actions & Cache Fetchers
     fetchFolders: (force?: boolean) => Promise<NavigationFolder[]>;
     fetchInstances: (force?: boolean) => Promise<InstanceItem[]>;
@@ -225,9 +241,124 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         play_sound_notification: true,
         auto_scroll: true,
         default_audio_output: "default",
+        pin_auto_lock_timeout: "15m",
     },
     appPreferencesLoaded: false,
     appPreferencesLoading: false,
+
+    // PIN Security & Auth Initial States
+    pinSecurityEnabled: false,
+    isAuthenticated: true,
+    isAuthChecking: true,
+    authLockoutSeconds: 0,
+
+    setAuthenticated: (authenticated: boolean) => set({ isAuthenticated: authenticated }),
+
+    checkAuthStatus: async () => {
+        set({ isAuthChecking: true });
+        try {
+            const res = await apiFetch(`${getApiUrl()}/auth/status`);
+            if (res.ok) {
+                const data = await res.json();
+                const pinEnabled = Boolean(data.pin_enabled);
+                const isAuthed = Boolean(data.authenticated);
+                set({
+                    pinSecurityEnabled: pinEnabled,
+                    isAuthenticated: isAuthed,
+                    isAuthChecking: false,
+                });
+                return { pin_enabled: pinEnabled, authenticated: isAuthed };
+            }
+        } catch (err) {
+            console.warn("Zustand: Could not check auth status:", err);
+        }
+        set({ isAuthChecking: false });
+        return { pin_enabled: false, authenticated: true };
+    },
+
+    verifyPin: async (pin: string) => {
+        try {
+            const res = await apiFetch(`${getApiUrl()}/auth/verify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pin }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (data.token) {
+                    setSessionToken(data.token);
+                }
+                set({ isAuthenticated: true, authLockoutSeconds: 0 });
+                return { success: true };
+            } else {
+                if (data.lockout && data.remaining_seconds) {
+                    set({ authLockoutSeconds: data.remaining_seconds });
+                }
+                return {
+                    success: false,
+                    error: data.error || "Incorrect PIN",
+                    lockout: data.lockout,
+                    remaining_seconds: data.remaining_seconds,
+                };
+            }
+        } catch (err) {
+            return { success: false, error: "Network error connecting to backend" };
+        }
+    },
+
+    setupPin: async (pin: string, currentPin?: string) => {
+        try {
+            const res = await apiFetch(`${getApiUrl()}/auth/setup`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pin, current_pin: currentPin }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (data.token) {
+                    setSessionToken(data.token);
+                }
+                set({ pinSecurityEnabled: true, isAuthenticated: true });
+                return { success: true };
+            } else {
+                return { success: false, error: data.error || "Failed to configure PIN" };
+            }
+        } catch (err) {
+            return { success: false, error: "Network error connecting to backend" };
+        }
+    },
+
+    disablePin: async (currentPin: string) => {
+        try {
+            const res = await apiFetch(`${getApiUrl()}/auth/disable`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ current_pin: currentPin }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setSessionToken(null);
+                set({ pinSecurityEnabled: false, isAuthenticated: true });
+                return { success: true };
+            } else {
+                return { success: false, error: data.error || "Failed to disable PIN" };
+            }
+        } catch (err) {
+            return { success: false, error: "Network error connecting to backend" };
+        }
+    },
+
+    logoutPin: async () => {
+        try {
+            await apiFetch(`${getApiUrl()}/auth/logout`, {
+                method: "POST",
+            });
+        } catch (err) {
+            console.warn("Zustand: Logout call failed:", err);
+        }
+        setSessionToken(null);
+        set({ isAuthenticated: false });
+    },
 
     fetchFolders: async (force = false) => {
         const { folders, foldersLoaded, foldersLoading } = get();
@@ -240,7 +371,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
         set({ foldersLoading: true });
         try {
-            const res = await fetch(`${getApiUrl()}/folders`);
+            const res = await apiFetch(`${getApiUrl()}/folders`);
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data) && data.length > 0) {
@@ -272,7 +403,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
         set({ instancesLoading: true });
         try {
-            const res = await fetch(`${getApiUrl()}/instances`);
+            const res = await apiFetch(`${getApiUrl()}/instances`);
             if (res.ok) {
                 const data: InstanceItem[] = await res.json();
                 set({ instances: data, instancesLoaded: true, instancesLoading: false });
@@ -296,7 +427,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
         set({ modelPreferencesLoading: true });
         try {
-            const res = await fetch(`${getApiUrl()}/model-preferences`);
+            const res = await apiFetch(`${getApiUrl()}/model-preferences`);
             if (res.ok) {
                 const data = await res.json();
                 const map: Record<string, ModelPreference> = {};
@@ -360,7 +491,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         }));
 
         try {
-            const res = await fetch(`${getApiUrl()}/instances/${instanceId}/models`);
+            const res = await apiFetch(`${getApiUrl()}/instances/${instanceId}/models`);
             if (res.ok) {
                 const data: InstanceModel[] = await res.json();
                 if (Array.isArray(data) && data.length > 0) {
@@ -483,7 +614,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
         set({ appPreferencesLoading: true });
         try {
-            const res = await fetch(`${getApiUrl()}/preferences`);
+            const res = await apiFetch(`${getApiUrl()}/preferences`);
             if (res.ok) {
                 const data = await res.json();
                 const merged = { ...get().appPreferences, ...data };
@@ -502,3 +633,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
             appPreferences: { ...state.appPreferences, ...prefs },
         })),
 }));
+
+if (typeof window !== "undefined") {
+    setOnAuthRequired(() => {
+        useAppStore.getState().setAuthenticated(false);
+    });
+}

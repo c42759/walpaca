@@ -13,6 +13,7 @@ DEFAULT_PREFERENCES = {
     "play_sound_notification": True,
     "auto_scroll": True,
     "default_audio_output": "default",
+    "pin_auto_lock_timeout": "15m",
 }
 
 

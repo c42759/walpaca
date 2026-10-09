@@ -1,9 +1,11 @@
+import urllib
 from flask import Blueprint
 
+from routes.auth import auth_bp
 from routes.attachments import attachments_bp
 from routes.chats import chats_bp
 from routes.folders import folders_bp
-from routes.generate import generate_bp
+from routes.generate import generate_bp, evaluate_lorebook_entries, clean_base64_image
 from routes.instances import instances_bp
 from routes.lorebook import lorebook_bp
 from routes.messages import messages_bp
@@ -15,6 +17,7 @@ from routes.tts import tts_bp
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
+api_bp.register_blueprint(auth_bp, url_prefix="/auth")
 api_bp.register_blueprint(folders_bp)
 api_bp.register_blueprint(chats_bp)
 api_bp.register_blueprint(messages_bp)
@@ -27,6 +30,3 @@ api_bp.register_blueprint(generate_bp)
 api_bp.register_blueprint(lorebook_bp)
 api_bp.register_blueprint(personas_bp)
 api_bp.register_blueprint(preferences_bp)
-
-from routes.generate import evaluate_lorebook_entries
-from routes.generate import clean_base64_image

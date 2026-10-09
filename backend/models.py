@@ -1,6 +1,7 @@
 import json
 import uuid
 import datetime
+import time
 
 from flask_sqlalchemy import SQLAlchemy
 
@@ -268,4 +269,27 @@ class Preference(db.Model):
     def to_dict(self):
         return {"key": self.key,
                 "value": self.get_value()}
+
+
+class PinSession(db.Model):
+    __tablename__ = "pin_session"
+
+    id = db.Column(db.String, primary_key=True)
+    created_at = db.Column(
+        db.String,
+        nullable=False,
+        default=current_alpaca_timestamp,
+    )
+    expires_at = db.Column(db.Float, nullable=False)
+
+    def is_valid(self) -> bool:
+        return time.time() < self.expires_at
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+            "is_valid": self.is_valid(),
+        }
 
