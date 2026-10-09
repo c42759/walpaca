@@ -23,9 +23,22 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
 
-    cors_domains_env = os.getenv("CORS_DOMAINS", "").strip()
+    cors_domains_env = str(app.config.get("CORS_DOMAINS") or os.getenv("CORS_DOMAINS", "")).strip()
     if cors_domains_env and cors_domains_env != "*":
-        origins = [domain.strip() for domain in cors_domains_env.split(",") if domain.strip()]
+        raw_list = [d.strip().strip("'\"").rstrip("/") for d in cors_domains_env.split(",") if d.strip()]
+
+        default_dev = [
+            "http://localhost:3000",
+            "http://localhost:3100",
+            "http://localhost:5000",
+            "http://localhost:5100",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3100",
+            "http://127.0.0.1:5000",
+            "http://127.0.0.1:5100",
+        ]
+
+        origins = list(dict.fromkeys(raw_list + default_dev))
     else:
         origins = [re.compile(r"^https?://.*$"), re.compile(r"^null$")]
 

@@ -3432,7 +3432,6 @@ export default function ChatPage() {
                 body: JSON.stringify({
                     model: selectedChatModelId,
                     instance_id: selectedChatInstanceId,
-                    system: systemPrompt || undefined,
                     think: isThinkingEnabled,
                 }),
             });

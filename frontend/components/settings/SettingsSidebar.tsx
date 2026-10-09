@@ -55,18 +55,18 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
         pathname === "/settings/about"
             ? "about-walpaca"
             : pathname === "/settings/instances"
-              ? "manage-instances"
-              : pathname === "/settings/model-preferences"
-                ? "manage-model-preferences"
-                : pathname === "/settings/lorebook"
-                  ? "manage-lorebook"
-                  : pathname === "/settings/personas"
-                    ? "manage-personas"
-                    : pathname === "/settings/preferences"
-                      ? "preferences"
-                      : pathname === "/settings/import"
-                        ? "import-chat"
-                        : activeSettingsCategory;
+                ? "manage-instances"
+                : pathname === "/settings/model-preferences"
+                    ? "manage-model-preferences"
+                    : pathname === "/settings/lorebook"
+                        ? "manage-lorebook"
+                        : pathname === "/settings/personas"
+                            ? "manage-personas"
+                            : pathname === "/settings/preferences"
+                                ? "preferences"
+                                : pathname === "/settings/import"
+                                    ? "import-chat"
+                                    : activeSettingsCategory;
 
     const categories: Array<{
         id: SettingsCategory;
@@ -75,56 +75,56 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
         gradient: string;
         icon: React.ReactNode;
     }> = [
-        {
-            id: "import-chat",
-            label: "Import Chat",
-            description: "Import conversation logs, JSON, or Markdown",
-            gradient: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-            icon: <UploadIcon className="w-5 h-5 text-white" />,
-        },
-        {
-            id: "manage-instances",
-            label: "Manage Instances",
-            description: "Configure Ollama, OpenAI, & API backends",
-            gradient: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
-            icon: <ServerIcon className="w-5 h-5 text-white" />,
-        },
-        {
-            id: "manage-model-preferences",
-            label: "Manage Model Preferences",
-            description: "Customize character, avatar, voice, and context per model",
-            gradient: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-            icon: <BoxIcon className="w-5 h-5 text-white" />,
-        },
-        {
-            id: "manage-lorebook",
-            label: "Manage Lorebook",
-            description: "World info entries and context keywords",
-            gradient: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
-            icon: <BookIcon className="w-5 h-5 text-white" />,
-        },
-        {
-            id: "manage-personas",
-            label: "Manage Personas",
-            description: "Custom character profiles & avatars",
-            gradient: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)",
-            icon: <UserIcon className="w-5 h-5 text-white" />,
-        },
-        {
-            id: "preferences",
-            label: "Preferences",
-            description: "Global defaults, theme, and generation parameters",
-            gradient: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
-            icon: <SlidersIcon className="w-5 h-5 text-white" />,
-        },
-        {
-            id: "about-walpaca",
-            label: "About Walpaca",
-            description: "Version info, updates, and system details",
-            gradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-            icon: <InfoIcon className="w-5 h-5 text-white" />,
-        },
-    ];
+            {
+                id: "import-chat",
+                label: "Import Chat",
+                description: "Import conversation logs, JSON, or Markdown",
+                gradient: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                icon: <UploadIcon className="w-5 h-5 text-white" />,
+            },
+            {
+                id: "manage-instances",
+                label: "Manage Instances",
+                description: "Configure Ollama, OpenAI, & API backends",
+                gradient: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
+                icon: <ServerIcon className="w-5 h-5 text-white" />,
+            },
+            {
+                id: "manage-model-preferences",
+                label: "Manage Model Preferences",
+                description: "Customize character, avatar, voice, and context per model",
+                gradient: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+                icon: <BoxIcon className="w-5 h-5 text-white" />,
+            },
+            {
+                id: "manage-personas",
+                label: "Manage Personas",
+                description: "Custom character profiles & avatars",
+                gradient: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)",
+                icon: <UserIcon className="w-5 h-5 text-white" />,
+            },
+            {
+                id: "manage-lorebook",
+                label: "Manage Lorebook",
+                description: "World info entries and context keywords",
+                gradient: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
+                icon: <BookIcon className="w-5 h-5 text-white" />,
+            },
+            {
+                id: "preferences",
+                label: "Preferences",
+                description: "Global defaults, theme, and generation parameters",
+                gradient: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+                icon: <SlidersIcon className="w-5 h-5 text-white" />,
+            },
+            {
+                id: "about-walpaca",
+                label: "About Walpaca",
+                description: "Version info, updates, and system details",
+                gradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                icon: <InfoIcon className="w-5 h-5 text-white" />,
+            },
+        ];
 
     const filteredCategories = categories.filter((c) => {
         const q = searchQuery.toLowerCase().trim();
@@ -183,9 +183,8 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
                                 key={cat.id}
                                 draggable={true}
                                 onClick={() => handleCategoryClick(cat.id)}
-                                className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
-                                    isActive ? "bg-[#eaecf9] shadow-xs" : "hover:bg-[#f0f2f9]"
-                                }`}
+                                className={`relative flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${isActive ? "bg-[#eaecf9] shadow-xs" : "hover:bg-[#f0f2f9]"
+                                    }`}
                             >
                                 {/* Avatar */}
                                 <div
@@ -248,11 +247,10 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
                                 key={cat.id}
                                 type="button"
                                 onClick={() => handleCategoryClick(cat.id)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                                    isActive
-                                        ? "bg-[#7678ed] text-white shadow-xs"
-                                        : "bg-[#eaecf9] text-[#202022] hover:bg-[#dfe2f7]"
-                                }`}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${isActive
+                                    ? "bg-[#7678ed] text-white shadow-xs"
+                                    : "bg-[#eaecf9] text-[#202022] hover:bg-[#dfe2f7]"
+                                    }`}
                             >
                                 <span>{cat.label}</span>
                             </button>

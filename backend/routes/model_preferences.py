@@ -8,6 +8,7 @@ from models import Instance
 from models import InstanceModel
 from models import generate_uuid
 from models import ModelPreferences
+from models import is_internal_id
 
 model_preferences_bp = Blueprint("model_preferences", __name__)
 
@@ -69,22 +70,32 @@ def list_model_preferences():
             if active_inst:
                 instance_id = active_inst.id
 
-        # Resolve model UUID (InstanceModel.id)
-        target_im = InstanceModel.query.get(model_val)
-        if target_im:
-            model_uuid = target_im.id
-            if not instance_id:
-                instance_id = target_im.instance_id
-        else:
-            if instance_id:
-                target_im = InstanceModel.query.filter_by(instance_id=instance_id, model_id=model_val).first()
-                if not target_im:
-                    target_im = InstanceModel(instance_id=instance_id, model_id=model_val)
-                    db.session.add(target_im)
-                    db.session.flush()
-                model_uuid = target_im.id
-            else:
-                model_uuid = model_val
+        # Resolve physical model name if model_val is an internal ID
+        clean_model_name = model_val
+        if is_internal_id(model_val):
+            # 1. Check if model_val is a ModelPreferences ID
+            src_pref = ModelPreferences.query.get(model_val)
+            if src_pref:
+                pref_dict = src_pref.to_dict()
+                if pref_dict.get("model_name") and not is_internal_id(pref_dict["model_name"]):
+                    clean_model_name = pref_dict["model_name"]
+            # 2. Check if model_val is an InstanceModel ID
+            if is_internal_id(clean_model_name):
+                src_im = InstanceModel.query.get(model_val)
+                if src_im and src_im.model_id and not is_internal_id(src_im.model_id):
+                    clean_model_name = src_im.model_id
+                elif src_im and is_internal_id(src_im.model_id):
+                    nested_im = InstanceModel.query.get(src_im.model_id)
+                    if nested_im and nested_im.model_id and not is_internal_id(nested_im.model_id):
+                        clean_model_name = nested_im.model_id
+
+        # Resolve or create InstanceModel for this instance
+        target_im = InstanceModel.query.filter_by(instance_id=instance_id, model_id=clean_model_name).first()
+        if not target_im:
+            target_im = InstanceModel(instance_id=instance_id, model_id=clean_model_name)
+            db.session.add(target_im)
+            db.session.flush()
+        model_uuid = target_im.id
 
         pref = None
         pref_id = data.get("id")
@@ -168,10 +179,33 @@ def model_preferences(model_id):
             pref = ModelPreferences(id=generate_uuid(), instance_id=instance_id, model_id=model_uuid)
             db.session.add(pref)
 
-        if "instance_id" in data:
-            pref.instance_id = data["instance_id"]
-        if "model_id" in data:
-            pref.model_id = data["model_id"]
+        if "instance_id" in data or "model_id" in data:
+            new_inst_id = data.get("instance_id") or pref.instance_id
+            new_model_val = data.get("model_id") or pref.model_id
+            if new_model_val:
+                target_im = InstanceModel.query.get(new_model_val)
+                if target_im:
+                    if new_inst_id and target_im.instance_id != new_inst_id:
+                        new_im = InstanceModel.query.filter_by(instance_id=new_inst_id, model_id=target_im.model_id).first()
+                        if not new_im:
+                            new_im = InstanceModel(instance_id=new_inst_id, model_id=target_im.model_id)
+                            db.session.add(new_im)
+                            db.session.flush()
+                        pref.model_id = new_im.id
+                    else:
+                        pref.model_id = target_im.id
+                else:
+                    if new_inst_id:
+                        target_im = InstanceModel.query.filter_by(instance_id=new_inst_id, model_id=new_model_val).first()
+                        if not target_im:
+                            target_im = InstanceModel(instance_id=new_inst_id, model_id=new_model_val)
+                            db.session.add(target_im)
+                            db.session.flush()
+                        pref.model_id = target_im.id
+                    else:
+                        pref.model_id = new_model_val
+            if "instance_id" in data:
+                pref.instance_id = data["instance_id"]
         if "picture" in data:
             pref.picture = data["picture"]
         if "voice" in data:

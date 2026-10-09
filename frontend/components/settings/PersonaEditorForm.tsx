@@ -86,6 +86,7 @@ export interface PersonaEditorFormProps {
     subtitle?: string;
     badgeText?: string;
     extraHeaderBadges?: React.ReactNode;
+    topContent?: React.ReactNode;
     saveButtonLabel?: string;
     isSaving?: boolean;
     initialData?: Partial<PersonaFormData>;
@@ -101,6 +102,7 @@ export function PersonaEditorForm({
     subtitle = "Configure identity, audio, context size, system prompts, greetings, sampler settings, and lorebook characters.",
     badgeText,
     extraHeaderBadges,
+    topContent,
     saveButtonLabel = "Save Changes",
     isSaving = false,
     initialData,
@@ -422,6 +424,9 @@ export function PersonaEditorForm({
                         </select>
                     </div>
                 )}
+
+                {/* Optional Top Content Slot (e.g. Instance & Model Relocation) */}
+                {topContent}
 
                 {/* 1. Identity & Audio Card */}
                 <div className="p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4">

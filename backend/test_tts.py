@@ -10,6 +10,16 @@ class TTSEndpointTestCase(unittest.TestCase):
     def setUp(self):
         self.app = create_app({"TESTING": True})
         self.client = self.app.test_client()
+        with self.app.app_context():
+            from models import Preference, db
+            pref = Preference.query.get("pin_security_enabled")
+            if pref:
+                pref.set_value(False)
+            else:
+                pref = Preference(key="pin_security_enabled")
+                pref.set_value(False)
+                db.session.add(pref)
+            db.session.commit()
 
     def test_tts_missing_text_returns_400(self):
         response = self.client.post("/api/tts", json={})

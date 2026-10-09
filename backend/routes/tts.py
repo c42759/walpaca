@@ -12,14 +12,8 @@ from flask import stream_with_context
 tts_bp = Blueprint("tts", __name__)
 
 
-@tts_bp.route("/tts", methods=["GET", "POST", "OPTIONS"])
+@tts_bp.route("/tts", methods=["GET", "POST"])
 def text_to_speech():
-    if request.method == "OPTIONS":
-        resp = Response("", status=200)
-        resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-        return resp
 
     if request.method == "POST":
         data = request.get_json(silent=True) or request.form or {}
@@ -72,19 +66,24 @@ def text_to_speech():
                 yield chunk
 
         res = Response(stream_with_context(generate()), content_type=content_type)
-        res.headers["Access-Control-Allow-Origin"] = "*"
 
         return res
 
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")[:500]
-        return (jsonify({"error": "TTS server error",
-                          "status_code": e.code,
-                         "detail": detail}),
-                e.code,
+        return (
+            jsonify({
+                "error": "TTS server error",
+                "status_code": e.code,
+                "detail": detail,
+            }),
+            e.code,
         )
     except urllib.error.URLError as e:
-        return (jsonify({"error": "Failed to reach TTS server",
-                         "detail": str(e.reason)}),
-                502,
+        return (
+            jsonify({
+                "error": "Failed to reach TTS server",
+                "detail": str(e.reason),
+            }),
+            502,
         )

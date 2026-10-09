@@ -191,6 +191,23 @@ class OnlineInstanceModelList(db.Model):
                 "list": self.get_list()}
 
 
+import re
+
+
+def is_internal_id(val: str) -> bool:
+    """Check if a string represents an internal UUID or timestamp ID rather than a human-readable model name."""
+    if not val or not isinstance(val, str):
+        return False
+    val = val.strip()
+    if re.match(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", val):
+        return True
+    if re.match(r"^\d{14,20}[0-9a-fA-F]{16,40}$", val):
+        return True
+    if re.match(r"^[0-9a-fA-F]{32,64}$", val):
+        return True
+    return False
+
+
 class ModelPreferences(db.Model):
     __tablename__ = "model_preferences"
 
@@ -241,14 +258,46 @@ class ModelPreferences(db.Model):
         self.character = json.dumps(new_dict)
 
     def to_dict(self):
+        m_name = None
+        if self.model_ref and self.model_ref.model_id:
+            m_name = self.model_ref.model_id
+        elif self.model_id:
+            try:
+                im = InstanceModel.query.get(self.model_id)
+                if im and im.model_id:
+                    m_name = im.model_id
+                else:
+                    m_name = self.model_id
+            except Exception:
+                m_name = self.model_id
+
+        # If m_name is an internal ID, recursively resolve to clean physical model name
+        if m_name and is_internal_id(m_name):
+            try:
+                im_sub = InstanceModel.query.get(m_name)
+                if im_sub and im_sub.model_id and not is_internal_id(im_sub.model_id):
+                    m_name = im_sub.model_id
+                else:
+                    pref_sub = ModelPreferences.query.get(m_name)
+                    if pref_sub and pref_sub.id != self.id:
+                        pref_sub_dict = pref_sub.to_dict()
+                        if pref_sub_dict.get("model_name") and not is_internal_id(pref_sub_dict["model_name"]):
+                            m_name = pref_sub_dict["model_name"]
+            except Exception:
+                pass
+
+        char_dict = self.get_character() or {}
+        char_name = char_dict.get("name") if isinstance(char_dict, dict) else None
+
         return {"id": self.id,
+                "name": char_name or m_name or self.id,
                 "instance_id": self.instance_id,
                 "model_id": self.model_id,
-                "model_name": self.model_ref.model_id if self.model_ref else None,
+                "model_name": m_name,
                 "picture": self.picture,
                 "voice": self.voice,
                 "num_ctx": self.num_ctx,
-                "character": self.get_character()}
+                "character": char_dict}
 
 
 class Preference(db.Model):

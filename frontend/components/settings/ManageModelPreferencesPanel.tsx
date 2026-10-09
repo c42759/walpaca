@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore, ModelPreference } from "@/store/useAppStore";
 import { getApiUrl } from "@/lib/api";
-import { getCharacterName, formatAvatarPicture } from "@/lib/characterUtils";
+import { getCharacterName, formatAvatarPicture, isInternalId, isUuid } from "@/lib/characterUtils";
 import { getVoiceDisplayName } from "@/lib/voiceConstants";
 import { EditIcon, TrashIcon, SearchIcon } from "@/components/icons/Icons";
 import { Badge } from "../ui/Badge";
@@ -15,6 +15,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
         instances,
         fetchInstances,
         modelPreferences,
+        modelPreferencesList,
         fetchModelPreferences,
         removeModelPreference: removeStoreModelPreference,
         instanceModelsMap,
@@ -28,10 +29,11 @@ export const ManageModelPreferencesPanel: React.FC = () => {
     // Delete Modal State
     const [deletingPref, setDeletingPref] = useState<ModelPreference | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [instanceFilter, setInstanceFilter] = useState<string>("all");
 
     // Fetch instances and model preferences on mount
     useEffect(() => {
-        Promise.all([fetchInstances(), fetchModelPreferences()]).finally(() => {
+        Promise.all([fetchInstances(true), fetchModelPreferences(true)]).finally(() => {
             setIsLoading(false);
         });
     }, [fetchInstances, fetchModelPreferences]);
@@ -45,21 +47,33 @@ export const ManageModelPreferencesPanel: React.FC = () => {
         }
     }, [instances, fetchInstanceModels]);
 
-    // Convert modelPreferences map to array
+    // Convert modelPreferences map or raw list to array
     const preferencesList: ModelPreference[] = useMemo(() => {
+        if (Array.isArray(modelPreferencesList) && modelPreferencesList.length > 0) {
+            const seen = new Set<string>();
+            const unique: ModelPreference[] = [];
+            for (const p of modelPreferencesList) {
+                const idKey = (p.id || "").toLowerCase();
+                if (idKey && !seen.has(idKey)) {
+                    seen.add(idKey);
+                    unique.push(p);
+                }
+            }
+            return unique;
+        }
+
         const values = Object.values(modelPreferences);
-        // Deduplicate in case case-insensitive duplicates exist in store dictionary
         const seen = new Set<string>();
         const unique: ModelPreference[] = [];
         for (const p of values) {
-            const idKey = p.id.toLowerCase();
-            if (!seen.has(idKey)) {
+            const idKey = (p.id || "").toLowerCase();
+            if (idKey && !seen.has(idKey)) {
                 seen.add(idKey);
                 unique.push(p);
             }
         }
         return unique;
-    }, [modelPreferences]);
+    }, [modelPreferencesList, modelPreferences]);
 
     const getInstanceColor = (type: string): string => {
         const t = (type || "").toLowerCase();
@@ -71,38 +85,140 @@ export const ManageModelPreferencesPanel: React.FC = () => {
         return "bg-purple-50 text-purple-700 border-purple-200";
     };
 
-    // Resolve the hosting instance for a given model ID
-    const getInstanceForModel = useCallback(
-        (modelId: string): { id?: string; name: string; type: string; color: string } => {
-            // 1. Direct match in fetched instance models
+    // Helper to resolve clean human-readable model name for a preference
+    const getModelDisplayName = useCallback(
+        (pref: ModelPreference): string => {
+            // 1. If pref.model_name is present and not a raw UUID, use it
+            if (pref.model_name && !isInternalId(pref.model_name)) {
+                return pref.model_name;
+            }
+
+            // 2. If pref.model_id is present and not a raw UUID, use it
+            if (pref.model_id && !isInternalId(pref.model_id)) {
+                return pref.model_id;
+            }
+
+            // 3. Search in instanceModelsMap across all instances
+            const targetIds = [pref.model_id, pref.id].filter(Boolean) as string[];
             for (const inst of instances) {
                 const models = instanceModelsMap[inst.id] || [];
-                if (models.some((m) => m.id?.toLowerCase() === modelId.toLowerCase() || m.name?.toLowerCase() === modelId.toLowerCase())) {
+                for (const tid of targetIds) {
+                    const match = models.find(
+                        (m) =>
+                            m.id === tid ||
+                            m.name === tid ||
+                            (m.id && tid && m.id.toLowerCase() === tid.toLowerCase()) ||
+                            (m.name && tid && m.name.toLowerCase() === tid.toLowerCase()) ||
+                            (m.uuid && tid && m.uuid.toLowerCase() === tid.toLowerCase()) ||
+                            (m.instance_model_id && tid && m.instance_model_id.toLowerCase() === tid.toLowerCase())
+                    );
+                    if (match) {
+                        const candidate = match.name || match.id;
+                        if (candidate && !isInternalId(candidate)) {
+                            return candidate;
+                        }
+                    }
+                }
+            }
+
+            // 4. Try first model of hosting instance if available
+            if (pref.instance_id && instanceModelsMap[pref.instance_id]?.length) {
+                const firstMod = instanceModelsMap[pref.instance_id][0];
+                const cleanName = firstMod.name || firstMod.id;
+                if (cleanName && !isInternalId(cleanName)) return cleanName;
+            }
+
+            // 5. Fallbacks
+            if (pref.model_name && !isInternalId(pref.model_name)) return pref.model_name;
+            if (pref.model_id && !isInternalId(pref.model_id)) return pref.model_id;
+
+            return "AI Model";
+        },
+        [instances, instanceModelsMap]
+    );
+
+    // Helper to resolve clean character/persona name or model display name
+    const getCharacterDisplayName = useCallback(
+        (pref: ModelPreference): string => {
+            const charName = getCharacterName(pref.character);
+            if (charName && !isInternalId(charName)) return charName;
+            if (pref.name && !isInternalId(pref.name)) return pref.name;
+
+            const modelName = getModelDisplayName(pref);
+            if (modelName && !isInternalId(modelName)) return modelName;
+
+            return "Persona";
+        },
+        [getModelDisplayName]
+    );
+
+    // Resolve the hosting instance for a given model preference item
+    const getInstanceForModel = useCallback(
+        (pref: ModelPreference): { id?: string; name: string; type: string; color: string; isEnabled?: number | boolean } => {
+            // 1. Direct match by pref.instance_id across all loaded instances
+            if (pref.instance_id) {
+                const directInst = instances.find((i) => i.id === pref.instance_id);
+                if (directInst) {
                     return {
-                        id: inst.id,
-                        name: inst.properties?.name || inst.type,
-                        type: inst.type,
-                        color: getInstanceColor(inst.type),
+                        id: directInst.id,
+                        name: directInst.properties?.name || directInst.type,
+                        type: directInst.type,
+                        color: getInstanceColor(directInst.type),
+                        isEnabled: directInst.is_enabled,
                     };
                 }
             }
 
-            // 2. ID prefix match (e.g. dummy model IDs like <instance_id>-m1)
+            // Target identifiers
+            const targetModelName = pref.model_name || "";
+            const targetModelId = pref.model_id || "";
+            const fallbackId = pref.id || "";
+
+            // 2. Direct match in fetched instance models across all instances
             for (const inst of instances) {
-                if (modelId.startsWith(inst.id)) {
+                const models = instanceModelsMap[inst.id] || [];
+                if (
+                    models.some((m) => {
+                        const mNameLower = (m.name || "").toLowerCase();
+                        const mIdLower = (m.id || "").toLowerCase();
+                        return (
+                            (targetModelName && (mNameLower === targetModelName.toLowerCase() || mIdLower === targetModelName.toLowerCase())) ||
+                            (targetModelId && (mNameLower === targetModelId.toLowerCase() || mIdLower === targetModelId.toLowerCase())) ||
+                            (fallbackId && (mNameLower === fallbackId.toLowerCase() || mIdLower === fallbackId.toLowerCase()))
+                        );
+                    })
+                ) {
                     return {
                         id: inst.id,
                         name: inst.properties?.name || inst.type,
                         type: inst.type,
                         color: getInstanceColor(inst.type),
+                        isEnabled: inst.is_enabled,
                     };
                 }
             }
 
-            // 3. Provider heuristics based on model naming patterns
-            const lowerId = modelId.toLowerCase();
+            // 3. ID prefix match
+            for (const inst of instances) {
+                if (
+                    (targetModelId && targetModelId.startsWith(inst.id)) ||
+                    (targetModelName && targetModelName.startsWith(inst.id)) ||
+                    (fallbackId && fallbackId.startsWith(inst.id))
+                ) {
+                    return {
+                        id: inst.id,
+                        name: inst.properties?.name || inst.type,
+                        type: inst.type,
+                        color: getInstanceColor(inst.type),
+                        isEnabled: inst.is_enabled,
+                    };
+                }
+            }
 
-            if (lowerId.includes("gemini") || lowerId.includes("gemma")) {
+            // 4. Provider heuristics based on model naming patterns
+            const combinedNames = `${targetModelName} ${targetModelId} ${fallbackId}`.toLowerCase();
+
+            if (combinedNames.includes("gemini") || combinedNames.includes("gemma")) {
                 const geminiInst = instances.find((i) => i.type === "gemini" || i.properties?.url?.includes("generativelanguage"));
                 if (geminiInst) {
                     return {
@@ -110,12 +226,13 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                         name: geminiInst.properties?.name || "Google Gemini",
                         type: "gemini",
                         color: getInstanceColor("gemini"),
+                        isEnabled: geminiInst.is_enabled,
                     };
                 }
                 return { name: "Google Gemini", type: "gemini", color: getInstanceColor("gemini") };
             }
 
-            if (lowerId.includes("gpt") || lowerId.includes("o1") || lowerId.includes("o3")) {
+            if (combinedNames.includes("gpt") || combinedNames.includes("o1") || combinedNames.includes("o3") || combinedNames.includes("openai")) {
                 const openaiInst = instances.find((i) => i.type === "openai");
                 if (openaiInst) {
                     return {
@@ -123,25 +240,40 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                         name: openaiInst.properties?.name || "OpenAI ChatGPT",
                         type: "openai",
                         color: getInstanceColor("openai"),
+                        isEnabled: openaiInst.is_enabled,
                     };
                 }
                 return { name: "OpenAI ChatGPT", type: "openai", color: getInstanceColor("openai") };
             }
 
-            // 4. Default to first Ollama instance or fallback
-            const ollamaInst = instances.find((i) => i.type === "ollama");
-            if (ollamaInst) {
+            if (combinedNames.includes("claude") || combinedNames.includes("anthropic")) {
+                const anthropicInst = instances.find((i) => i.type === "anthropic");
+                if (anthropicInst) {
+                    return {
+                        id: anthropicInst.id,
+                        name: anthropicInst.properties?.name || "Anthropic",
+                        type: "anthropic",
+                        color: getInstanceColor("anthropic"),
+                        isEnabled: anthropicInst.is_enabled,
+                    };
+                }
+            }
+
+            // 5. Default to enabled instance or first instance
+            const activeInst = instances.find((i) => i.is_enabled) || instances[0];
+            if (activeInst) {
                 return {
-                    id: ollamaInst.id,
-                    name: ollamaInst.properties?.name || "Ollama",
-                    type: "ollama",
-                    color: getInstanceColor("ollama"),
+                    id: activeInst.id,
+                    name: activeInst.properties?.name || activeInst.type,
+                    type: activeInst.type,
+                    color: getInstanceColor(activeInst.type),
+                    isEnabled: activeInst.is_enabled,
                 };
             }
 
-            return { name: "Ollama Instance", type: "ollama", color: getInstanceColor("ollama") };
+            return { name: "Custom Instance", type: "custom", color: getInstanceColor("custom") };
         },
-        [instances, instanceModelsMap],
+        [instances, instanceModelsMap]
     );
 
     const activeInst = useMemo(
@@ -150,17 +282,15 @@ export const ManageModelPreferencesPanel: React.FC = () => {
     );
 
     const isModelInActiveInstance = useCallback(
-        (modelId: string): boolean => {
+        (pref: ModelPreference): boolean => {
             if (!activeInst) return true;
-            const activeModels = instanceModelsMap[activeInst.id] || [];
-            const lowerId = modelId.toLowerCase();
-            if (activeModels.some((m) => m.id?.toLowerCase() === lowerId || m.name?.toLowerCase() === lowerId)) {
-                return true;
+            if (pref.instance_id) {
+                return pref.instance_id === activeInst.id;
             }
-            const resolved = getInstanceForModel(modelId);
+            const resolved = getInstanceForModel(pref);
             return resolved.id === activeInst.id;
         },
-        [activeInst, instanceModelsMap, getInstanceForModel]
+        [activeInst, getInstanceForModel]
     );
 
     const getAvatarBg = (name: string): string => {
@@ -180,22 +310,38 @@ export const ManageModelPreferencesPanel: React.FC = () => {
         return gradients[Math.abs(hash) % gradients.length];
     };
 
-    // Filtered list based on search
+    // Filtered list based on search and instance filter
     const filteredPreferences = useMemo(() => {
         const q = searchQuery.toLowerCase().trim();
-        if (!q) return preferencesList;
 
         return preferencesList.filter((pref) => {
-            const charName = (getCharacterName(pref.character) || pref.name || "").toLowerCase();
-            const modelId = pref.id.toLowerCase();
-            const instInfo = getInstanceForModel(pref.id);
+            const instInfo = getInstanceForModel(pref);
+
+            // 1. Instance tab filter
+            if (instanceFilter !== "all" && instInfo.id !== instanceFilter) {
+                return false;
+            }
+
+            // 2. Search query filter
+            if (!q) return true;
+
+            const charDisplayName = getCharacterDisplayName(pref).toLowerCase();
+            const modelDisplayName = getModelDisplayName(pref).toLowerCase();
+            const rawModelId = (pref.model_id || pref.id || "").toLowerCase();
             const instName = instInfo.name.toLowerCase();
             const instType = instInfo.type.toLowerCase();
             const voice = (pref.voice || "").toLowerCase();
 
-            return charName.includes(q) || modelId.includes(q) || instName.includes(q) || instType.includes(q) || voice.includes(q);
+            return (
+                charDisplayName.includes(q) ||
+                modelDisplayName.includes(q) ||
+                rawModelId.includes(q) ||
+                instName.includes(q) ||
+                instType.includes(q) ||
+                voice.includes(q)
+            );
         });
-    }, [preferencesList, searchQuery, getInstanceForModel]);
+    }, [preferencesList, searchQuery, instanceFilter, getInstanceForModel, getCharacterDisplayName, getModelDisplayName]);
 
     // Open Delete Modal
     const handleOpenDelete = (pref: ModelPreference) => {
@@ -231,7 +377,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                 <div>
                     <h3 className="text-xl font-bold text-[#202022] tracking-tight">Manage Model Preferences</h3>
                     <p className="text-sm text-[#7a7d90] mt-1 font-medium">
-                        Configure character persona, profile avatar, Kokoro TTS voice, and context window limits for each AI model.
+                        Configure character persona, profile avatar, Kokoro TTS voice, and context window limits for models across all instances.
                     </p>
                 </div>
                 {activeInst && (
@@ -244,6 +390,49 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* Instance Filter Tabs Bar */}
+            {instances.length > 1 && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                    <button
+                        type="button"
+                        onClick={() => setInstanceFilter("all")}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                            instanceFilter === "all"
+                                ? "bg-[#7678ed] text-white shadow-xs"
+                                : "bg-white text-[#7a7d90] border border-[#e8ebf3] hover:bg-[#f0f2fb] hover:text-[#202022]"
+                        }`}
+                    >
+                        All Instances ({preferencesList.length})
+                    </button>
+                    {instances.map((inst) => {
+                        const instName = inst.properties?.name || inst.type;
+                        const count = preferencesList.filter((p) => getInstanceForModel(p).id === inst.id).length;
+                        const isSelected = instanceFilter === inst.id;
+
+                        return (
+                            <button
+                                key={inst.id}
+                                type="button"
+                                onClick={() => setInstanceFilter(inst.id)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                                    isSelected
+                                        ? "bg-[#7678ed] text-white shadow-xs"
+                                        : "bg-white text-[#7a7d90] border border-[#e8ebf3] hover:bg-[#f0f2fb] hover:text-[#202022]"
+                                }`}
+                            >
+                                {inst.is_enabled && (
+                                    <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-white" : "bg-emerald-500"}`} />
+                                )}
+                                <span>@{instName}</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? "bg-white/20 text-white" : "bg-[#f0f2fb] text-[#7a7d90]"}`}>
+                                    {count}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
 
             {/* Search Bar */}
             <div className="relative">
@@ -263,79 +452,84 @@ export const ManageModelPreferencesPanel: React.FC = () => {
             ) : filteredPreferences.length === 0 ? (
                 <div className="p-12 text-center bg-white rounded-2xl border border-[#e8ebf3] space-y-3">
                     <div className="w-12 h-12 rounded-2xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center font-bold text-xl mx-auto">🎭</div>
-                    <h4 className="font-bold text-[#202022] text-base">{searchQuery ? "No model preferences match your search" : "No Model Preferences Configured"}</h4>
+                    <h4 className="font-bold text-[#202022] text-base">{searchQuery || instanceFilter !== "all" ? "No model preferences match your filter" : "No Model Preferences Configured"}</h4>
                     <p className="text-xs text-[#7a7d90] max-w-sm mx-auto">
-                        {searchQuery
-                            ? "Try adjusting your search query to find models by name, ID, or instance."
+                        {searchQuery || instanceFilter !== "all"
+                            ? "Try adjusting your search query or instance filter to find models."
                             : "Model preferences customize AI personality, avatar, and voice. They are created when assigning personas or editing model settings."}
                     </p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-5">
                     {filteredPreferences.map((pref) => {
-                        const charName = getCharacterName(pref.character) || pref.name || pref.id;
+                        const charDisplayName = getCharacterDisplayName(pref);
+                        const modelDisplayName = getModelDisplayName(pref);
                         const avatarSrc = formatAvatarPicture(pref.picture);
-                        const instInfo = getInstanceForModel(pref.id);
+                        const instInfo = getInstanceForModel(pref);
                         const voiceLabel = getVoiceDisplayName(pref.voice);
-                        const isActiveInstance = isModelInActiveInstance(pref.id);
+                        const isActiveInstance = isModelInActiveInstance(pref);
 
                         return (
-                            // <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                             <div
                                 key={pref.id}
                                 className={`p-5 bg-white rounded-2xl border border-[#e8ebf3] shadow-xs flex flex-col justify-between space-y-4 transition-all ${
                                     isActiveInstance
                                         ? "hover:border-[#7678ed]/40"
-                                        : "opacity-50 hover:opacity-85 hover:border-[#7678ed]/30"
+                                        : "opacity-60 hover:opacity-90 hover:border-[#7678ed]/30"
                                 }`}
-                                title={!isActiveInstance ? "This model preference belongs to an inactive instance" : undefined}
+                                title={!isActiveInstance ? `Hosting instance: @${instInfo.name} (${instInfo.type})` : undefined}
                             >
                                 <div className="space-y-3 flex">
                                     {/* Avatar */}
                                     <div
-                                        style={!avatarSrc ? { background: getAvatarBg(charName) } : undefined}
+                                        style={!avatarSrc ? { background: getAvatarBg(charDisplayName) } : undefined}
                                         className="w-30 h-30 mr-4 rounded-2xl border border-[#e8ebf3] overflow-hidden flex items-center justify-center shrink-0 shadow-xs relative bg-[#eaecf9]"
                                     >
                                         {avatarSrc ? (
                                             <img
                                                 src={avatarSrc}
-                                                alt={charName}
+                                                alt={charDisplayName}
                                                 className="w-full h-full object-cover"
                                                 onError={(e) => {
-                                                    // Fallback on image broken
                                                     (e.target as HTMLElement).style.display = "none";
                                                 }}
                                             />
                                         ) : (
-                                            <span className="text-white font-bold text-xl uppercase">{charName.slice(0, 2)}</span>
+                                            <span className="text-white font-bold text-xl uppercase">
+                                                {charDisplayName.slice(0, 2)}
+                                            </span>
                                         )}
                                     </div>
-                                    <div>
-                                        <h4 className="font-bold text-[#202022] text-base leading-snug">{charName}</h4>
-                                        <span className="text-[11px] font-mono text-[#a0a3b5] block mt-0.5 mb-2">{voiceLabel}</span>
+                                    <div className="min-w-0 flex-1">
+                                        <h4 className="font-bold text-[#202022] text-base leading-snug truncate" title={charDisplayName}>
+                                            {charDisplayName}
+                                        </h4>
+                                        <span className="text-[11px] font-mono text-[#a0a3b5] block mt-0.5 mb-2 truncate">
+                                            {voiceLabel}
+                                        </span>
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                            <Badge key={instInfo.name} variant="primary">
+                                            <Badge key={instInfo.name} variant="primary" className="text-xs">
                                                 @{instInfo.name}
                                             </Badge>
-                                            <Badge variant="secondary" className="font-mono" title={pref.id}>
-                                                {pref.model_name || pref.id}
+                                            <Badge variant="secondary" className="font-mono text-xs" title={`Preference ID: ${pref.id}`}>
+                                                {modelDisplayName}
                                             </Badge>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className={"flex items-center justify-between pt-3 border-t border-[#e8ebf3] gap-2 justify-end"}>
+                                <div className="flex items-center justify-end pt-3 border-t border-[#e8ebf3] gap-2">
                                     <div className="flex items-center gap-1">
                                         <button
                                             onClick={() => router.push(`/settings/model-preferences/${encodeURIComponent(pref.id)}`)}
-                                            className="p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9]"
+                                            className="p-1.5 text-[#7a7d90] hover:text-[#7678ed] transition-colors rounded-lg hover:bg-[#eaecf9] cursor-pointer"
                                             title="Edit"
                                         >
                                             <EditIcon className="w-4 h-4" />
                                         </button>
                                         <button
                                             onClick={() => handleOpenDelete(pref)}
-                                            className="p-1.5 text-[#7a7d90] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50"
+                                            className="p-1.5 text-[#7a7d90] hover:text-rose-500 transition-colors rounded-lg hover:bg-rose-50 cursor-pointer"
                                             title="Delete"
                                         >
                                             <TrashIcon className="w-4 h-4" />
@@ -343,7 +537,6 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                            // </div>
                         );
                     })}
                 </div>
@@ -356,22 +549,22 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                         <h3 className="text-lg font-bold text-[#202022]">Delete Model Preference</h3>
                         <p className="text-xs text-[#7a7d90] leading-relaxed">
                             Are you sure you want to remove the model preference for{" "}
-                            <span className="font-bold text-[#202022]">{getCharacterName(deletingPref.character) || deletingPref.name || deletingPref.model_name || deletingPref.id}</span> (
-                            <code className="font-mono text-[#7678ed]">{deletingPref.model_name || deletingPref.id}</code>)? This will revert the model to default settings.
+                            <span className="font-bold text-[#202022]">{getCharacterDisplayName(deletingPref)}</span> (
+                            <code className="font-mono text-[#7678ed]">{getModelDisplayName(deletingPref)}</code>)? This will revert the model to default settings.
                         </p>
 
                         <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#e8ebf3]">
                             <button
                                 onClick={() => setDeletingPref(null)}
                                 disabled={isDeleting}
-                                className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#4b4e6d] text-xs font-semibold transition-all"
+                                className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#4b4e6d] text-xs font-semibold transition-all cursor-pointer"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleConfirmDelete}
                                 disabled={isDeleting}
-                                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-all shadow-xs disabled:opacity-50"
+                                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
                             >
                                 {isDeleting ? "Deleting..." : "Delete Preference"}
                             </button>

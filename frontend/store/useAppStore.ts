@@ -56,6 +56,8 @@ export interface InstanceItem {
 export interface InstanceModel {
     id: string;
     name?: string;
+    uuid?: string;
+    instance_model_id?: string;
     provider?: string;
     voice?: string;
     context?: string;
@@ -116,6 +118,7 @@ interface AppStoreState {
     instancesLoading: boolean;
 
     modelPreferences: Record<string, ModelPreference>;
+    modelPreferencesList: ModelPreference[];
     modelPreferencesLoaded: boolean;
     modelPreferencesLoading: boolean;
 
@@ -229,6 +232,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     instancesLoading: false,
 
     modelPreferences: {},
+    modelPreferencesList: [],
     modelPreferencesLoaded: false,
     modelPreferencesLoading: false,
 
@@ -431,41 +435,53 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
             if (res.ok) {
                 const data = await res.json();
                 const map: Record<string, ModelPreference> = {};
+                const list: ModelPreference[] = [];
 
                 if (Array.isArray(data)) {
                     data.forEach((pref: ModelPreference) => {
-                        if (pref && pref.id) {
-                            map[pref.id] = pref;
-                            map[pref.id.toLowerCase()] = pref;
-                        }
-                        if (pref && pref.model_id) {
-                            map[pref.model_id] = pref;
-                            map[pref.model_id.toLowerCase()] = pref;
-                        }
-                        if (pref && pref.model_name) {
-                            map[pref.model_name] = pref;
-                            map[pref.model_name.toLowerCase()] = pref;
+                        if (pref) {
+                            list.push(pref);
+                            if (pref.id) {
+                                map[pref.id] = pref;
+                                map[pref.id.toLowerCase()] = pref;
+                            }
+                            if (pref.model_id) {
+                                map[pref.model_id] = pref;
+                                map[pref.model_id.toLowerCase()] = pref;
+                            }
+                            if (pref.model_name) {
+                                map[pref.model_name] = pref;
+                                map[pref.model_name.toLowerCase()] = pref;
+                            }
                         }
                     });
                 } else if (data && typeof data === "object") {
                     Object.values(data).forEach((val) => {
                         const p = val as ModelPreference;
-                        if (p && p.id) {
-                            map[p.id] = p;
-                            map[p.id.toLowerCase()] = p;
-                        }
-                        if (p && p.model_id) {
-                            map[p.model_id] = p;
-                            map[p.model_id.toLowerCase()] = p;
-                        }
-                        if (p && p.model_name) {
-                            map[p.model_name] = p;
-                            map[p.model_name.toLowerCase()] = p;
+                        if (p) {
+                            list.push(p);
+                            if (p.id) {
+                                map[p.id] = p;
+                                map[p.id.toLowerCase()] = p;
+                            }
+                            if (p.model_id) {
+                                map[p.model_id] = p;
+                                map[p.model_id.toLowerCase()] = p;
+                            }
+                            if (p.model_name) {
+                                map[p.model_name] = p;
+                                map[p.model_name.toLowerCase()] = p;
+                            }
                         }
                     });
                 }
 
-                set({ modelPreferences: map, modelPreferencesLoaded: true, modelPreferencesLoading: false });
+                set({
+                    modelPreferences: map,
+                    modelPreferencesList: list,
+                    modelPreferencesLoaded: true,
+                    modelPreferencesLoading: false,
+                });
                 return map;
             }
         } catch (err) {

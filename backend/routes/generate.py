@@ -228,29 +228,72 @@ def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_
             print(f"[LLM Background Worker] Error completing response: {e}")
 
 
+def resolve_model_preference(model: str, instance_id: str = None):
+    """
+    Locates matching ModelPreferences entry given model identifier (UUID, InstanceModel ID,
+    or physical model name) and optional instance_id.
+    """
+    if not model:
+        return None
+
+    # 1. Direct PK lookup on ModelPreferences
+    pref = db.session.get(ModelPreferences, model)
+    if pref:
+        return pref
+
+    # 2. Filtered by instance_id if available
+    if instance_id:
+        pref = ModelPreferences.query.filter_by(instance_id=instance_id, model_id=model).first()
+        if pref:
+            return pref
+
+        ims = InstanceModel.query.filter_by(instance_id=instance_id, model_id=model).all()
+        for im in ims:
+            pref = ModelPreferences.query.filter_by(instance_id=instance_id, model_id=im.id).first()
+            if pref:
+                return pref
+
+        im = InstanceModel.query.filter_by(instance_id=instance_id, id=model).first()
+        if im:
+            pref = ModelPreferences.query.filter_by(instance_id=instance_id, model_id=im.id).first()
+            if pref:
+                return pref
+
+    # 3. Fallback without instance_id restriction
+    pref = ModelPreferences.query.filter_by(model_id=model).first()
+    if pref:
+        return pref
+
+    ims = InstanceModel.query.filter_by(model_id=model).all()
+    for im in ims:
+        pref = ModelPreferences.query.filter_by(model_id=im.id).first()
+        if pref:
+            return pref
+
+    im = db.session.get(InstanceModel, model)
+    if im:
+        pref = ModelPreferences.query.filter_by(model_id=im.id).first()
+        if pref:
+            return pref
+
+    return None
+
+
 def evaluate_lorebook_entries(
     model_id: str,
     messages: list = None,
     base_system_prompt: str = None,
     scan_depth: int = 5,
+    instance_id: str = None,
+    pref=None,
 ) -> str:
     """
     Evaluates model preferences for character definitions and character book / lorebook entries.
     Scans recent conversation messages for entry keywords and combines triggered lore and persona
     prompts into a final system prompt string.
     """
-    pref = None
-    if model_id:
-        pref = (
-            ModelPreferences.query.get(model_id)
-            or ModelPreferences.query.filter_by(model_id=model_id).first()
-        )
-        if not pref:
-            ims = InstanceModel.query.filter_by(model_id=model_id).all()
-            for im in ims:
-                pref = ModelPreferences.query.filter_by(model_id=im.id).first()
-                if pref:
-                    break
+    if not pref and model_id:
+        pref = resolve_model_preference(model_id, instance_id)
 
     if not pref:
         return base_system_prompt or ""
@@ -549,16 +592,20 @@ def generate_response(chat_id):
                 host = "https://generativelanguage.googleapis.com/v1beta/openai"
 
     # Resolve model identifier to physical model name for upstream engine
+    # Resolve model identifier to physical model name and ModelPreferences
+    pref_match = resolve_model_preference(model, instance_id)
     resolved_model_name = model
-    pref_match = ModelPreferences.query.get(model)
+
     if pref_match:
         if pref_match.model_ref and pref_match.model_ref.model_id:
             resolved_model_name = pref_match.model_ref.model_id
         elif pref_match.model_id:
-            im = InstanceModel.query.get(pref_match.model_id)
-            resolved_model_name = im.model_id if im else pref_match.model_id
+            im = db.session.get(InstanceModel, pref_match.model_id)
+            resolved_model_name = im.model_id if im and im.model_id else pref_match.model_id
     else:
-        im_match = InstanceModel.query.get(model)
+        im_match = db.session.get(InstanceModel, model)
+        if not im_match and instance_id:
+            im_match = InstanceModel.query.filter_by(instance_id=instance_id, model_id=model).first()
         if im_match and im_match.model_id:
             resolved_model_name = im_match.model_id
 
@@ -687,7 +734,11 @@ def generate_response(chat_id):
         messages_payload = formatted_messages
 
     effective_system = evaluate_lorebook_entries(
-        model, messages_payload, system_prompt
+        model,
+        messages_payload,
+        system_prompt,
+        instance_id=instance_id,
+        pref=pref_match,
     )
 
     if effective_system:
@@ -695,6 +746,7 @@ def generate_response(chat_id):
 
     raw_num_ctx = (
         data.get("num_ctx")
+        or (pref_match.num_ctx if pref_match else None)
         or props.get("num_ctx")
         or props.get("numCtx")
         or props.get("context_size")
@@ -1085,5 +1137,4 @@ def generate_response(chat_id):
     )
     response.headers["Cache-Control"] = "no-cache"
     response.headers["X-Accel-Buffering"] = "no"
-    response.headers["Access-Control-Allow-Origin"] = "*"
     return response
