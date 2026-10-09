@@ -3152,6 +3152,68 @@ export default function ChatPage() {
         }
     }, [messages, activeChatId]);
 
+    // Auto-poll assistant message when ending with **processing** (background generation active)
+    useEffect(() => {
+        if (!activeChatId) return;
+
+        const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+        const isProcessing = Boolean(
+            lastMsg &&
+            !lastMsg.isSelf &&
+            (lastMsg.senderRole === "assistant" || !lastMsg.senderRole || lastMsg.senderRole !== "user") &&
+            (lastMsg.content?.trim().endsWith("**processing**") || lastMsg.content?.trim().endsWith("**LLM still processing.**"))
+        );
+
+        if (!isProcessing || isGeneratingRef.current) {
+            return;
+        }
+
+        let isMounted = true;
+        let timerId: NodeJS.Timeout | null = null;
+
+        const pollIntervalSec = appPreferences?.processing_poll_interval !== undefined
+            ? Math.max(1, Number(appPreferences.processing_poll_interval))
+            : 2;
+
+        const pollMessages = async () => {
+            try {
+                const res = await fetch(`${API_URL}/chats/${activeChatId}`);
+                if (!isMounted) return;
+                if (res.ok) {
+                    const data: BackendChat = await res.json();
+                    const rawMsgs = Array.isArray(data.messages) ? data.messages : [];
+                    const updatedMessages = rawMsgs.map((m) => mapBackendMsgToMessage(m, modelPreferences));
+                    setMessages(updatedMessages);
+
+                    const newLastMsg = updatedMessages.length > 0 ? updatedMessages[updatedMessages.length - 1] : null;
+                    const stillProcessing = Boolean(
+                        newLastMsg &&
+                        !newLastMsg.isSelf &&
+                        (newLastMsg.senderRole === "assistant" || !newLastMsg.senderRole || newLastMsg.senderRole !== "user") &&
+                        (newLastMsg.content?.trim().endsWith("**processing**") || newLastMsg.content?.trim().endsWith("**LLM still processing.**"))
+                    );
+
+                    if (stillProcessing && isMounted) {
+                        timerId = setTimeout(pollMessages, pollIntervalSec * 1000);
+                    }
+                }
+            } catch (err) {
+                console.warn("Error polling processing message:", err);
+                if (isMounted) {
+                    timerId = setTimeout(pollMessages, pollIntervalSec * 1000);
+                }
+            }
+        };
+
+        timerId = setTimeout(pollMessages, pollIntervalSec * 1000);
+
+        return () => {
+            isMounted = false;
+            if (timerId) clearTimeout(timerId);
+        };
+    }, [activeChatId, messages, appPreferences?.processing_poll_interval, modelPreferences]);
+
+
     // Requirement 1: Auto-select Instance if only 1 exists or unselected
     useEffect(() => {
         if (instances.length > 0) {

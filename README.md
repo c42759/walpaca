@@ -44,6 +44,8 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 - [ ] Website recognition (web scraping via URL)
 - [ ] Connect to cloud-hosted OpenAI-compatible APIs using personal API keys
 - [x] Text-to-speech integration via Kokoro TTS
+- [ ] Speech-to-text integration via Whisper
+- [ ] Chat history search
 
 ---
 

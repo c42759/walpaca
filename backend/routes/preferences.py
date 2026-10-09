@@ -14,7 +14,9 @@ DEFAULT_PREFERENCES = {
     "auto_scroll": True,
     "default_audio_output": "default",
     "pin_auto_lock_timeout": "15m",
+    "processing_poll_interval": 2,
 }
+
 
 
 def load_preferences() -> dict:

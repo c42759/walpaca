@@ -101,18 +101,23 @@ class InstanceTestCase(unittest.TestCase):
         self.assertEqual(list_res3[0]["id"], "inst-2")
 
     def test_preferences_endpoint_drops_active_instance_id(self):
-        # 1. GET /api/preferences should not contain active_instance_id
+        # 1. GET /api/preferences should not contain active_instance_id and have default processing_poll_interval
         get_res = self.client.get("/api/preferences")
         self.assertEqual(get_res.status_code, 200)
-        self.assertNotIn("active_instance_id", get_res.get_json())
+        prefs_data = get_res.get_json()
+        self.assertNotIn("active_instance_id", prefs_data)
+        self.assertEqual(prefs_data.get("processing_poll_interval"), 2)
 
-        # 2. POST /api/preferences with active_instance_id should drop it
+        # 2. POST /api/preferences with active_instance_id should drop it and save custom processing_poll_interval
         post_res = self.client.post(
             "/api/preferences",
-            json={"active_instance_id": "dummy-id", "auto_scroll": True},
+            json={"active_instance_id": "dummy-id", "auto_scroll": True, "processing_poll_interval": 5},
         )
         self.assertEqual(post_res.status_code, 200)
-        self.assertNotIn("active_instance_id", post_res.get_json())
+        saved_data = post_res.get_json()
+        self.assertNotIn("active_instance_id", saved_data)
+        self.assertEqual(saved_data.get("processing_poll_interval"), 5)
+
 
     def test_instance_model_and_model_preferences_with_assistant_fallback(self):
         from models import Chat, Message, InstanceModel, ModelPreferences

@@ -25,7 +25,9 @@ export interface AppPreferences {
     default_audio_output: string;
     pin_security_enabled?: boolean;
     pin_auto_lock_timeout?: string;
+    processing_poll_interval?: number;
 }
+
 
 export interface InstanceProperties {
     name: string;
@@ -246,7 +248,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         auto_scroll: true,
         default_audio_output: "default",
         pin_auto_lock_timeout: "15m",
+        processing_poll_interval: 2,
     },
+
     appPreferencesLoaded: false,
     appPreferencesLoading: false,
 

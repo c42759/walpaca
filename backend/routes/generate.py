@@ -1,6 +1,7 @@
 import json
 import time
 import threading
+import ollama
 import urllib.error
 import urllib.request
 
@@ -809,12 +810,11 @@ def generate_response(chat_id):
 
         if inst_type == "ollama":
             try:
-                import ollama
-
                 client_kwargs = {"host": host}
                 if headers:
                     client_kwargs["headers"] = headers
                 client = ollama.Client(**client_kwargs)
+
 
                 chat_kwargs = {
                     "model": resolved_model_name,

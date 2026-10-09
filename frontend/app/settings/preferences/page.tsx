@@ -14,7 +14,9 @@ interface PreferencesData {
     default_audio_output: string;
     pin_security_enabled?: boolean;
     pin_auto_lock_timeout?: string;
+    processing_poll_interval?: number;
 }
+
 
 interface AudioDeviceOption {
     deviceId: string;
@@ -113,7 +115,7 @@ export default function PreferencesSettingsPage() {
         };
     }, []);
 
-    const handleUpdatePreference = async (key: keyof PreferencesData, value: boolean | string) => {
+    const handleUpdatePreference = async (key: keyof PreferencesData, value: boolean | string | number) => {
         if (key === "desktop_notifications" && value === true && typeof window !== "undefined" && "Notification" in window) {
             if (Notification.permission === "default") {
                 Notification.requestPermission();
@@ -612,6 +614,26 @@ export default function PreferencesSettingsPage() {
                                     className="w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer disabled:opacity-50"
                                 />
                             </div>
+
+                            <div className="flex items-center justify-between pb-4 border-b border-[#e8ebf3]">
+                                <div>
+                                    <h4 className="text-base font-bold text-[#202022]">Processing Refresh Interval</h4>
+                                    <p className="text-xs text-[#8e90a6] mt-0.5">Polling interval in seconds to refresh incomplete assistant responses when background generation is active.</p>
+                                </div>
+                                <select
+                                    disabled={isLoading}
+                                    value={preferences.processing_poll_interval !== undefined ? Number(preferences.processing_poll_interval) : 2}
+                                    onChange={(e) => handleUpdatePreference("processing_poll_interval", Number(e.target.value))}
+                                    className="bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3.5 py-2 text-sm text-[#202022] font-semibold outline-none focus:border-[#7678ed] transition-all cursor-pointer disabled:opacity-50"
+                                >
+                                    <option value={1}>1 Second (Fast)</option>
+                                    <option value={2}>2 Seconds (Default)</option>
+                                    <option value={3}>3 Seconds</option>
+                                    <option value={5}>5 Seconds</option>
+                                    <option value={10}>10 Seconds</option>
+                                </select>
+                            </div>
+
 
                             <div className="pt-2 space-y-2">
                                 <h4 className="text-base font-bold text-[#202022]">Default Audio Output Device</h4>
