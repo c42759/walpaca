@@ -68,12 +68,15 @@ class CorsHeadersTestCase(unittest.TestCase):
             "true",
         )
 
-    @patch("routes.generate.urllib.request.urlopen")
-    def test_generate_post_origin_header_not_wildcard(self, mock_urlopen):
-        mock_response = MagicMock()
-        mock_response.read.side_effect = [b'{"response":"hi"}\n', b'']
-        mock_response.readline.side_effect = [b'{"response":"hi"}\n', b'']
-        mock_urlopen.return_value = mock_response
+    @patch("ollama.Client")
+    def test_generate_post_origin_header_not_wildcard(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        chunk = MagicMock()
+        chunk.message.content = "hi"
+        chunk.message.thinking = ""
+        chunk.done = True
+        mock_client.chat.return_value = iter([chunk])
 
         response = self.client.post(
             "/api/chats/test-chat-cors/generate",
@@ -82,6 +85,7 @@ class CorsHeadersTestCase(unittest.TestCase):
                 "Origin": "http://100.109.217.63:5100",
             },
         )
+
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.headers.get("Access-Control-Allow-Origin"),

@@ -11,7 +11,8 @@ import { SettingsHelpSidebar } from "@/components/settings/SettingsHelpSidebar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
-import { CheckIcon, ChevronIcon, SearchIcon, SettingsIcon, CloseIcon } from "@/components/icons/Icons";
+import { CheckIcon, ChevronIcon, SearchIcon, SettingsIcon, CloseIcon, DownloadIcon, TrashIcon } from "@/components/icons/Icons";
+import { PullModelModal } from "@/components/settings/PullModelModal";
 
 const PROVIDER_OPTIONS = [
     { value: "ollama", label: "Ollama (Local / Remote)", defaultUrl: "http://0.0.0.0:11434" },
@@ -66,6 +67,9 @@ export default function EditInstancePage() {
     const [instanceModels, setInstanceModels] = useState<InstanceModel[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState<boolean>(false);
     const [modelsSearch, setModelsSearch] = useState<string>("");
+    const [isPullModalOpen, setIsPullModalOpen] = useState<boolean>(false);
+    const [deletingModel, setDeletingModel] = useState<InstanceModel | null>(null);
+    const [isDeletingModel, setIsDeletingModel] = useState<boolean>(false);
 
     // Initial mount data fetching
     useEffect(() => {
@@ -168,6 +172,29 @@ export default function EditInstancePage() {
             isMounted = false;
         };
     }, [instanceId, loadModels]);
+
+    const handleConfirmDeleteModel = async () => {
+        if (!deletingModel || !instanceId) return;
+        setIsDeletingModel(true);
+        try {
+            const res = await fetch(
+                `${getApiUrl()}/instances/${encodeURIComponent(instanceId)}/models/${encodeURIComponent(deletingModel.id)}`,
+                { method: "DELETE" }
+            );
+            if (res.ok) {
+                setDeletingModel(null);
+                await loadModels(true);
+                await fetchInstances();
+            } else {
+                const data = await res.json().catch(() => ({}));
+                alert(data.error || "Failed to delete model");
+            }
+        } catch (err: any) {
+            alert(err.message || "An error occurred while deleting the model");
+        } finally {
+            setIsDeletingModel(false);
+        }
+    };
 
     const isActive = useMemo(() => {
         if (!currentInstance) return false;
@@ -328,11 +355,10 @@ export default function EditInstancePage() {
 
                     {saveFeedback && (
                         <div
-                            className={`p-4 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
-                                saveFeedback.type === "success"
-                                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                                    : "bg-rose-50 text-rose-800 border border-rose-200"
-                            }`}
+                            className={`p-4 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${saveFeedback.type === "success"
+                                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                : "bg-rose-50 text-rose-800 border border-rose-200"
+                                }`}
                         >
                             <span>{saveFeedback.message}</span>
                             <button
@@ -618,7 +644,7 @@ export default function EditInstancePage() {
                                         </p>
                                     </div>
 
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                                         <div className="relative w-48 sm:w-56">
                                             <SearchIcon className="w-4 h-4 text-[#7a7d90] absolute left-3 top-1/2 -translate-y-1/2" />
                                             <input
@@ -638,6 +664,17 @@ export default function EditInstancePage() {
                                             title="Reload model catalog from instance"
                                         >
                                             {isLoadingModels ? "Refreshing..." : "Refresh"}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="primary"
+                                            size="sm"
+                                            onClick={() => setIsPullModalOpen(true)}
+                                            className="inline-flex items-center gap-1.5 shrink-0"
+                                            title="Pull new model from library"
+                                        >
+                                            <DownloadIcon className="w-3.5 h-3.5" />
+                                            <span>Pull Model</span>
                                         </Button>
                                     </div>
                                 </div>
@@ -664,7 +701,7 @@ export default function EditInstancePage() {
                                         </Button>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                                    <div className="grid grid-cols-1 gap-3.5">
                                         {filteredModels.map((mod) => {
                                             const rawId = String(mod.id || "");
                                             const prefKey = rawId.toLowerCase();
@@ -688,14 +725,6 @@ export default function EditInstancePage() {
                                                                     {mod.id}
                                                                 </span>
                                                             </div>
-                                                            {pref && (
-                                                                <Badge
-                                                                    variant="success"
-                                                                    className="shrink-0 text-[10px]"
-                                                                >
-                                                                    Configured
-                                                                </Badge>
-                                                            )}
                                                         </div>
 
                                                         {/* Badges & Meta */}
@@ -726,29 +755,17 @@ export default function EditInstancePage() {
                                                                 </span>
                                                             )}
                                                         </div>
-
-                                                        {configuredName && (
-                                                            <p className="text-[11px] text-[#7678ed] mt-2 font-medium truncate">
-                                                                Persona: <span className="font-semibold">{configuredName}</span>
-                                                                {pref?.voice && ` • Voice: ${pref.voice}`}
-                                                            </p>
-                                                        )}
                                                     </div>
 
-                                                    <div className="pt-2 border-t border-[#e8ebf3] flex items-center justify-end">
+                                                    <div className="pt-2 border-t border-[#e8ebf3] flex items-center justify-between">
                                                         <button
                                                             type="button"
-                                                            onClick={() =>
-                                                                router.push(
-                                                                    `/settings/model-preferences/${encodeURIComponent(
-                                                                        mod.id
-                                                                    )}`
-                                                                )
-                                                            }
-                                                            className="px-3 py-1.5 rounded-xl bg-[#eaecf9] hover:bg-[#7678ed] hover:text-white text-[#7678ed] text-xs font-semibold transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                                                            onClick={() => setDeletingModel(mod)}
+                                                            className="p-1.5 rounded-xl text-[#7a7d90] hover:text-rose-500 hover:bg-rose-50 transition-all inline-flex items-center gap-1.5 cursor-pointer text-xs font-medium"
+                                                            title={`Delete ${mod.name || mod.id}`}
                                                         >
-                                                            <SettingsIcon className="w-3.5 h-3.5" />
-                                                            {pref ? "Edit Preference" : "Configure Preference"}
+                                                            <TrashIcon className="w-3.5 h-3.5" />
+                                                            <span>Delete</span>
                                                         </button>
                                                     </div>
                                                 </div>
@@ -764,6 +781,69 @@ export default function EditInstancePage() {
 
             {/* 3. RIGHT SIDEBAR - HELP & TIPS */}
             <SettingsHelpSidebar activeSettingsCategory={activeSettingsCategory} />
+
+            {/* 4. PULL MODEL MODAL */}
+            <PullModelModal
+                isOpen={isPullModalOpen}
+                onClose={() => setIsPullModalOpen(false)}
+                instanceId={instanceId}
+                instanceName={formName || currentInstance?.properties?.name || instanceId}
+                getApiUrl={getApiUrl}
+                onPullSuccess={async () => {
+                    await loadModels(true);
+                    await fetchInstances();
+                }}
+            />
+
+            {/* 5. DELETE MODEL CONFIRMATION MODAL */}
+            {deletingModel && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-[#e8ebf3] transform animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-2xl bg-rose-50 text-rose-500">
+                                    <TrashIcon className="w-5 h-5" />
+                                </div>
+                                <h3 className="text-lg font-bold text-[#202022]">Delete Model</h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => !isDeletingModel && setDeletingModel(null)}
+                                className="p-1 text-[#7a7d90] hover:text-[#202022] rounded-lg transition-colors cursor-pointer"
+                                disabled={isDeletingModel}
+                            >
+                                <CloseIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <p className="text-sm text-[#7a7d90] mb-6 leading-relaxed">
+                            Are you sure you want to delete model{" "}
+                            <span className="font-semibold text-[#202022]">{deletingModel.name || deletingModel.id}</span>
+                            {" "}from this instance? This action cannot be undone.
+                        </p>
+
+                        <div className="flex items-center justify-end gap-3">
+                            <Button
+                                variant="secondary"
+                                type="button"
+                                onClick={() => setDeletingModel(null)}
+                                disabled={isDeletingModel}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="danger"
+                                type="button"
+                                onClick={handleConfirmDeleteModel}
+                                disabled={isDeletingModel}
+                                isLoading={isDeletingModel}
+                            >
+                                Delete Model
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

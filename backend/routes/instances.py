@@ -1,10 +1,13 @@
 import json
+import ollama
 import urllib.error
 import urllib.request
 
 from flask import Blueprint
 from flask import request
 from flask import jsonify
+from flask import Response
+from flask import stream_with_context
 
 from models import db
 from models import Instance
@@ -107,55 +110,94 @@ def fetch_live_instance_models(instance):
             host = "http://localhost:11434"
         host = host.rstrip("/")
 
-        # Try Ollama native /api/tags first
-        target_url = f"{host}/api/tags"
-
+        # Try Ollama Python SDK client first
         try:
-            req = urllib.request.Request(target_url, headers=headers, method="GET")
 
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+            client_kwargs = {"host": host}
+            if headers:
+                client_kwargs["headers"] = headers
+            client = ollama.Client(**client_kwargs)
+            res = client.list()
 
-                for m in data.get("models", []):
-                    model_id = m.get("name") or m.get("model")
+            model_items = (
+                getattr(res, "models", None)
+                or (res.get("models") if isinstance(res, dict) else None)
+                or []
+            )
 
-                    if model_id:
-                        details = m.get("details") or {}
+            for m in model_items:
+                model_id = (
+                    getattr(m, "model", None)
+                    or getattr(m, "name", None)
+                    or (m.get("model") or m.get("name") if isinstance(m, dict) else None)
+                )
 
-                        fam = details.get("family") or (
-                            details.get("families")[0]
-                            if details.get("families")
-                            else None
-                        )
+                if model_id:
+                    details = getattr(m, "details", None) or (
+                        m.get("details", {}) if isinstance(m, dict) else {}
+                    )
 
-                        tag_str = (model_id.split(":")[-1] if ":" in model_id else model_id)
+                    family = getattr(details, "family", None) or (
+                        details.get("family") if isinstance(details, dict) else None
+                    )
+                    families = getattr(details, "families", None) or (
+                        details.get("families") if isinstance(details, dict) else []
+                    )
+                    fam = family or (families[0] if families else None)
 
-                        models.append(
-                            {
-                                "id": model_id,
-                                "name": model_id,
-                                "provider": "Ollama",
-                                "voice": "af_heart",
-                                "context": "8,192 tokens",
-                                "tag": tag_str,
-                                "family": fam,
-                                "parameter_size": details.get("parameter_size"),
-                                "quantization_level": details.get(
-                                    "quantization_level"
-                                ),
-                                "modified_at": m.get("modified_at"),
-                                "size": m.get("size"),
-                                "capabilities": derive_model_capabilities(
-                                    model_id, details
-                                ),
-                            }
-                        )
-                if models:
-                    return models
+                    param_size = getattr(details, "parameter_size", None) or (
+                        details.get("parameter_size")
+                        if isinstance(details, dict)
+                        else None
+                    )
+                    quant_level = getattr(details, "quantization_level", None) or (
+                        details.get("quantization_level")
+                        if isinstance(details, dict)
+                        else None
+                    )
+                    mod_at = getattr(m, "modified_at", None) or (
+                        m.get("modified_at") if isinstance(m, dict) else None
+                    )
+                    if hasattr(mod_at, "isoformat"):
+                        mod_at = mod_at.isoformat()
+                    size_val = getattr(m, "size", None) or (
+                        m.get("size") if isinstance(m, dict) else None
+                    )
+
+                    tag_str = (
+                        model_id.split(":")[-1] if ":" in model_id else model_id
+                    )
+                    details_dict = {
+                        "family": fam,
+                        "families": families,
+                        "parameter_size": param_size,
+                        "quantization_level": quant_level,
+                    }
+
+                    models.append(
+                        {
+                            "id": model_id,
+                            "name": model_id,
+                            "provider": "Ollama",
+                            "voice": "af_heart",
+                            "context": "8,192 tokens",
+                            "tag": tag_str,
+                            "family": fam,
+                            "parameter_size": param_size,
+                            "quantization_level": quant_level,
+                            "modified_at": mod_at,
+                            "size": size_val,
+                            "capabilities": derive_model_capabilities(
+                                model_id, details_dict
+                            ),
+                        }
+                    )
+            if models:
+                return models
         except Exception:
             pass
 
-        # Fallback to /v1/models
+        # Fallback to /v1/models (OpenAI-compatible)
         target_url = f"{host}/v1/models"
 
         try:
@@ -195,6 +237,7 @@ def fetch_live_instance_models(instance):
 
         except Exception:
             pass
+
 
     elif inst_type == "gemini" or "generativelanguage.googleapis.com" in host:
         # First try Google Gemini native models endpoint if API key exists
@@ -578,3 +621,155 @@ def instance_models(instance_id):
 
         db.session.commit()
         return jsonify(record.to_dict())
+
+
+@instances_bp.route("/instances/<instance_id>/models/pull", methods=["POST"])
+@instances_bp.route("/instances/<instance_id>/pull", methods=["POST"])
+def pull_instance_model(instance_id):
+    instance = Instance.query.get_or_404(instance_id)
+    data = request.json or {}
+    model_name = (data.get("model") or data.get("name") or "").strip()
+
+    if not model_name:
+        return jsonify({"error": "Model name is required"}), 400
+
+    props = instance.get_properties()
+    inst_type = (instance.type or "ollama").lower()
+    host = props.get("url") or props.get("host") or props.get("endpoint") or "http://0.0.0.0:11434"
+
+    if inst_type != "ollama":
+        return jsonify({"error": f"Pulling models is only supported for Ollama instances (got '{inst_type}')"}), 400
+
+    if host.endswith("/"):
+        host = host[:-1]
+
+    pull_url = f"{host}/api/pull"
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "AlpacaWeb/1.0",
+    }
+    api_key = props.get("apiKey") or props.get("api_key") or props.get("key") or props.get("api") or ""
+    if api_key and api_key != "NOKEY":
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    allow_ssl = bool(props.get("allow_self_signed_ssl"))
+    context = None
+    if allow_ssl:
+        import ssl
+        context = ssl._create_unverified_context()
+
+    def generate_pull_stream():
+        try:
+            client_kwargs = {"host": host}
+            if headers:
+                client_kwargs["headers"] = headers
+            client = ollama.Client(**client_kwargs)
+
+            for chunk in client.pull(model=model_name, stream=True):
+                if hasattr(chunk, "model_dump"):
+                    chunk_obj = chunk.model_dump()
+                elif hasattr(chunk, "__dict__"):
+                    chunk_obj = {
+                        k: v
+                        for k, v in chunk.__dict__.items()
+                        if not k.startswith("_")
+                    }
+                elif isinstance(chunk, dict):
+                    chunk_obj = chunk
+                else:
+                    chunk_obj = {"status": str(chunk)}
+
+                # Check for completion
+                if chunk_obj.get("status") == "success":
+                    try:
+                        im = InstanceModel.query.filter_by(
+                            instance_id=instance_id, model_id=model_name
+                        ).first()
+                        if not im:
+                            im = InstanceModel(
+                                instance_id=instance_id, model_id=model_name
+                            )
+                            db.session.add(im)
+                            db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+                yield f"data: {json.dumps(chunk_obj)}\n\n"
+
+        except Exception as e:
+            err_msg = str(e)
+            if hasattr(e, "error"):
+                err_msg = str(getattr(e, "error"))
+            yield f"data: {json.dumps({'error': err_msg, 'status': 'error'})}\n\n"
+
+    response = Response(
+        stream_with_context(generate_pull_stream()),
+        mimetype="text/event-stream",
+    )
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
+
+
+@instances_bp.route("/instances/<instance_id>/models/<path:model_name>", methods=["DELETE"])
+@instances_bp.route("/instances/<instance_id>/models", methods=["DELETE"])
+def delete_instance_model(instance_id, model_name=None):
+    instance = Instance.query.get_or_404(instance_id)
+
+    if not model_name:
+        data = request.json or {}
+        model_name = data.get("model") or data.get("name") or data.get("model_name")
+
+    if not model_name:
+        return jsonify({"error": "Model name is required"}), 400
+
+    model_name = str(model_name).strip()
+    props = instance.get_properties()
+    inst_type = (instance.type or "ollama").lower()
+    host = props.get("url") or props.get("host") or props.get("endpoint") or "http://0.0.0.0:11434"
+
+    if host.endswith("/"):
+        host = host[:-1]
+
+    headers = {
+        "User-Agent": "AlpacaWeb/1.0",
+    }
+    api_key = props.get("apiKey") or props.get("api_key") or props.get("key") or props.get("api") or ""
+    if api_key and api_key != "NOKEY":
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    # For Ollama instances, forward deletion using Ollama Python SDK
+    if inst_type == "ollama":
+        try:
+            client_kwargs = {"host": host}
+            if headers:
+                client_kwargs["headers"] = headers
+            client = ollama.Client(**client_kwargs)
+            client.delete(model=model_name)
+        except Exception as e:
+            err_msg = str(e)
+            if hasattr(e, "error"):
+                err_msg = str(getattr(e, "error"))
+            status_code = getattr(e, "status_code", 502) or 502
+            return (
+                jsonify(
+                    {"error": f"Failed deleting model from Ollama instance: {err_msg}"}
+                ),
+                status_code,
+            )
+
+
+    # Remove from InstanceModel table if present
+    try:
+        InstanceModel.query.filter_by(instance_id=instance_id, model_id=model_name).delete()
+        record = OnlineInstanceModelList.query.get(instance_id)
+        if record:
+            cached_list = record.get_list()
+            updated_list = [m for m in cached_list if (m.get("id") if isinstance(m, dict) else str(m)) != model_name]
+            record.set_list(updated_list)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Database cleanup failed: {str(e)}"}), 500
+
+    return jsonify({"success": True, "deleted": model_name}), 200

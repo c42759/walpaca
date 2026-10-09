@@ -63,12 +63,18 @@ class GeneratePrefResolutionTestCase(unittest.TestCase):
 
             db.session.commit()
 
-    @patch("routes.generate.urllib.request.urlopen")
-    def test_generate_without_system_resolves_model_preference_by_pref_id(self, mock_urlopen):
-        mock_response = MagicMock()
-        mock_response.read.side_effect = [b'{"response":"Elementary."}\n', b'']
-        mock_response.readline.side_effect = [b'{"response":"Elementary."}\n', b'']
-        mock_urlopen.return_value = mock_response
+    @patch("ollama.Client")
+    def test_generate_without_system_resolves_model_preference_by_pref_id(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        chunk = MagicMock()
+        chunk.message.content = "Elementary."
+        chunk.message.thinking = ""
+        chunk.done = True
+        chunk.total_duration = 1000000
+
+        mock_client.chat.return_value = iter([chunk])
 
         # Request WITHOUT "system" field, using preference ID as model
         response = self.client.post(
@@ -81,27 +87,32 @@ class GeneratePrefResolutionTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-        # Inspect the payload sent to upstream Ollama URL
-        self.assertTrue(mock_urlopen.called)
-        sent_req = mock_urlopen.call_args[0][0]
-        sent_body = json.loads(sent_req.data.decode("utf-8"))
+        # Inspect the payload sent to upstream Ollama client
+        self.assertTrue(mock_client.chat.called)
+        call_kwargs = mock_client.chat.call_args[1]
 
         # Upstream model name should be resolved from InstanceModel
-        self.assertEqual(sent_body.get("model"), "llama3:latest")
+        self.assertEqual(call_kwargs.get("model"), "llama3:latest")
 
         # Upstream messages should contain system message extracted from ModelPreferences
-        messages = sent_body.get("messages", [])
+        messages = call_kwargs.get("messages", [])
         system_msgs = [m for m in messages if m.get("role") == "system"]
         self.assertTrue(len(system_msgs) > 0)
         self.assertIn("Detective Sherlock", system_msgs[0].get("content"))
         self.assertIn("master consulting detective", system_msgs[0].get("content"))
 
-    @patch("routes.generate.urllib.request.urlopen")
-    def test_generate_without_system_resolves_model_preference_by_model_name(self, mock_urlopen):
-        mock_response = MagicMock()
-        mock_response.read.side_effect = [b'{"response":"Elementary."}\n', b'']
-        mock_response.readline.side_effect = [b'{"response":"Elementary."}\n', b'']
-        mock_urlopen.return_value = mock_response
+    @patch("ollama.Client")
+    def test_generate_without_system_resolves_model_preference_by_model_name(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        chunk = MagicMock()
+        chunk.message.content = "Elementary."
+        chunk.message.thinking = ""
+        chunk.done = True
+        chunk.total_duration = 1000000
+
+        mock_client.chat.return_value = iter([chunk])
 
         # Request WITHOUT "system" field, passing model string "llama3:latest"
         response = self.client.post(
@@ -114,14 +125,14 @@ class GeneratePrefResolutionTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-        self.assertTrue(mock_urlopen.called)
-        sent_req = mock_urlopen.call_args[0][0]
-        sent_body = json.loads(sent_req.data.decode("utf-8"))
+        self.assertTrue(mock_client.chat.called)
+        call_kwargs = mock_client.chat.call_args[1]
 
-        messages = sent_body.get("messages", [])
+        messages = call_kwargs.get("messages", [])
         system_msgs = [m for m in messages if m.get("role") == "system"]
         self.assertTrue(len(system_msgs) > 0)
         self.assertIn("master consulting detective", system_msgs[0].get("content"))
+
 
 
 if __name__ == "__main__":

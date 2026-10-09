@@ -12,6 +12,7 @@ from routes.messages import messages_bp
 from routes.model_preferences import model_preferences_bp
 from routes.personas import personas_bp
 from routes.preferences import preferences_bp
+from routes.prompts import prompts_bp
 from routes.search import search_bp
 from routes.tts import tts_bp
 
@@ -29,4 +30,5 @@ api_bp.register_blueprint(tts_bp)
 api_bp.register_blueprint(generate_bp)
 api_bp.register_blueprint(lorebook_bp)
 api_bp.register_blueprint(personas_bp)
+api_bp.register_blueprint(prompts_bp)
 api_bp.register_blueprint(preferences_bp)

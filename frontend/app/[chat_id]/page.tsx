@@ -18,6 +18,7 @@ import { ChatEmptyState } from "@/components/chat/ChatEmptyState";
 import { ChatMessageList } from "@/components/chat/ChatMessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { PersonaDetailsModal, PersonaDetailsData } from "@/components/chat/PersonaDetailsModal";
+import { CustomPromptsModal } from "@/components/chat/CustomPromptsModal";
 import { BrainIcon, MetadataIcon, ServerIcon, CloseIcon } from "@/components/icons/Icons";
 import { WidgetSimple, WidgetToggle, WidgetWithCustomHeader } from "@/components/ui/Widget";
 
@@ -1458,6 +1459,17 @@ export default function ChatPage() {
     const handleClosePersonaDetailsModal = useCallback(() => {
         setIsPersonaDetailsModalOpen(false);
     }, []);
+
+    // Custom Prompts Modal State & Handler
+    const [isCustomPromptsModalOpen, setIsCustomPromptsModalOpen] = useState<boolean>(false);
+    const handleSelectPrompt = useCallback((promptContent: string) => {
+        setInputText(promptContent);
+        if (promptTextareaRef.current) {
+            promptTextareaRef.current.value = promptContent;
+            autoResizeTextarea(promptTextareaRef.current);
+            promptTextareaRef.current.focus();
+        }
+    }, [autoResizeTextarea]);
 
     // Import Chat State & Handlers
     const [isImporting, setIsImporting] = useState<boolean>(false);
@@ -3956,6 +3968,7 @@ export default function ChatPage() {
                                 isThinkingEnabled={isThinkingEnabled}
                                 setIsThinkingEnabled={setIsThinkingEnabled}
                                 setIsSelectModelModalOpen={setIsSelectModelModalOpen}
+                                onOpenCustomPromptsModal={() => setIsCustomPromptsModalOpen(true)}
                                 selectedChatInstanceId={selectedChatInstanceId}
                                 selectedChatModelId={selectedChatModelId}
                                 instances={instances}
@@ -5269,6 +5282,14 @@ export default function ChatPage() {
                 isOpen={isPersonaDetailsModalOpen}
                 onClose={handleClosePersonaDetailsModal}
                 data={personaDetailsData}
+            />
+
+            {/* Custom Prompts Selection Modal */}
+            <CustomPromptsModal
+                isOpen={isCustomPromptsModalOpen}
+                onClose={() => setIsCustomPromptsModalOpen(false)}
+                onSelectPrompt={handleSelectPrompt}
+                getApiUrl={getApiUrl}
             />
         </>
     );

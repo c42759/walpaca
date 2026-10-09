@@ -195,6 +195,20 @@ export const AudioIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { classNam
         <circle cx="18" cy="16" r="3" />
     </svg>
 );
+export const PromptIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { className?: string; strokeWidth?: number | string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        <line x1="8" y1="9" x2="16" y2="9" />
+        <line x1="8" y1="13" x2="13" y2="13" />
+    </svg>
+);
 
-
-
+export const SparklesIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { className?: string; strokeWidth?: number | string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+        <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+        <path d="M5 3v4" />
+        <path d="M19 17v4" />
+        <path d="M3 5h4" />
+        <path d="M17 19h4" />
+    </svg>
+);

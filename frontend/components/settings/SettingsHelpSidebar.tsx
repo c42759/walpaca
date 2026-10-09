@@ -109,6 +109,28 @@ export const SettingsHelpSidebar: React.FC<SettingsHelpSidebarProps> = ({ active
                 </>
             )}
 
+            {activeSettingsCategory === "manage-prompts" && (
+                <>
+                    <WidgetSimple
+                        title="Custom Prompts"
+                        content={
+                            <p className="text-sm text-[#8e90a6]">
+                                Save reusable prompt snippets and templates. Select them directly in the chat view to quickly populate your message composer.
+                            </p>
+                        }
+                    />
+
+                    <WidgetSimple
+                        title="Prompt Storage"
+                        content={
+                            <p className="text-sm text-[#8e90a6]">
+                                Custom prompts are stored as clean JSON files inside <code className="bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]">prompts/</code>.
+                            </p>
+                        }
+                    />
+                </>
+            )}
+
             {activeSettingsCategory === "about-walpaca" && (
                 <>
                     <WidgetSimple

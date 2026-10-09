@@ -123,7 +123,7 @@ def build_metadata_markdown(stats):
 
 def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_type, initial_thinking=""):
     """
-    Continues consuming tokens from the upstream LLM HTTP response stream when the client disconnects,
+    Continues consuming tokens from the upstream LLM response stream when the client disconnects,
     persisting response content, thinking attachment & metadata attachment to database.
     """
     with app.app_context():
@@ -135,43 +135,75 @@ def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_
         token_count = 0
 
         try:
-            for line in resp:
-                if not line:
-                    continue
-
-                line_str = line.decode("utf-8").strip()
-
-                if not line_str:
+            for item in resp:
+                if item is None:
                     continue
 
                 token = ""
                 thinking_token = ""
 
                 if inst_type == "ollama":
-                    try:
-                        chunk_data = json.loads(line_str)
-                        msg_chunk = chunk_data.get("message", {})
-                        token = msg_chunk.get("content") or chunk_data.get("response", "")
-                        thinking_token = (
-                            msg_chunk.get("thinking")
-                            or chunk_data.get("thinking")
-                            or msg_chunk.get("reasoning_content")
-                            or chunk_data.get("reasoning_content")
+                    msg_chunk = getattr(item, "message", None) or (
+                        item.get("message", {}) if isinstance(item, dict) else None
+                    )
+                    if msg_chunk is not None:
+                        token = (
+                            getattr(msg_chunk, "content", None)
+                            or (msg_chunk.get("content") if isinstance(msg_chunk, dict) else "")
                             or ""
                         )
-                        for k in [
-                            "total_duration",
-                            "load_duration",
-                            "prompt_eval_count",
-                            "prompt_eval_duration",
-                            "eval_count",
-                            "eval_duration",
-                        ]:
-                            if k in chunk_data:
-                                stats[k] = chunk_data[k]
-                    except Exception:
-                        pass
+                        thinking_token = (
+                            getattr(msg_chunk, "thinking", None)
+                            or (msg_chunk.get("thinking") if isinstance(msg_chunk, dict) else "")
+                            or getattr(msg_chunk, "reasoning_content", None)
+                            or (msg_chunk.get("reasoning_content") if isinstance(msg_chunk, dict) else "")
+                            or ""
+                        )
+                    elif isinstance(item, (bytes, str)):
+                        line_str = item.decode("utf-8").strip() if isinstance(item, bytes) else item.strip()
+                        if line_str:
+                            try:
+                                chunk_data = json.loads(line_str)
+                                msg_c = chunk_data.get("message", {})
+                                token = msg_c.get("content") or chunk_data.get("response", "")
+                                thinking_token = (
+                                    msg_c.get("thinking")
+                                    or chunk_data.get("thinking")
+                                    or msg_c.get("reasoning_content")
+                                    or chunk_data.get("reasoning_content")
+                                    or ""
+                                )
+                                for k in [
+                                    "total_duration",
+                                    "load_duration",
+                                    "prompt_eval_count",
+                                    "prompt_eval_duration",
+                                    "eval_count",
+                                    "eval_duration",
+                                ]:
+                                    if k in chunk_data:
+                                        stats[k] = chunk_data[k]
+                            except Exception:
+                                pass
+                    else:
+                        token = getattr(item, "response", "") or (item.get("response", "") if isinstance(item, dict) else "")
+                        thinking_token = getattr(item, "thinking", "") or (item.get("thinking", "") if isinstance(item, dict) else "")
+
+                    for k in [
+                        "total_duration",
+                        "load_duration",
+                        "prompt_eval_count",
+                        "prompt_eval_duration",
+                        "eval_count",
+                        "eval_duration",
+                    ]:
+                        val = getattr(item, k, None) or (item.get(k) if isinstance(item, dict) else None)
+                        if val is not None:
+                            stats[k] = val
                 else:
+                    line_str = item.decode("utf-8").strip() if isinstance(item, bytes) else str(item).strip()
+                    if not line_str:
+                        continue
                     if line_str.startswith("data: "):
                         raw_data = line_str[6:].strip()
                         if raw_data == "[DONE]":
@@ -226,6 +258,7 @@ def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_
                 _upsert_metadata_attachment(message_id, metadata_table)
         except Exception as e:
             print(f"[LLM Background Worker] Error completing response: {e}")
+
 
 
 def resolve_model_preference(model: str, instance_id: str = None):
@@ -775,145 +808,137 @@ def generate_response(chat_id):
         stream_stats = {}
 
         if inst_type == "ollama":
-            target_url = f"{host}/api/chat"
-            payload = {
-                "model": resolved_model_name,
-                "messages": messages_payload,
-                "stream": True,
-                "think": bool(think),
-            }
-
-            if options:
-                payload["options"] = options
-
-            req = urllib.request.Request(
-                target_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers=headers,
-                method="POST",
-            )
-
             try:
-                resp = urllib.request.urlopen(req, timeout=120)
+                import ollama
+
+                client_kwargs = {"host": host}
+                if headers:
+                    client_kwargs["headers"] = headers
+                client = ollama.Client(**client_kwargs)
+
+                chat_kwargs = {
+                    "model": resolved_model_name,
+                    "messages": messages_payload,
+                    "stream": True,
+                }
+                if options:
+                    chat_kwargs["options"] = options
+                if think is not None:
+                    chat_kwargs["think"] = bool(think)
+
+                stream = client.chat(**chat_kwargs)
+
                 try:
-                    for line in resp:
-                        if not line:
-                            continue
-                        try:
-                            line_str = line.decode("utf-8").strip()
-                            if not line_str:
-                                continue
-                            chunk_data = json.loads(line_str)
-                            msg_chunk = chunk_data.get("message", {})
-                            content_delta = msg_chunk.get("content") or chunk_data.get(
-                                "response", ""
+                    for chunk in stream:
+                        msg_chunk = getattr(chunk, "message", None) or (
+                            chunk.get("message", {}) if isinstance(chunk, dict) else {}
+                        )
+
+                        content_delta = (
+                            getattr(msg_chunk, "content", None)
+                            or (msg_chunk.get("content") if isinstance(msg_chunk, dict) else "")
+                            or getattr(chunk, "response", "")
+                            or (chunk.get("response", "") if isinstance(chunk, dict) else "")
+                        )
+                        thinking_delta = (
+                            getattr(msg_chunk, "thinking", None)
+                            or (msg_chunk.get("thinking") if isinstance(msg_chunk, dict) else "")
+                            or getattr(msg_chunk, "reasoning_content", None)
+                            or (msg_chunk.get("reasoning_content") if isinstance(msg_chunk, dict) else "")
+                            or getattr(chunk, "thinking", None)
+                            or (chunk.get("thinking") if isinstance(chunk, dict) else "")
+                            or getattr(chunk, "reasoning_content", None)
+                            or (chunk.get("reasoning_content") if isinstance(chunk, dict) else "")
+                            or ""
+                        )
+                        is_done = getattr(chunk, "done", False) or (
+                            chunk.get("done", False) if isinstance(chunk, dict) else False
+                        )
+
+                        for k in [
+                            "total_duration",
+                            "load_duration",
+                            "prompt_eval_count",
+                            "prompt_eval_duration",
+                            "eval_count",
+                            "eval_duration",
+                        ]:
+                            val = getattr(chunk, k, None) or (
+                                chunk.get(k) if isinstance(chunk, dict) else None
                             )
-                            thinking_delta = (
-                                msg_chunk.get("thinking")
-                                or chunk_data.get("thinking")
-                                or msg_chunk.get("reasoning_content")
-                                or chunk_data.get("reasoning_content")
-                                or ""
-                            )
-                            is_done = chunk_data.get("done", False)
+                            if val is not None:
+                                stream_stats[k] = val
 
-                            for k in [
-                                "total_duration",
-                                "load_duration",
-                                "prompt_eval_count",
-                                "prompt_eval_duration",
-                                "eval_count",
-                                "eval_duration",
-                            ]:
-                                if k in chunk_data:
-                                    stream_stats[k] = chunk_data[k]
+                        if content_delta:
+                            accumulated_content += content_delta
+                            chunk_count += 1
+                        if thinking_delta:
+                            accumulated_thinking += thinking_delta
 
-                            if content_delta:
-                                accumulated_content += content_delta
-                                chunk_count += 1
-                            if thinking_delta:
-                                accumulated_thinking += thinking_delta
-
-                            metadata_table = None
-                            now = time.time()
-                            if message_id:
-                                if is_done:
-                                    if not stream_stats.get("total_duration"):
-                                        elapsed_ns = int(
-                                            (time.time() - start_time) * 1e9
-                                        )
-                                        stream_stats["total_duration"] = elapsed_ns
-                                        stream_stats["eval_count"] = (
-                                            stream_stats.get("eval_count")
-                                            or chunk_count
-                                        )
-                                        stream_stats["eval_duration"] = (
-                                            stream_stats.get("eval_duration")
-                                            or elapsed_ns
-                                        )
-                                    metadata_table = build_metadata_markdown(
-                                        stream_stats
+                        metadata_table = None
+                        now = time.time()
+                        if message_id:
+                            if is_done:
+                                if not stream_stats.get("total_duration"):
+                                    elapsed_ns = int(
+                                        (time.time() - start_time) * 1e9
                                     )
-                                    try:
-                                        msg = Message.query.get(message_id)
-                                        if msg:
-                                            msg.content = accumulated_content
-                                            db.session.commit()
-                                        if accumulated_thinking:
-                                            _upsert_thought_attachment(
-                                                message_id, accumulated_thinking
-                                            )
-                                        _upsert_metadata_attachment(
-                                            message_id, metadata_table
+                                    stream_stats["total_duration"] = elapsed_ns
+                                    stream_stats["eval_count"] = (
+                                        stream_stats.get("eval_count")
+                                        or chunk_count
+                                    )
+                                    stream_stats["eval_duration"] = (
+                                        stream_stats.get("eval_duration")
+                                        or elapsed_ns
+                                    )
+                                metadata_table = build_metadata_markdown(
+                                    stream_stats
+                                )
+                                try:
+                                    msg = Message.query.get(message_id)
+                                    if msg:
+                                        msg.content = accumulated_content
+                                        db.session.commit()
+                                    if accumulated_thinking:
+                                        _upsert_thought_attachment(
+                                            message_id, accumulated_thinking
                                         )
-                                    except Exception:
-                                        pass
-                                elif now - last_db_update >= 2.0:
-                                    try:
-                                        msg = Message.query.get(message_id)
-                                        if msg:
-                                            msg.content = (
-                                                accumulated_content + " **processing**"
-                                            )
-                                            db.session.commit()
-                                        if accumulated_thinking:
-                                            _upsert_thought_attachment(
-                                                message_id, accumulated_thinking
-                                            )
-                                        last_db_update = now
-                                    except Exception:
-                                        pass
+                                    _upsert_metadata_attachment(
+                                        message_id, metadata_table
+                                    )
+                                except Exception:
+                                    pass
+                            elif now - last_db_update >= 2.0:
+                                try:
+                                    msg = Message.query.get(message_id)
+                                    if msg:
+                                        msg.content = (
+                                            accumulated_content + " **processing**"
+                                        )
+                                        db.session.commit()
+                                    if accumulated_thinking:
+                                        _upsert_thought_attachment(
+                                            message_id, accumulated_thinking
+                                        )
+                                    last_db_update = now
+                                except Exception:
+                                    pass
 
-                            out_payload = {
-                                "id": message_id,
-                                "model": model,
-                                "content": content_delta,
-                                "thinking": thinking_delta,
-                                "metadata": metadata_table,
-                                "done": is_done,
-                            }
-                            yield f"data: {json.dumps(out_payload)}\n\n"
-                        except GeneratorExit:
-                            threading.Thread(
-                                target=consume_upstream_to_completion,
-                                args=(
-                                    resp,
-                                    app,
-                                    message_id,
-                                    accumulated_content,
-                                    inst_type,
-                                    accumulated_thinking,
-                                ),
-                                daemon=True,
-                            ).start()
-                            return
-                        except Exception:
-                            yield f"data: {line_str}\n\n"
+                        out_payload = {
+                            "id": message_id,
+                            "model": model,
+                            "content": content_delta,
+                            "thinking": thinking_delta,
+                            "metadata": metadata_table,
+                            "done": is_done,
+                        }
+                        yield f"data: {json.dumps(out_payload)}\n\n"
                 except GeneratorExit:
                     threading.Thread(
                         target=consume_upstream_to_completion,
                         args=(
-                            resp,
+                            stream,
                             app,
                             message_id,
                             accumulated_content,
@@ -924,11 +949,15 @@ def generate_response(chat_id):
                     ).start()
                     return
             except Exception as e:
+                err_msg = str(e)
+                if hasattr(e, "error"):
+                    err_msg = str(getattr(e, "error"))
                 err_payload = {
-                    "error": f"Failed streaming from Ollama instance: {str(e)}",
+                    "error": f"Failed streaming from Ollama instance: {err_msg}",
                     "done": True,
                 }
                 yield f"data: {json.dumps(err_payload)}\n\n"
+
 
         else:
             target_url = (

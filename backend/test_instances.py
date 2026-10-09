@@ -1,7 +1,8 @@
 import unittest
+from unittest.mock import patch, MagicMock
 
 from main import create_app
-from models import db
+from models import db, InstanceModel, Chat, Message
 
 
 class InstanceTestCase(unittest.TestCase):
@@ -171,6 +172,66 @@ class InstanceTestCase(unittest.TestCase):
         self.assertEqual(get_pref.status_code, 200)
         self.assertEqual(get_pref.get_json()["voice"], "af_heart")
 
+    def test_pull_model_validation(self):
+        # 1. Non-existent instance -> 404
+        res404 = self.client.post("/api/instances/does-not-exist/models/pull", json={"model": "llama3.2"})
+        self.assertEqual(res404.status_code, 404)
+
+        # 2. Non-ollama instance -> 400
+        self.client.post("/api/instances", json={"id": "openai-inst", "type": "openai"})
+        res_non_ollama = self.client.post("/api/instances/openai-inst/models/pull", json={"model": "gpt-4"})
+        self.assertEqual(res_non_ollama.status_code, 400)
+        self.assertIn("Ollama", res_non_ollama.get_json()["error"])
+
+        # 3. Empty model name -> 400
+        self.client.post("/api/instances", json={"id": "ollama-inst", "type": "ollama"})
+        res_empty = self.client.post("/api/instances/ollama-inst/models/pull", json={"model": ""})
+        self.assertEqual(res_empty.status_code, 400)
+        self.assertIn("Model name is required", res_empty.get_json()["error"])
+
+        # 4. Valid pull request returns streaming event response
+        res_stream = self.client.post("/api/instances/ollama-inst/models/pull", json={"model": "llama3.2"})
+        self.assertEqual(res_stream.status_code, 200)
+        self.assertEqual(res_stream.mimetype, "text/event-stream")
+
+    def test_delete_model_endpoint(self):
+        # 1. Non-existent instance -> 404
+        res404 = self.client.delete("/api/instances/missing-inst/models/llama3")
+        self.assertEqual(res404.status_code, 404)
+
+        # 2. Setup instance and sync models
+        self.client.post("/api/instances", json={"id": "openai-dummy", "type": "openai"})
+        self.client.post("/api/instances/openai-dummy/models", json={"list": [{"id": "gpt-custom", "name": "GPT Custom"}]})
+
+        with self.app.app_context():
+            im = InstanceModel.query.filter_by(instance_id="openai-dummy", model_id="gpt-custom").first()
+            self.assertIsNotNone(im)
+
+        # 3. Delete model via URL path
+        del_res = self.client.delete("/api/instances/openai-dummy/models/gpt-custom")
+        self.assertEqual(del_res.status_code, 200)
+        self.assertTrue(del_res.get_json()["success"])
+        self.assertEqual(del_res.get_json()["deleted"], "gpt-custom")
+
+        # Verify removed from database
+        with self.app.app_context():
+            im_after = InstanceModel.query.filter_by(instance_id="openai-dummy", model_id="gpt-custom").first()
+            self.assertIsNone(im_after)
+
+    @patch("ollama.Client")
+    def test_delete_model_ollama_sdk_call(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        self.client.post("/api/instances", json={"id": "ollama-del-inst", "type": "ollama"})
+        self.client.post("/api/instances/ollama-del-inst/models", json={"list": [{"id": "qwen2.5:7b", "name": "Qwen 2.5 7B"}]})
+
+        del_res = self.client.delete("/api/instances/ollama-del-inst/models/qwen2.5:7b")
+        self.assertEqual(del_res.status_code, 200)
+        self.assertTrue(del_res.get_json()["success"])
+        mock_client.delete.assert_called_once_with(model="qwen2.5:7b")
+
 
 if __name__ == "__main__":
     unittest.main()
+

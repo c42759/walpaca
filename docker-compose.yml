@@ -13,6 +13,7 @@ services:
       - ./alpaca.db:/app/alpaca.db
       - ./personas:/app/personas
       - ./lorebook:/app/lorebook
+      - ./prompts:/app/prompts
       - ./config:/app/config
     environment:
       ALPACA_DB_PATH: "/app/alpaca.db"

@@ -12,9 +12,10 @@ import {
     InfoIcon,
     SearchIcon,
     ArrowLeftIcon,
+    PromptIcon,
 } from "@/components/icons/Icons";
 
-export type SettingsCategory = "import-chat" | "manage-instances" | "manage-model-preferences" | "preferences" | "manage-lorebook" | "manage-personas" | "about-walpaca";
+export type SettingsCategory = "import-chat" | "manage-instances" | "manage-model-preferences" | "preferences" | "manage-lorebook" | "manage-prompts" | "manage-personas" | "about-walpaca";
 
 export interface SettingsSidebarProps {
     activeSettingsCategory: SettingsCategory;
@@ -60,13 +61,15 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
                     ? "manage-model-preferences"
                     : pathname === "/settings/lorebook"
                         ? "manage-lorebook"
-                        : pathname === "/settings/personas"
-                            ? "manage-personas"
-                            : pathname === "/settings/preferences"
-                                ? "preferences"
-                                : pathname === "/settings/import"
-                                    ? "import-chat"
-                                    : activeSettingsCategory;
+                        : pathname === "/settings/prompts"
+                            ? "manage-prompts"
+                            : pathname === "/settings/personas"
+                                ? "manage-personas"
+                                : pathname === "/settings/preferences"
+                                    ? "preferences"
+                                    : pathname === "/settings/import"
+                                        ? "import-chat"
+                                        : activeSettingsCategory;
 
     const categories: Array<{
         id: SettingsCategory;
@@ -111,6 +114,13 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
                 icon: <BookIcon className="w-5 h-5 text-white" />,
             },
             {
+                id: "manage-prompts",
+                label: "Manage Prompts",
+                description: "Custom reusable prompts & templates",
+                gradient: "linear-gradient(135deg, #a855f7 0%, #9333ea 100%)",
+                icon: <PromptIcon className="w-5 h-5 text-white" />,
+            },
+            {
                 id: "preferences",
                 label: "Preferences",
                 description: "Global defaults, theme, and generation parameters",
@@ -137,6 +147,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
         "manage-instances": "/settings/instances",
         "manage-model-preferences": "/settings/model-preferences",
         "manage-lorebook": "/settings/lorebook",
+        "manage-prompts": "/settings/prompts",
         "manage-personas": "/settings/personas",
         preferences: "/settings/preferences",
         "about-walpaca": "/settings/about",

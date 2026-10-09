@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-import { BrainIcon } from "../icons/Icons";
+import { BrainIcon, PromptIcon } from "../icons/Icons";
 
 export interface SelectedAttachment {
     id: string;
@@ -22,6 +22,7 @@ export interface ChatInputProps {
     isThinkingEnabled: boolean;
     setIsThinkingEnabled: React.Dispatch<React.SetStateAction<boolean>>;
     setIsSelectModelModalOpen: (open: boolean) => void;
+    onOpenCustomPromptsModal?: () => void;
     selectedChatInstanceId: string;
     selectedChatModelId: string;
     instances: Array<{ id: string; properties?: { name?: string }; type?: string }>;
@@ -67,6 +68,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     isThinkingEnabled,
     setIsThinkingEnabled,
     setIsSelectModelModalOpen,
+    onOpenCustomPromptsModal,
     selectedChatInstanceId,
     selectedChatModelId,
     instances,
@@ -333,13 +335,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     className="flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-3.5 py-2.5 sm:px-5 sm:py-3.5 text-base sm:text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]"
                 />
 
-                <button type="button" className="hidden sm:flex p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0" title="Emoji">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                        <line x1="9" y1="9" x2="9.01" y2="9" />
-                        <line x1="15" y1="9" x2="15.01" y2="9" />
-                    </svg>
+                <button
+                    type="button"
+                    onClick={onOpenCustomPromptsModal}
+                    className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0 cursor-pointer"
+                    title="Custom Prompts"
+                >
+                    <PromptIcon className="w-5 h-5" />
                 </button>
 
                 <button
