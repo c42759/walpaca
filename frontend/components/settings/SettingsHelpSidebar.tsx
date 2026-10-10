@@ -131,6 +131,28 @@ export const SettingsHelpSidebar: React.FC<SettingsHelpSidebarProps> = ({ active
                 </>
             )}
 
+            {activeSettingsCategory === "manage-mcp" && (
+                <>
+                    <WidgetSimple
+                        title="Model Context Protocol"
+                        content={
+                            <p className="text-sm text-[#8e90a6]">
+                                Connect external MCP tools like web search, database querying, and filesystem access to your LLM conversations.
+                            </p>
+                        }
+                    />
+
+                    <WidgetSimple
+                        title="SSE / HTTP Endpoints"
+                        content={
+                            <p className="text-sm text-[#8e90a6]">
+                                Connect containerized or remote MCP microservers over SSE/HTTP endpoints (e.g., <code className="bg-[#eaecf9] px-1 py-0.5 rounded text-[#7678ed]">http://server:8000/sse</code>).
+                            </p>
+                        }
+                    />
+                </>
+            )}
+
             {activeSettingsCategory === "about-walpaca" && (
                 <>
                     <WidgetSimple

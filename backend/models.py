@@ -342,3 +342,105 @@ class PinSession(db.Model):
             "is_valid": self.is_valid(),
         }
 
+
+class McpServer(db.Model):
+    __tablename__ = "mcp_server"
+
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    name = db.Column(db.String, nullable=False)
+    description = db.Column(db.String, nullable=True)
+    is_enabled = db.Column(db.Integer, nullable=False, default=1)
+    transport_type = db.Column(db.String, nullable=False, default="sse")  # "sse" or "http"
+    command = db.Column(db.String, nullable=True)  # e.g., "npx" or "python"
+    args = db.Column(db.Text, nullable=False, default="[]")
+    env = db.Column(db.Text, nullable=False, default="{}")
+    url = db.Column(db.String, nullable=True)  # SSE URL endpoint
+    created_at = db.Column(
+        db.String,
+        nullable=False,
+        default=current_alpaca_timestamp,
+    )
+    updated_at = db.Column(
+        db.String,
+        nullable=False,
+        default=current_alpaca_timestamp,
+    )
+
+    tools = db.relationship(
+        "McpToolConfig",
+        backref="server_ref",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    def get_args(self) -> list:
+        try:
+            val = json.loads(self.args) if self.args else []
+            return val if isinstance(val, list) else []
+        except Exception:
+            return []
+
+    def set_args(self, val: list):
+        self.args = json.dumps(val if isinstance(val, list) else [])
+
+    def get_env(self) -> dict:
+        try:
+            val = json.loads(self.env) if self.env else {}
+            return val if isinstance(val, dict) else {}
+        except Exception:
+            return {}
+
+    def set_env(self, val: dict):
+        self.env = json.dumps(val if isinstance(val, dict) else {})
+
+    def to_dict(self, include_tools: bool = True):
+        data = {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "is_enabled": bool(self.is_enabled),
+            "transport_type": self.transport_type,
+            "command": self.command,
+            "args": self.get_args(),
+            "env": self.get_env(),
+            "url": self.url,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+        if include_tools:
+            data["tools"] = [t.to_dict() for t in self.tools]
+        return data
+
+
+class McpToolConfig(db.Model):
+    __tablename__ = "mcp_tool_config"
+
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    server_id = db.Column(db.String, db.ForeignKey("mcp_server.id"), nullable=False)
+    name = db.Column(db.String, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    schema_json = db.Column(db.Text, nullable=False, default="{}")
+    is_enabled = db.Column(db.Integer, nullable=False, default=1)
+    requires_approval = db.Column(db.Integer, nullable=False, default=0)
+
+    def get_schema(self) -> dict:
+        try:
+            val = json.loads(self.schema_json) if self.schema_json else {}
+            return val if isinstance(val, dict) else {}
+        except Exception:
+            return {}
+
+    def set_schema(self, val: dict):
+        self.schema_json = json.dumps(val if isinstance(val, dict) else {})
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "server_id": self.server_id,
+            "name": self.name,
+            "description": self.description,
+            "schema": self.get_schema(),
+            "is_enabled": bool(self.is_enabled),
+            "requires_approval": bool(self.requires_approval),
+        }
+

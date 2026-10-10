@@ -13,9 +13,10 @@ import {
     SearchIcon,
     ArrowLeftIcon,
     PromptIcon,
+    PuzzleIcon,
 } from "@/components/icons/Icons";
 
-export type SettingsCategory = "import-chat" | "manage-instances" | "manage-model-preferences" | "preferences" | "manage-lorebook" | "manage-prompts" | "manage-personas" | "about-walpaca";
+export type SettingsCategory = "import-chat" | "manage-instances" | "manage-model-preferences" | "preferences" | "manage-lorebook" | "manage-prompts" | "manage-mcp" | "manage-personas" | "about-walpaca";
 
 export interface SettingsSidebarProps {
     activeSettingsCategory: SettingsCategory;
@@ -63,13 +64,15 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
                         ? "manage-lorebook"
                         : pathname === "/settings/prompts"
                             ? "manage-prompts"
-                            : pathname === "/settings/personas"
-                                ? "manage-personas"
-                                : pathname === "/settings/preferences"
-                                    ? "preferences"
-                                    : pathname === "/settings/import"
-                                        ? "import-chat"
-                                        : activeSettingsCategory;
+                            : pathname === "/settings/mcp"
+                                ? "manage-mcp"
+                                : pathname === "/settings/personas"
+                                    ? "manage-personas"
+                                    : pathname === "/settings/preferences"
+                                        ? "preferences"
+                                        : pathname === "/settings/import"
+                                            ? "import-chat"
+                                            : activeSettingsCategory;
 
     const categories: Array<{
         id: SettingsCategory;
@@ -87,38 +90,45 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
             },
             {
                 id: "manage-instances",
-                label: "Manage Instances",
+                label: "Instances",
                 description: "Configure Ollama, OpenAI, & API backends",
                 gradient: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
                 icon: <ServerIcon className="w-5 h-5 text-white" />,
             },
             {
                 id: "manage-model-preferences",
-                label: "Manage Model Preferences",
+                label: "Model Preferences",
                 description: "Customize character, avatar, voice, and context per model",
                 gradient: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
                 icon: <BoxIcon className="w-5 h-5 text-white" />,
             },
             {
                 id: "manage-personas",
-                label: "Manage Personas",
+                label: "Personas",
                 description: "Custom character profiles & avatars",
                 gradient: "linear-gradient(135deg, #ec4899 0%, #db2777 100%)",
                 icon: <UserIcon className="w-5 h-5 text-white" />,
             },
             {
                 id: "manage-lorebook",
-                label: "Manage Lorebook",
+                label: "Lorebook",
                 description: "World info entries and context keywords",
                 gradient: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
                 icon: <BookIcon className="w-5 h-5 text-white" />,
             },
             {
                 id: "manage-prompts",
-                label: "Manage Prompts",
+                label: "Prompts",
                 description: "Custom reusable prompts & templates",
                 gradient: "linear-gradient(135deg, #a855f7 0%, #9333ea 100%)",
                 icon: <PromptIcon className="w-5 h-5 text-white" />,
+            },
+            {
+                id: "manage-mcp",
+                label: "MCP Servers",
+                description: "Model Context Protocol tools & plugins",
+                gradient: "linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)",
+                icon: <PuzzleIcon className="w-5 h-5 text-white" />,
             },
             {
                 id: "preferences",
@@ -148,6 +158,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({ activeSettings
         "manage-model-preferences": "/settings/model-preferences",
         "manage-lorebook": "/settings/lorebook",
         "manage-prompts": "/settings/prompts",
+        "manage-mcp": "/settings/mcp",
         "manage-personas": "/settings/personas",
         preferences: "/settings/preferences",
         "about-walpaca": "/settings/about",
