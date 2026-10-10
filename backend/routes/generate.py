@@ -20,6 +20,7 @@ from models import InstanceModel
 from models import ModelPreferences
 from models import generate_uuid
 from models import current_alpaca_timestamp
+from utils.mcp_manager import McpManager
 
 generate_bp = Blueprint("generate", __name__)
 
@@ -63,6 +64,25 @@ def _upsert_metadata_attachment(message_id, metadata_table):
                 content=metadata_table,
             )
             db.session.add(att)
+        db.session.commit()
+    except Exception:
+        pass
+
+
+def _add_tool_attachment(message_id, tool_name, tool_data):
+    """Save an Attachment of type 'tool' for a message containing execution details."""
+    if not message_id or not tool_data:
+        return
+    try:
+        content_str = json.dumps(tool_data) if not isinstance(tool_data, str) else tool_data
+        att = Attachment(
+            id=generate_uuid(),
+            message_id=message_id,
+            type="tool",
+            name=f"Tool: {tool_name}",
+            content=content_str,
+        )
+        db.session.add(att)
         db.session.commit()
     except Exception:
         pass
@@ -795,6 +815,16 @@ def generate_response(chat_id):
         except (ValueError, TypeError):
             pass
 
+    # Resolve active MCP tools
+    active_mcp_tuples = (
+        McpManager.get_enabled_tools()
+        if data.get("mcp_enabled", True)
+        else []
+    )
+    tool_map = {tool.name: (server, tool) for server, tool in active_mcp_tuples}
+    ollama_tools = McpManager.to_ollama_tools(active_mcp_tuples) if active_mcp_tuples else None
+    openai_tools = McpManager.to_openai_tools(active_mcp_tuples) if active_mcp_tuples else None
+
     def generate_stream():
         options = {"think": bool(think)}
 
@@ -815,7 +845,6 @@ def generate_response(chat_id):
                     client_kwargs["headers"] = headers
                 client = ollama.Client(**client_kwargs)
 
-
                 chat_kwargs = {
                     "model": resolved_model_name,
                     "messages": messages_payload,
@@ -825,6 +854,8 @@ def generate_response(chat_id):
                     chat_kwargs["options"] = options
                 if think is not None:
                     chat_kwargs["think"] = bool(think)
+                if ollama_tools:
+                    chat_kwargs["tools"] = ollama_tools
 
                 stream = client.chat(**chat_kwargs)
 
@@ -833,6 +864,53 @@ def generate_response(chat_id):
                         msg_chunk = getattr(chunk, "message", None) or (
                             chunk.get("message", {}) if isinstance(chunk, dict) else {}
                         )
+
+                        raw_tool_calls = getattr(msg_chunk, "tool_calls", None) or (
+                            msg_chunk.get("tool_calls") if isinstance(msg_chunk, dict) else None
+                        )
+                        if raw_tool_calls:
+                            for tc in raw_tool_calls:
+                                fn = getattr(tc, "function", None) or (tc.get("function") if isinstance(tc, dict) else {})
+                                t_name = getattr(fn, "name", None) or (fn.get("name") if isinstance(fn, dict) else "")
+                                t_args = getattr(fn, "arguments", None) or (fn.get("arguments") if isinstance(fn, dict) else {})
+                                if isinstance(t_args, str):
+                                    try:
+                                        t_args = json.loads(t_args)
+                                    except Exception:
+                                        pass
+
+                                yield f"data: {json.dumps({'id': message_id, 'type': 'tool_call', 'name': t_name, 'args': t_args, 'done': False})}\n\n"
+
+                                t_result = {}
+                                if t_name in tool_map:
+                                    srv, _ = tool_map[t_name]
+                                    try:
+                                        t_result = McpManager.call_tool(srv.id, t_name, t_args)
+                                    except Exception as e:
+                                        t_result = {"error": str(e)}
+                                else:
+                                    t_result = {"error": f"Tool '{t_name}' not available"}
+
+                                yield f"data: {json.dumps({'id': message_id, 'type': 'tool_result', 'name': t_name, 'result': t_result, 'done': False})}\n\n"
+
+                                if message_id:
+                                    _add_tool_attachment(message_id, t_name, {"call": {"name": t_name, "arguments": t_args}, "result": t_result})
+
+                                messages_payload.append({
+                                    "role": "assistant",
+                                    "content": "",
+                                    "tool_calls": [tc if isinstance(tc, dict) else {"function": {"name": t_name, "arguments": t_args}}],
+                                })
+                                messages_payload.append({
+                                    "role": "tool",
+                                    "content": json.dumps(t_result) if not isinstance(t_result, str) else t_result,
+                                    "name": t_name,
+                                })
+
+                            chat_kwargs["messages"] = messages_payload
+                            chat_kwargs.pop("tools", None)
+                            stream = client.chat(**chat_kwargs)
+                            continue
 
                         content_delta = (
                             getattr(msg_chunk, "content", None)
@@ -974,6 +1052,8 @@ def generate_response(chat_id):
                 "messages": messages_payload,
                 "stream": True,
             }
+            if openai_tools:
+                payload["tools"] = openai_tools
             # Only send valid top-level OpenAI/Gemini parameters, NOT options dictionary
             temp = (
                 data.get("temperature")

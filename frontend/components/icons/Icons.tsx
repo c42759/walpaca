@@ -212,3 +212,15 @@ export const SparklesIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { class
         <path d="M17 19h4" />
     </svg>
 );
+
+export const ToolIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { className?: string; strokeWidth?: number | string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+    </svg>
+);
+
+export const PuzzleIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { className?: string; strokeWidth?: number | string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19.439 7.85c0-1.57-1.28-2.85-2.85-2.85v-1.5a1.5 1.5 0 0 0-1.5-1.5h-4.18a1.5 1.5 0 0 0-1.5 1.5v1.5c-1.57 0-2.85 1.28-2.85 2.85h-1.5a1.5 1.5 0 0 0-1.5 1.5v4.18a1.5 1.5 0 0 0 1.5 1.5h1.5c0 1.57 1.28 2.85 2.85 2.85v1.5a1.5 1.5 0 0 0 1.5 1.5h4.18a1.5 1.5 0 0 0 1.5-1.5v-1.5c1.57 0 2.85-1.28 2.85-2.85h1.5a1.5 1.5 0 0 0 1.5-1.5v-4.18a1.5 1.5 0 0 0-1.5-1.5h-1.5z" />
+    </svg>
+);
