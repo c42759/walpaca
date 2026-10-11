@@ -1664,7 +1664,7 @@ export default function ChatPage() {
             } else if (line.trim() === "----------------------------------------") {
                 flushMessage();
                 currentSender = "";
-            } else if (!line.startsWith("===") && !line.startsWith("Generated from AlpacaWeb")) {
+            } else if (!line.startsWith("===") && !line.startsWith("Generated from Walpaca")) {
                 currentLines.push(line);
             }
         });
