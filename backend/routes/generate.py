@@ -1246,4 +1246,6 @@ def generate_response(chat_id):
     )
     response.headers["Cache-Control"] = "no-cache"
     response.headers["X-Accel-Buffering"] = "no"
+
     return response
+
