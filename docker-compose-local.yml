@@ -1,0 +1,68 @@
+services:
+  frontend:
+    container_name: walpaca_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:3100:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      CORS_DOMAINS: "${CORS_DOMAINS}"
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
+    command: sh run_server.sh
+
+  backend:
+    container_name: walpaca_backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:5100:5000"
+    volumes:
+      - ./backend:/app
+      - ./alpaca.db:/app/alpaca.db
+      - ./personas:/app/personas
+      - ./lorebook:/app/lorebook
+      - ./prompts:/app/prompts
+      - ./config:/app/config
+    environment:
+      ALPACA_DB_PATH: "/app/alpaca.db"
+      TTS_SERVER_URL: "http://kokoro:8880"
+      TTS_API_KEY: ${KOKORO_API_KEY}
+      CORS_DOMAINS: "${CORS_DOMAINS}"
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
+    command: sh run_server.sh
+
+  kokoro:
+    container_name: walpaca_kokoro
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest # or -gpu
+    volumes:
+      - kokoro-data:/var/lib/kokoro
+    environment:
+      KOKORO_API_KEY: ${KOKORO_API_KEY}
+      HF_HUB_OFFLINE: 0 # 0 = Allows downloads, 1 = Offline mode
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
+    restart: always
+
+volumes:
+  kokoro-data:
+  kokoro_cache:
