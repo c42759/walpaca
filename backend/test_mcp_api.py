@@ -116,6 +116,88 @@ class TestMcpApi(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(res.get_json()), 0)
 
+    @patch("utils.mcp_manager.McpManager.call_tool")
+    @patch("utils.mcp_manager.McpManager.get_enabled_tools")
+    @patch("ollama.Client")
+    def test_generate_with_mcp_tool_calling_loop(self, mock_ollama_client_cls, mock_get_tools, mock_call_tool):
+        from models import Instance, Chat, Message, Attachment
+
+        with self.app.app_context():
+            inst = Instance(
+                id="test-ollama-inst",
+                type="ollama",
+                properties=json.dumps({"url": "http://localhost:11434"}),
+                is_enabled=1,
+            )
+            db.session.add(inst)
+            chat = Chat(id="test-tool-chat", name="Tool Chat")
+            db.session.add(chat)
+            db.session.commit()
+
+        mock_server = MagicMock()
+        mock_server.id = "srv-1"
+        mock_tool = MagicMock()
+        mock_tool.name = "web_search"
+        mock_get_tools.return_value = [(mock_server, mock_tool)]
+        mock_call_tool.return_value = {"results": "Sunny in Lisbon, 22C"}
+
+        mock_client = MagicMock()
+        mock_ollama_client_cls.return_value = mock_client
+
+        # Turn 1: Model requests tool call
+        chunk_tool = MagicMock()
+        chunk_tool.message.content = ""
+        chunk_tool.message.thinking = ""
+        chunk_tool.message.tool_calls = [
+            {"function": {"name": "web_search", "arguments": {"query": "Lisbon weather"}}}
+        ]
+        chunk_tool.done = False
+
+        # Turn 2: Model answers after tool execution
+        chunk_text = MagicMock()
+        chunk_text.message.content = "It is sunny in Lisbon with 22°C."
+        chunk_text.message.thinking = ""
+        chunk_text.message.tool_calls = None
+        chunk_text.done = True
+        chunk_text.total_duration = 5000000
+
+        mock_client.chat.side_effect = [
+            iter([chunk_tool]),
+            iter([chunk_text]),
+        ]
+
+        res = self.client.post("/api/chats/test-tool-chat/generate", json={
+            "model": "llama3",
+            "prompt": "What is the weather in Lisbon?",
+            "instance_id": "test-ollama-inst",
+        })
+        self.assertEqual(res.status_code, 200)
+        body = res.get_data(as_text=True)
+
+        # Verify SSE events
+        self.assertIn('"type": "tool_call"', body)
+        self.assertIn('"name": "web_search"', body)
+        self.assertIn('"type": "tool_result"', body)
+        self.assertIn('"Sunny in Lisbon, 22C"', body)
+        self.assertIn("It is sunny in Lisbon with 22°C.", body)
+
+        # Verify ollama.Client.chat was called twice (turn 1 with prompt, turn 2 with tool result)
+        self.assertEqual(mock_client.chat.call_count, 2)
+        turn2_messages = mock_client.chat.call_args_list[1][1]["messages"]
+        role_list = [m["role"] for m in turn2_messages]
+        self.assertIn("user", role_list)
+        self.assertIn("assistant", role_list)
+        self.assertIn("tool", role_list)
+
+        # Verify DB persisted answer and tool attachment
+        with self.app.app_context():
+            msg = Message.query.filter_by(chat_id="test-tool-chat", role="assistant").first()
+            self.assertIsNotNone(msg)
+            self.assertEqual(msg.content, "It is sunny in Lisbon with 22°C.")
+            tool_att = Attachment.query.filter_by(message_id=msg.id, type="tool").first()
+            self.assertIsNotNone(tool_att)
+            self.assertIn("web_search", tool_att.name)
+
 
 if __name__ == "__main__":
     unittest.main()

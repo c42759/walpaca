@@ -2,8 +2,6 @@ import json
 import time
 import threading
 import ollama
-import urllib.error
-import urllib.request
 
 from flask import Blueprint
 from flask import request
@@ -88,9 +86,32 @@ def _add_tool_attachment(message_id, tool_name, tool_data):
         pass
 
 
+def _persist_message_update(
+    message_id: str,
+    content: str,
+    thinking: str = "",
+    metadata_table: str = None,
+    is_processing: bool = False,
+):
+    """Updates Message content, thought attachment, and metadata table in the database."""
+    if not message_id:
+        return
+    try:
+        msg = Message.query.get(message_id)
+        if msg:
+            msg.content = (content + " **processing**") if is_processing else content
+            db.session.commit()
+        if thinking:
+            _upsert_thought_attachment(message_id, thinking)
+        if metadata_table:
+            _upsert_metadata_attachment(message_id, metadata_table)
+    except Exception:
+        pass
+
+
 def format_duration(ns):
     """Format nanoseconds into human-readable duration (MM:SS or X seconds)."""
-    if not ns or ns <= 0:
+    if not isinstance(ns, (int, float)) or ns <= 0:
         return "0 seconds"
     s = ns / 1e9
     if s >= 60:
@@ -109,7 +130,11 @@ def format_duration(ns):
 
 def format_rate(count, duration_ns):
     """Format token evaluation rate (tokens/s)."""
-    if not count or not duration_ns or duration_ns <= 0:
+    if (
+        not isinstance(count, (int, float))
+        or not isinstance(duration_ns, (int, float))
+        or duration_ns <= 0
+    ):
         return "0.00 tokens/s"
 
     rate = count / (duration_ns / 1e9)
@@ -142,11 +167,16 @@ def build_metadata_markdown(stats):
     )
 
 
-def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_type, initial_thinking=""):
+def consume_upstream_to_completion(
+    resp, app, message_id, initial_content, inst_type="ollama", initial_thinking=""
+):
     """
-    Continues consuming tokens from the upstream LLM response stream when the client disconnects,
+    Continues consuming tokens from upstream Ollama response stream when client disconnects,
     persisting response content, thinking attachment & metadata attachment to database.
     """
+    if isinstance(inst_type, str) and inst_type not in ("ollama", "openai", "gemini", ""):
+        initial_thinking = inst_type
+
     with app.app_context():
         start_time = time.time()
         full_text = initial_content
@@ -163,84 +193,37 @@ def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_
                 token = ""
                 thinking_token = ""
 
-                if inst_type == "ollama":
-                    msg_chunk = getattr(item, "message", None) or (
-                        item.get("message", {}) if isinstance(item, dict) else None
+                msg_chunk = getattr(item, "message", None) or (
+                    item.get("message", {}) if isinstance(item, dict) else None
+                )
+                if msg_chunk is not None:
+                    token = (
+                        getattr(msg_chunk, "content", None)
+                        or (msg_chunk.get("content") if isinstance(msg_chunk, dict) else "")
+                        or ""
                     )
-                    if msg_chunk is not None:
-                        token = (
-                            getattr(msg_chunk, "content", None)
-                            or (msg_chunk.get("content") if isinstance(msg_chunk, dict) else "")
-                            or ""
-                        )
-                        thinking_token = (
-                            getattr(msg_chunk, "thinking", None)
-                            or (msg_chunk.get("thinking") if isinstance(msg_chunk, dict) else "")
-                            or getattr(msg_chunk, "reasoning_content", None)
-                            or (msg_chunk.get("reasoning_content") if isinstance(msg_chunk, dict) else "")
-                            or ""
-                        )
-                    elif isinstance(item, (bytes, str)):
-                        line_str = item.decode("utf-8").strip() if isinstance(item, bytes) else item.strip()
-                        if line_str:
-                            try:
-                                chunk_data = json.loads(line_str)
-                                msg_c = chunk_data.get("message", {})
-                                token = msg_c.get("content") or chunk_data.get("response", "")
-                                thinking_token = (
-                                    msg_c.get("thinking")
-                                    or chunk_data.get("thinking")
-                                    or msg_c.get("reasoning_content")
-                                    or chunk_data.get("reasoning_content")
-                                    or ""
-                                )
-                                for k in [
-                                    "total_duration",
-                                    "load_duration",
-                                    "prompt_eval_count",
-                                    "prompt_eval_duration",
-                                    "eval_count",
-                                    "eval_duration",
-                                ]:
-                                    if k in chunk_data:
-                                        stats[k] = chunk_data[k]
-                            except Exception:
-                                pass
-                    else:
-                        token = getattr(item, "response", "") or (item.get("response", "") if isinstance(item, dict) else "")
-                        thinking_token = getattr(item, "thinking", "") or (item.get("thinking", "") if isinstance(item, dict) else "")
-
-                    for k in [
-                        "total_duration",
-                        "load_duration",
-                        "prompt_eval_count",
-                        "prompt_eval_duration",
-                        "eval_count",
-                        "eval_duration",
-                    ]:
-                        val = getattr(item, k, None) or (item.get(k) if isinstance(item, dict) else None)
-                        if val is not None:
-                            stats[k] = val
+                    thinking_token = (
+                        getattr(msg_chunk, "thinking", None)
+                        or (msg_chunk.get("thinking") if isinstance(msg_chunk, dict) else "")
+                        or getattr(msg_chunk, "reasoning_content", None)
+                        or (msg_chunk.get("reasoning_content") if isinstance(msg_chunk, dict) else "")
+                        or ""
+                    )
                 else:
-                    line_str = item.decode("utf-8").strip() if isinstance(item, bytes) else str(item).strip()
-                    if not line_str:
-                        continue
-                    if line_str.startswith("data: "):
-                        raw_data = line_str[6:].strip()
-                        if raw_data == "[DONE]":
-                            break
-                        try:
-                            chunk_data = json.loads(raw_data)
-                            choices = chunk_data.get("choices") or []
-                            delta = choices[0].get("delta", {}) if choices else {}
-                            token = delta.get("content", "")
-                            thinking_token = (
-                                delta.get("thinking")
-                                or delta.get("reasoning_content")
-                                or ""
-                            )
-                        except Exception:
-                            pass
+                    token = getattr(item, "response", "") or (item.get("response", "") if isinstance(item, dict) else "")
+                    thinking_token = getattr(item, "thinking", "") or (item.get("thinking", "") if isinstance(item, dict) else "")
+
+                for k in [
+                    "total_duration",
+                    "load_duration",
+                    "prompt_eval_count",
+                    "prompt_eval_duration",
+                    "eval_count",
+                    "eval_duration",
+                ]:
+                    val = getattr(item, k, None) or (item.get(k) if isinstance(item, dict) else None)
+                    if isinstance(val, (int, float)):
+                        stats[k] = val
 
                 if token:
                     full_text += token
@@ -250,16 +233,13 @@ def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_
 
                 now = time.time()
                 if message_id and (now - last_db_update >= 2.0):
-                    try:
-                        msg = Message.query.get(message_id)
-                        if msg:
-                            msg.content = full_text + " **processing**"
-                            db.session.commit()
-                        if full_thinking:
-                            _upsert_thought_attachment(message_id, full_thinking)
-                        last_db_update = now
-                    except Exception:
-                        pass
+                    _persist_message_update(
+                        message_id,
+                        full_text,
+                        full_thinking,
+                        is_processing=True,
+                    )
+                    last_db_update = now
 
             if not stats.get("total_duration"):
                 elapsed_ns = int((time.time() - start_time) * 1e9)
@@ -270,15 +250,15 @@ def consume_upstream_to_completion(resp, app, message_id, initial_content, inst_
             metadata_table = build_metadata_markdown(stats)
 
             if message_id:
-                msg = Message.query.get(message_id)
-                if msg:
-                    msg.content = full_text
-                    db.session.commit()
-                if full_thinking:
-                    _upsert_thought_attachment(message_id, full_thinking)
-                _upsert_metadata_attachment(message_id, metadata_table)
+                _persist_message_update(
+                    message_id,
+                    full_text,
+                    full_thinking,
+                    metadata_table=metadata_table,
+                    is_processing=False,
+                )
         except Exception as e:
-            print(f"[LLM Background Worker] Error completing response: {e}")
+            print(f"[Ollama Background Worker] Error completing response: {e}")
 
 
 
@@ -485,57 +465,41 @@ def clean_base64_image(content: str) -> str:
     return content.strip()
 
 
-@generate_bp.route("/generate", methods=["POST"])
-@generate_bp.route("/chats/<chat_id>/generate", methods=["POST"])
-def generate_response(chat_id):
-    """
-    Triggers an LLM response from the target instance model and streams tokens directly to the API caller.
-    Persists updates to the database incrementally and completes generation in background if client disconnects.
-    """
-    app = current_app._get_current_object()
-    data = request.json or {}
-    instance_id = data.get("instance_id")
-    model = data.get("model")
+def _format_message_attachments(content: str, attachments: list) -> tuple:
+    """Extracts base64 images and markdown document blocks from attachments."""
+    images = []
+    doc_blocks = []
 
-    # If model doesn't come with request, use the one from latest message of assistant
-    if not model:
-        if chat_id:
-            latest_msg = (
-                Message.query.filter_by(chat_id=chat_id, role="assistant")
-                .filter(Message.model.isnot(None))
-                .order_by(Message.date_time.desc())
-                .first()
-            )
-            if latest_msg and latest_msg.model:
-                model = latest_msg.model
-        if not model:
-            latest_msg = (
-                Message.query.filter_by(role="assistant")
-                .filter(Message.model.isnot(None))
-                .order_by(Message.date_time.desc())
-                .first()
-            )
-            if latest_msg and latest_msg.model:
-                model = latest_msg.model
-        if not model:
-            model = "llama3"
+    for a in attachments:
+        a_type = a.get("type") if isinstance(a, dict) else getattr(a, "type", "")
+        a_content = a.get("content") if isinstance(a, dict) else getattr(a, "content", "")
+        a_name = a.get("name", "document") if isinstance(a, dict) else getattr(a, "name", "document")
 
-    # If instance_id doesn't come with request, use enabled instance
-    if not instance_id:
-        enabled_inst = Instance.query.filter_by(is_enabled=1).first()
-        if enabled_inst:
-            instance_id = enabled_inst.id
-        else:
-            first_inst = Instance.query.first()
-            if first_inst:
-                instance_id = first_inst.id
+        if (
+            a_type in ("image", "png", "jpg", "jpeg", "webp")
+            or (isinstance(a_content, str) and a_content.startswith("data:image"))
+        ):
+            clean_b64 = clean_base64_image(a_content)
+            if clean_b64:
+                images.append(clean_b64)
+        elif (
+            a_type not in ("thought", "metadata")
+            and not (isinstance(a_content, str) and a_content.startswith("data:image"))
+        ):
+            if a_content:
+                doc_blocks.append(f"```{a_name} ({a_type})\n{a_content}\n```")
 
+    final_content = content or ""
+    if doc_blocks:
+        final_content = (final_content + "\n\n" + "\n\n".join(doc_blocks)).strip()
+
+    return final_content, images
+
+
+def _build_messages_payload(data: dict, chat_id: str = None) -> list:
+    """Constructs normalized message payload with multimodal images and document attachments."""
     prompt = data.get("prompt")
     messages = data.get("messages")
-    system_prompt = data.get("system")
-    think = data.get("think")
-    if think is None:
-        think = data.get("thinking", False)
 
     if chat_id and not messages and not prompt:
         chat = Chat.query.get(chat_id)
@@ -545,66 +509,86 @@ def generate_response(chat_id):
                 .order_by(Message.date_time.asc())
                 .all()
             )
-            messages = []
+            built = []
             for m in chat_msgs:
-                msg_obj = {"role": m.role, "content": m.content}
-                img_atts = [
-                    a
-                    for a in m.attachments
-                    if a.type in ("image", "png", "jpg", "jpeg", "webp")
-                    or (a.content and a.content.startswith("data:image"))
-                ]
-                if img_atts:
-                    raw_imgs = [
-                        clean_base64_image(a.content)
-                        for a in img_atts
-                        if clean_base64_image(a.content)
-                    ]
-                    if raw_imgs:
-                        msg_obj["images"] = raw_imgs
-                doc_atts = [
-                    a
-                    for a in m.attachments
-                    if a.type
-                    not in ("thought", "metadata", "image", "png", "jpg", "jpeg", "webp")
-                    and not (a.content and a.content.startswith("data:image"))
-                ]
-                if doc_atts:
-                    doc_blocks = []
-                    for da in doc_atts:
-                        doc_blocks.append(
-                            f"```{da.name} ({da.type})\n{da.content}\n```"
-                        )
-                    if doc_blocks:
-                        msg_obj["content"] = (
-                            msg_obj.get("content", "")
-                            + "\n\n"
-                            + "\n\n".join(doc_blocks)
-                        ).strip()
-                messages.append(msg_obj)
+                c, imgs = _format_message_attachments(m.content, m.attachments)
+                msg_obj = {"role": m.role, "content": c}
+                if imgs:
+                    msg_obj["images"] = imgs
+                built.append(msg_obj)
+            return built
 
-    message_id = None
+    if not messages and prompt:
+        user_msg = {"role": "user", "content": prompt}
+        if data.get("images"):
+            imgs = [clean_base64_image(img) for img in data.get("images") if clean_base64_image(img)]
+            if imgs:
+                user_msg["images"] = imgs
+        return [user_msg]
+
+    if messages:
+        built = []
+        for m in messages:
+            m_copy = dict(m)
+            raw_atts = m_copy.get("attachments", [])
+            content, att_imgs = _format_message_attachments(m_copy.get("content", ""), raw_atts)
+            m_copy["content"] = content
+
+            existing_imgs = [clean_base64_image(img) for img in m_copy.get("images", []) if clean_base64_image(img)]
+            all_imgs = existing_imgs + [img for img in att_imgs if img not in existing_imgs]
+            if all_imgs:
+                m_copy["images"] = all_imgs
+            elif "images" in m_copy:
+                del m_copy["images"]
+
+            built.append(m_copy)
+        return built
+
+    return [{"role": "user", "content": "Hello"}]
+
+
+def _resolve_request_model(data: dict, chat_id: str = None) -> str:
+    """Resolve model identifier from request, chat history, global assistant history, or default."""
+    model = data.get("model")
+    if model:
+        return model
+
     if chat_id:
-        chat = Chat.query.get(chat_id)
-        if chat:
-            db_msg = Message(id=generate_uuid(),
-                             chat_id=chat_id,
-                             role="assistant",
-                             model=model,
-                             content=" **LLM still processing.**",
-                             date_time=current_alpaca_timestamp())
-            db.session.add(db_msg)
-            db.session.commit()
-            message_id = db_msg.id
+        latest_msg = (
+            Message.query.filter_by(chat_id=chat_id, role="assistant")
+            .filter(Message.model.isnot(None))
+            .order_by(Message.date_time.desc())
+            .first()
+        )
+        if latest_msg and latest_msg.model:
+            return latest_msg.model
 
+    latest_global = (
+        Message.query.filter_by(role="assistant")
+        .filter(Message.model.isnot(None))
+        .order_by(Message.date_time.desc())
+        .first()
+    )
+    if latest_global and latest_global.model:
+        return latest_global.model
+
+    return "llama3"
+
+
+def _resolve_ollama_instance(data: dict):
+    """
+    Resolves the target Ollama Instance record, host endpoint, and headers.
+    Defaults host to http://localhost:11434.
+    """
+    instance_id = data.get("instance_id")
     instance = (
         Instance.query.get(instance_id)
         if instance_id
         else (Instance.query.filter_by(is_enabled=1).first() or Instance.query.first())
     )
     props = instance.get_properties() if instance else {}
-    inst_type = (instance.type if instance else "ollama").lower()
-    host = props.get("url") or props.get("host") or props.get("endpoint") or ""
+    host = props.get("url") or props.get("host") or props.get("endpoint") or "http://localhost:11434"
+    host = host.rstrip("/")
 
     api_key = (
         props.get("apiKey")
@@ -613,40 +597,20 @@ def generate_response(chat_id):
         or props.get("api")
         or ""
     )
-
     if api_key == "NOKEY":
         api_key = ""
 
-    if not host:
-        if inst_type == "ollama":
-            host = "http://localhost:11434"
-        elif inst_type == "openrouter":
-            host = "https://openrouter.ai/api/v1"
-        elif inst_type == "openai":
-            host = "https://api.openai.com/v1"
-        elif inst_type == "gemini":
-            host = "https://generativelanguage.googleapis.com/v1beta/openai"
-        elif inst_type == "groq":
-            host = "https://api.groq.com/openai/v1"
-        elif inst_type == "together":
-            host = "https://api.together.xyz/v1"
-        elif inst_type == "deepseek":
-            host = "https://api.deepseek.com"
-        else:
-            host = "http://localhost:8000/v1"
+    headers = {"Content-Type": "application/json", "User-Agent": "Walpaca/1.0"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
-    host = host.rstrip("/")
+    return instance, props, host, headers
 
-    # Normalize Google Gemini host
-    if inst_type == "gemini" or "generativelanguage.googleapis.com" in host:
-        if not host.endswith("/openai"):
-            if host.endswith("/v1beta"):
-                host = f"{host}/openai"
-            elif "v1beta" not in host:
-                host = "https://generativelanguage.googleapis.com/v1beta/openai"
 
-    # Resolve model identifier to physical model name for upstream engine
-    # Resolve model identifier to physical model name and ModelPreferences
+def _resolve_physical_model_name(model: str, instance_id: str):
+    """
+    Resolves model identifier to upstream Ollama physical model name and ModelPreferences match.
+    """
     pref_match = resolve_model_preference(model, instance_id)
     resolved_model_name = model
 
@@ -663,141 +627,11 @@ def generate_response(chat_id):
         if im_match and im_match.model_id:
             resolved_model_name = im_match.model_id
 
-    # Normalize dummy model IDs for Gemini
-    if (inst_type == "gemini" or "generativelanguage.googleapis.com" in host) and (
-        "-m1" in str(resolved_model_name) or "-m2" in str(resolved_model_name) or not resolved_model_name
-    ):
-        resolved_model_name = "gemini-3.8-flash"
+    return resolved_model_name, pref_match
 
-    headers = {"Content-Type": "application/json", "User-Agent": "Walpaca/1.0"}
 
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    if not messages and prompt:
-        user_msg = {"role": "user", "content": prompt}
-
-        if data.get("images"):
-            user_msg["images"] = [
-                clean_base64_image(img)
-                for img in data.get("images")
-                if clean_base64_image(img)
-            ]
-
-        messages_payload = [user_msg]
-
-    elif messages:
-        messages_payload = []
-
-        for m in messages:
-            m_copy = dict(m)
-            atts = m_copy.get("attachments", [])
-
-            if atts:
-                img_atts = [
-                    a
-                    for a in atts
-                    if isinstance(a, dict)
-                    and (
-                        a.get("type") in ("image", "png", "jpg", "jpeg", "webp")
-                        or (
-                            isinstance(a.get("content"), str)
-                            and a.get("content").startswith("data:image")
-                        )
-                    )
-                ]
-
-                if img_atts and not m_copy.get("images"):
-                    m_copy["images"] = [
-                        clean_base64_image(a.get("content", ""))
-                        for a in img_atts
-                        if clean_base64_image(a.get("content", ""))
-                    ]
-
-                doc_atts = [
-                    a
-                    for a in atts
-                    if isinstance(a, dict)
-                    and a.get("type")
-                    not in ("thought", "metadata", "image", "png", "jpg", "jpeg", "webp")
-                    and not (
-                        isinstance(a.get("content"), str)
-                        and a.get("content").startswith("data:image")
-                    )
-                ]
-                if doc_atts:
-                    doc_blocks = []
-
-                    for da in doc_atts:
-                        name = da.get("name", "document")
-                        att_type = da.get("type", "plain_text")
-                        content = da.get("content", "")
-
-                        if content:
-                            doc_blocks.append(
-                                f"```{name} ({att_type})\n{content}\n```"
-                            )
-
-                    if doc_blocks:
-                        m_copy["content"] = (
-                            m_copy.get("content", "")
-                            + "\n\n"
-                            + "\n\n".join(doc_blocks)
-                        ).strip()
-
-            if "images" in m_copy:
-                m_copy["images"] = [
-                    clean_base64_image(img)
-                    for img in m_copy["images"]
-                    if clean_base64_image(img)
-                ]
-
-            messages_payload.append(m_copy)
-
-    else:
-        messages_payload = [{"role": "user", "content": "Hello"}]
-
-    if inst_type != "ollama":
-        while messages_payload and messages_payload[-1].get("role") != "user":
-            messages_payload.pop()
-        if not messages_payload:
-            messages_payload = [{"role": "user", "content": prompt or "Hello"}]
-
-        formatted_messages = []
-        for m in messages_payload:
-            m_copy = dict(m)
-            imgs = m_copy.pop("images", None)
-            if imgs:
-                content_text = m_copy.get("content", "")
-                content_blocks = (
-                    [{"type": "text", "text": content_text}]
-                    if isinstance(content_text, str)
-                    else list(content_text)
-                )
-                for img_b64 in imgs:
-                    url = (
-                        img_b64
-                        if img_b64.startswith("http") or img_b64.startswith("data:")
-                        else f"data:image/png;base64,{img_b64}"
-                    )
-                    content_blocks.append(
-                        {"type": "image_url", "image_url": {"url": url}}
-                    )
-                m_copy["content"] = content_blocks
-            formatted_messages.append(m_copy)
-        messages_payload = formatted_messages
-
-    effective_system = evaluate_lorebook_entries(
-        model,
-        messages_payload,
-        system_prompt,
-        instance_id=instance_id,
-        pref=pref_match,
-    )
-
-    if effective_system:
-        messages_payload.insert(0, {"role": "system", "content": effective_system})
-
+def _resolve_num_ctx(data: dict, pref_match, props: dict):
+    """Resolves context window size from request data, ModelPreferences, or instance properties."""
     raw_num_ctx = (
         data.get("num_ctx")
         or (pref_match.num_ctx if pref_match else None)
@@ -806,16 +640,125 @@ def generate_response(chat_id):
         or props.get("context_size")
         or props.get("context")
     )
-
-    num_ctx_val = None
-
     if raw_num_ctx is not None:
         try:
-            num_ctx_val = int(raw_num_ctx)
+            return int(raw_num_ctx)
         except (ValueError, TypeError):
             pass
+    return None
 
-    # Resolve active MCP tools
+
+def _create_processing_message(chat_id: str, model: str) -> str:
+    """Inserts initial assistant placeholder message record and returns its ID."""
+    if not chat_id:
+        return None
+    chat = Chat.query.get(chat_id)
+    if not chat:
+        return None
+    db_msg = Message(
+        id=generate_uuid(),
+        chat_id=chat_id,
+        role="assistant",
+        model=model,
+        content=" **LLM still processing.**",
+        date_time=current_alpaca_timestamp(),
+    )
+    db.session.add(db_msg)
+    db.session.commit()
+    return db_msg.id
+
+
+def _handle_ollama_tool_call(tc, tool_map: dict, message_id: str):
+    """
+    Executes a single Ollama tool call via McpManager, stores tool attachment,
+    and returns (call_event_dict, result_event_dict, asst_tc_dict, tool_msg_dict).
+    """
+    fn = getattr(tc, "function", None) or (tc.get("function") if isinstance(tc, dict) else {})
+    t_name = getattr(fn, "name", None) or (fn.get("name") if isinstance(fn, dict) else "")
+    t_args = getattr(fn, "arguments", None) or (fn.get("arguments") if isinstance(fn, dict) else {})
+    if isinstance(t_args, str):
+        try:
+            t_args = json.loads(t_args)
+        except Exception:
+            pass
+
+    call_event = {
+        "id": message_id,
+        "type": "tool_call",
+        "name": t_name,
+        "args": t_args,
+        "done": False,
+    }
+
+    if t_name in tool_map:
+        srv, _ = tool_map[t_name]
+        try:
+            t_result = McpManager.call_tool(srv.id, t_name, t_args)
+        except Exception as e:
+            t_result = {"error": str(e)}
+    else:
+        t_result = {"error": f"Tool '{t_name}' not available"}
+
+    result_event = {
+        "id": message_id,
+        "type": "tool_result",
+        "name": t_name,
+        "result": t_result,
+        "done": False,
+    }
+
+    if message_id:
+        _add_tool_attachment(
+            message_id,
+            t_name,
+            {"call": {"name": t_name, "arguments": t_args}, "result": t_result},
+        )
+
+    asst_tc = tc if isinstance(tc, dict) else {"function": {"name": t_name, "arguments": t_args}}
+    tool_msg = {
+        "role": "tool",
+        "content": json.dumps(t_result) if not isinstance(t_result, str) else t_result,
+        "name": t_name,
+        "tool_name": t_name,
+    }
+
+    return call_event, result_event, asst_tc, tool_msg
+
+
+@generate_bp.route("/generate", methods=["POST"])
+@generate_bp.route("/chats/<chat_id>/generate", methods=["POST"])
+def generate_response(chat_id=None):
+    """
+    Triggers an LLM response from the target Ollama instance and streams tokens directly to the API caller.
+    Persists updates to database incrementally and completes generation in background if client disconnects.
+    """
+    app = current_app._get_current_object()
+    data = request.json or {}
+
+    model = _resolve_request_model(data, chat_id)
+    instance, props, host, headers = _resolve_ollama_instance(data)
+    instance_id = instance.id if instance else None
+
+    resolved_model_name, pref_match = _resolve_physical_model_name(model, instance_id)
+    message_id = _create_processing_message(chat_id, model)
+    messages_payload = _build_messages_payload(data, chat_id)
+
+    effective_system = evaluate_lorebook_entries(
+        model,
+        messages_payload,
+        data.get("system"),
+        instance_id=instance_id,
+        pref=pref_match,
+    )
+    if effective_system:
+        messages_payload.insert(0, {"role": "system", "content": effective_system})
+
+    think = data.get("think")
+    if think is None:
+        think = data.get("thinking", False)
+
+    num_ctx_val = _resolve_num_ctx(data, pref_match, props)
+
     active_mcp_tuples = (
         McpManager.get_enabled_tools()
         if data.get("mcp_enabled", True)
@@ -823,11 +766,9 @@ def generate_response(chat_id):
     )
     tool_map = {tool.name: (server, tool) for server, tool in active_mcp_tuples}
     ollama_tools = McpManager.to_ollama_tools(active_mcp_tuples) if active_mcp_tuples else None
-    openai_tools = McpManager.to_openai_tools(active_mcp_tuples) if active_mcp_tuples else None
 
     def generate_stream():
         options = {"think": bool(think)}
-
         if num_ctx_val is not None:
             options["num_ctx"] = num_ctx_val
 
@@ -837,27 +778,30 @@ def generate_response(chat_id):
         chunk_count = 0
         last_db_update = time.time()
         stream_stats = {}
+        max_tool_turns = 5
+        tool_turns = 0
 
-        if inst_type == "ollama":
-            try:
-                client_kwargs = {"host": host}
-                if headers:
-                    client_kwargs["headers"] = headers
-                client = ollama.Client(**client_kwargs)
+        try:
+            client_kwargs = {"host": host}
+            if headers:
+                client_kwargs["headers"] = headers
+            client = ollama.Client(**client_kwargs)
 
-                chat_kwargs = {
-                    "model": resolved_model_name,
-                    "messages": messages_payload,
-                    "stream": True,
-                }
-                if options:
-                    chat_kwargs["options"] = options
-                if think is not None:
-                    chat_kwargs["think"] = bool(think)
-                if ollama_tools:
-                    chat_kwargs["tools"] = ollama_tools
+            chat_kwargs = {
+                "model": resolved_model_name,
+                "messages": messages_payload,
+                "stream": True,
+            }
+            if options:
+                chat_kwargs["options"] = options
+            if think is not None:
+                chat_kwargs["think"] = bool(think)
+            if ollama_tools:
+                chat_kwargs["tools"] = ollama_tools
 
+            while True:
                 stream = client.chat(**chat_kwargs)
+                has_tool_call = False
 
                 try:
                     for chunk in stream:
@@ -868,57 +812,51 @@ def generate_response(chat_id):
                         raw_tool_calls = getattr(msg_chunk, "tool_calls", None) or (
                             msg_chunk.get("tool_calls") if isinstance(msg_chunk, dict) else None
                         )
-                        if raw_tool_calls:
+                        if raw_tool_calls and tool_turns < max_tool_turns:
+                            has_tool_call = True
+                            tool_turns += 1
+
+                            assistant_tool_calls = []
+                            tool_results = []
+
                             for tc in raw_tool_calls:
-                                fn = getattr(tc, "function", None) or (tc.get("function") if isinstance(tc, dict) else {})
-                                t_name = getattr(fn, "name", None) or (fn.get("name") if isinstance(fn, dict) else "")
-                                t_args = getattr(fn, "arguments", None) or (fn.get("arguments") if isinstance(fn, dict) else {})
-                                if isinstance(t_args, str):
-                                    try:
-                                        t_args = json.loads(t_args)
-                                    except Exception:
-                                        pass
+                                call_event, result_event, asst_tc, tool_msg = _handle_ollama_tool_call(
+                                    tc, tool_map, message_id
+                                )
+                                yield f"data: {json.dumps(call_event, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps(result_event, ensure_ascii=False)}\n\n"
+                                assistant_tool_calls.append(asst_tc)
+                                tool_results.append(tool_msg)
 
-                                yield f"data: {json.dumps({'id': message_id, 'type': 'tool_call', 'name': t_name, 'args': t_args, 'done': False})}\n\n"
-
-                                t_result = {}
-                                if t_name in tool_map:
-                                    srv, _ = tool_map[t_name]
-                                    try:
-                                        t_result = McpManager.call_tool(srv.id, t_name, t_args)
-                                    except Exception as e:
-                                        t_result = {"error": str(e)}
-                                else:
-                                    t_result = {"error": f"Tool '{t_name}' not available"}
-
-                                yield f"data: {json.dumps({'id': message_id, 'type': 'tool_result', 'name': t_name, 'result': t_result, 'done': False})}\n\n"
-
-                                if message_id:
-                                    _add_tool_attachment(message_id, t_name, {"call": {"name": t_name, "arguments": t_args}, "result": t_result})
-
-                                messages_payload.append({
-                                    "role": "assistant",
-                                    "content": "",
-                                    "tool_calls": [tc if isinstance(tc, dict) else {"function": {"name": t_name, "arguments": t_args}}],
-                                })
-                                messages_payload.append({
-                                    "role": "tool",
-                                    "content": json.dumps(t_result) if not isinstance(t_result, str) else t_result,
-                                    "name": t_name,
-                                })
+                            messages_payload.append({
+                                "role": "assistant",
+                                "content": (
+                                    getattr(msg_chunk, "content", None)
+                                    or (msg_chunk.get("content") if isinstance(msg_chunk, dict) else "")
+                                    or ""
+                                ),
+                                "tool_calls": assistant_tool_calls,
+                            })
+                            for tm in tool_results:
+                                messages_payload.append(tm)
 
                             chat_kwargs["messages"] = messages_payload
-                            chat_kwargs.pop("tools", None)
-                            stream = client.chat(**chat_kwargs)
-                            continue
+                            if tool_turns >= max_tool_turns:
+                                chat_kwargs.pop("tools", None)
 
-                        content_delta = (
+                            # Break inner stream loop to re-issue client.chat() with tool results
+                            break
+
+                        raw_content = (
                             getattr(msg_chunk, "content", None)
                             or (msg_chunk.get("content") if isinstance(msg_chunk, dict) else "")
                             or getattr(chunk, "response", "")
                             or (chunk.get("response", "") if isinstance(chunk, dict) else "")
+                            or ""
                         )
-                        thinking_delta = (
+                        content_delta = raw_content if isinstance(raw_content, str) else ""
+
+                        raw_thinking = (
                             getattr(msg_chunk, "thinking", None)
                             or (msg_chunk.get("thinking") if isinstance(msg_chunk, dict) else "")
                             or getattr(msg_chunk, "reasoning_content", None)
@@ -929,9 +867,9 @@ def generate_response(chat_id):
                             or (chunk.get("reasoning_content") if isinstance(chunk, dict) else "")
                             or ""
                         )
-                        is_done = getattr(chunk, "done", False) or (
-                            chunk.get("done", False) if isinstance(chunk, dict) else False
-                        )
+                        thinking_delta = raw_thinking if isinstance(raw_thinking, str) else ""
+
+                        is_done = bool(getattr(chunk, "done", False))
 
                         for k in [
                             "total_duration",
@@ -944,7 +882,7 @@ def generate_response(chat_id):
                             val = getattr(chunk, k, None) or (
                                 chunk.get(k) if isinstance(chunk, dict) else None
                             )
-                            if val is not None:
+                            if isinstance(val, (int, float)):
                                 stream_stats[k] = val
 
                         if content_delta:
@@ -958,50 +896,30 @@ def generate_response(chat_id):
                         if message_id:
                             if is_done:
                                 if not stream_stats.get("total_duration"):
-                                    elapsed_ns = int(
-                                        (time.time() - start_time) * 1e9
-                                    )
+                                    elapsed_ns = int((time.time() - start_time) * 1e9)
                                     stream_stats["total_duration"] = elapsed_ns
                                     stream_stats["eval_count"] = (
-                                        stream_stats.get("eval_count")
-                                        or chunk_count
+                                        stream_stats.get("eval_count") or chunk_count
                                     )
                                     stream_stats["eval_duration"] = (
-                                        stream_stats.get("eval_duration")
-                                        or elapsed_ns
+                                        stream_stats.get("eval_duration") or elapsed_ns
                                     )
-                                metadata_table = build_metadata_markdown(
-                                    stream_stats
+                                metadata_table = build_metadata_markdown(stream_stats)
+                                _persist_message_update(
+                                    message_id,
+                                    accumulated_content,
+                                    accumulated_thinking,
+                                    metadata_table=metadata_table,
+                                    is_processing=False,
                                 )
-                                try:
-                                    msg = Message.query.get(message_id)
-                                    if msg:
-                                        msg.content = accumulated_content
-                                        db.session.commit()
-                                    if accumulated_thinking:
-                                        _upsert_thought_attachment(
-                                            message_id, accumulated_thinking
-                                        )
-                                    _upsert_metadata_attachment(
-                                        message_id, metadata_table
-                                    )
-                                except Exception:
-                                    pass
                             elif now - last_db_update >= 2.0:
-                                try:
-                                    msg = Message.query.get(message_id)
-                                    if msg:
-                                        msg.content = (
-                                            accumulated_content + " **processing**"
-                                        )
-                                        db.session.commit()
-                                    if accumulated_thinking:
-                                        _upsert_thought_attachment(
-                                            message_id, accumulated_thinking
-                                        )
-                                    last_db_update = now
-                                except Exception:
-                                    pass
+                                _persist_message_update(
+                                    message_id,
+                                    accumulated_content,
+                                    accumulated_thinking,
+                                    is_processing=True,
+                                )
+                                last_db_update = now
 
                         out_payload = {
                             "id": message_id,
@@ -1011,7 +929,13 @@ def generate_response(chat_id):
                             "metadata": metadata_table,
                             "done": is_done,
                         }
-                        yield f"data: {json.dumps(out_payload)}\n\n"
+                        yield f"data: {json.dumps(out_payload, ensure_ascii=False)}\n\n"
+
+                    if has_tool_call:
+                        continue
+
+                    return
+
                 except GeneratorExit:
                     threading.Thread(
                         target=consume_upstream_to_completion,
@@ -1020,226 +944,21 @@ def generate_response(chat_id):
                             app,
                             message_id,
                             accumulated_content,
-                            inst_type,
+                            "ollama",
                             accumulated_thinking,
                         ),
                         daemon=True,
                     ).start()
                     return
-            except Exception as e:
-                err_msg = str(e)
-                if hasattr(e, "error"):
-                    err_msg = str(getattr(e, "error"))
-                err_payload = {
-                    "error": f"Failed streaming from Ollama instance: {err_msg}",
-                    "done": True,
-                }
-                yield f"data: {json.dumps(err_payload)}\n\n"
-
-
-        else:
-            target_url = (
-                host
-                if host.endswith("/chat/completions")
-                else (
-                    f"{host}/chat/completions"
-                    if host.endswith("/v1") or host.endswith("/openai")
-                    else f"{host}/v1/chat/completions"
-                )
-            )
-            payload = {
-                "model": resolved_model_name,
-                "messages": messages_payload,
-                "stream": True,
+        except Exception as e:
+            err_msg = str(e)
+            if hasattr(e, "error"):
+                err_msg = str(getattr(e, "error"))
+            err_payload = {
+                "error": f"Failed streaming from Ollama instance: {err_msg}",
+                "done": True,
             }
-            if openai_tools:
-                payload["tools"] = openai_tools
-            # Only send valid top-level OpenAI/Gemini parameters, NOT options dictionary
-            temp = (
-                data.get("temperature")
-                if data.get("temperature") is not None
-                else props.get("temperature")
-            )
-            if temp is not None:
-                try:
-                    payload["temperature"] = float(temp)
-                except (ValueError, TypeError):
-                    pass
-            max_tok = (
-                data.get("max_tokens")
-                or props.get("max_tokens")
-                or data.get("num_predict")
-            )
-            if max_tok is not None:
-                try:
-                    payload["max_tokens"] = int(max_tok)
-                except (ValueError, TypeError):
-                    pass
-
-            req = urllib.request.Request(
-                target_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers=headers,
-                method="POST",
-            )
-            try:
-                resp = urllib.request.urlopen(req, timeout=120)
-                try:
-                    for line in resp:
-                        if not line:
-                            continue
-                        line_str = line.decode("utf-8").strip()
-                        if not line_str:
-                            continue
-                        if line_str.startswith("data: "):
-                            raw_data = line_str[6:].strip()
-                            if raw_data == "[DONE]":
-                                elapsed_ns = int((time.time() - start_time) * 1e9)
-                                stream_stats["total_duration"] = elapsed_ns
-                                stream_stats["eval_count"] = chunk_count
-                                stream_stats["eval_duration"] = elapsed_ns
-                                metadata_table = build_metadata_markdown(stream_stats)
-                                if message_id:
-                                    try:
-                                        msg = Message.query.get(message_id)
-                                        if msg:
-                                            msg.content = accumulated_content
-                                            db.session.commit()
-                                        if accumulated_thinking:
-                                            _upsert_thought_attachment(
-                                                message_id, accumulated_thinking
-                                            )
-                                        _upsert_metadata_attachment(
-                                            message_id, metadata_table
-                                        )
-                                    except Exception:
-                                        pass
-                                yield f"data: {json.dumps({'id': message_id, 'model': model, 'content': '', 'metadata': metadata_table, 'done': True})}\n\n"
-                                break
-                            try:
-                                chunk_data = json.loads(raw_data)
-                                choices = chunk_data.get("choices") or []
-                                delta = choices[0].get("delta", {}) if choices else {}
-                                content_delta = delta.get("content", "")
-                                thinking_delta = (
-                                    delta.get("thinking")
-                                    or delta.get("reasoning_content")
-                                    or ""
-                                )
-                                if content_delta:
-                                    accumulated_content += content_delta
-                                    chunk_count += 1
-                                if thinking_delta:
-                                    accumulated_thinking += thinking_delta
-
-                                now = time.time()
-                                if message_id and (now - last_db_update >= 2.0):
-                                    try:
-                                        msg = Message.query.get(message_id)
-                                        if msg:
-                                            msg.content = (
-                                                accumulated_content + " **processing**"
-                                            )
-                                            db.session.commit()
-                                        if accumulated_thinking:
-                                            _upsert_thought_attachment(
-                                                message_id, accumulated_thinking
-                                            )
-                                        last_db_update = now
-                                    except Exception:
-                                        pass
-
-                                out_payload = {
-                                    "id": message_id,
-                                    "model": model,
-                                    "content": content_delta,
-                                    "thinking": thinking_delta,
-                                    "done": False,
-                                }
-                                yield f"data: {json.dumps(out_payload)}\n\n"
-                            except GeneratorExit:
-                                threading.Thread(
-                                    target=consume_upstream_to_completion,
-                                    args=(
-                                        resp,
-                                        app,
-                                        message_id,
-                                        accumulated_content,
-                                        inst_type,
-                                        accumulated_thinking,
-                                    ),
-                                    daemon=True,
-                                ).start()
-                                return
-                            except Exception:
-                                yield f"{line_str}\n\n"
-                        else:
-                            yield f"data: {line_str}\n\n"
-                except GeneratorExit:
-                    threading.Thread(
-                        target=consume_upstream_to_completion,
-                        args=(
-                            resp,
-                            app,
-                            message_id,
-                            accumulated_content,
-                            inst_type,
-                            accumulated_thinking,
-                        ),
-                        daemon=True,
-                    ).start()
-                    return
-            except urllib.error.HTTPError as e:
-                err_detail = ""
-                try:
-                    err_body = e.read().decode("utf-8", errors="replace")
-                    err_json = json.loads(err_body)
-                    if isinstance(err_json, dict) and "error" in err_json:
-                        sub_err = err_json["error"]
-                        if isinstance(sub_err, dict):
-                            err_detail = sub_err.get("message") or str(sub_err)
-                        else:
-                            err_detail = str(sub_err)
-                    else:
-                        err_detail = err_body[:300]
-                except Exception:
-                    err_detail = str(e)
-
-                msg_text = f"Upstream API error ({e.code}): {err_detail}"
-                if message_id:
-                    try:
-                        m_record = Message.query.get(message_id)
-                        if m_record and (
-                            not m_record.content
-                            or m_record.content.strip() == "**LLM still processing.**"
-                        ):
-                            m_record.content = msg_text
-                            db.session.commit()
-                    except Exception:
-                        pass
-                err_payload = {
-                    "error": msg_text,
-                    "done": True,
-                }
-                yield f"data: {json.dumps(err_payload)}\n\n"
-            except Exception as e:
-                msg_text = f"Failed streaming from LLM instance: {str(e)}"
-                if message_id:
-                    try:
-                        m_record = Message.query.get(message_id)
-                        if m_record and (
-                            not m_record.content
-                            or m_record.content.strip() == "**LLM still processing.**"
-                        ):
-                            m_record.content = msg_text
-                            db.session.commit()
-                    except Exception:
-                        pass
-                err_payload = {
-                    "error": msg_text,
-                    "done": True,
-                }
-                yield f"data: {json.dumps(err_payload)}\n\n"
+            yield f"data: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
 
     response = Response(
         stream_with_context(generate_stream()), mimetype="text/event-stream"
