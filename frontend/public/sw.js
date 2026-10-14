@@ -1,4 +1,4 @@
-const CACHE_NAME = 'alpaca-web-v1';
+const CACHE_NAME = 'walpaca-v1';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
