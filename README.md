@@ -27,25 +27,30 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 ## Features
 
 - [x] Talk to multiple models in the same conversation
+- [x] Multi-instance support (connect multiple Ollama nodes across LAN or VPN)
 - [x] Delete and edit messages
 - [x] Regenerate messages
-- [ ] Pull and delete models directly from the UI
+- [x] Pull and delete models directly from the UI with real-time progress
+- [x] Model Context Protocol (MCP) tool integration (SSE/HTTP transports with multi-turn tool calling)
 - [x] Image recognition (multimodal models)
 - [x] Document recognition (plain text files)
 - [x] Code syntax highlighting
 - [x] Multiple concurrent conversations
-- [x] LLM Response background handler when browser is refreshed of closed.
+- [x] LLM Response background handler when browser is refreshed or closed
 - [x] System notifications
 - [x] Import chats
 - [x] Export chats
 - [x] Fork chats
-- [x] Lock Pin
+- [x] PIN security lock with auto-lock timer & rate limiting
+- [x] Custom prompts manager & quick-insert modal in chat
+- [x] Lorebooks & Personas with automatic system prompt injection
+- [x] In-chat match search and sidebar conversation search
+- [x] Text-to-speech integration via Kokoro TTS with OS media controls
+- [x] Mobile and tablet responsive design with drawer navigation
 - [ ] YouTube video recognition (transcript queries)
 - [ ] Website recognition (web scraping via URL)
 - [ ] Connect to cloud-hosted OpenAI-compatible APIs using personal API keys
-- [x] Text-to-speech integration via Kokoro TTS
 - [ ] Speech-to-text integration via Whisper
-- [ ] Chat history search
 
 ---
 
@@ -60,9 +65,10 @@ Normal conversation | Image recognition | Markdown to HTML
 ## Tech Stack
 
 - **Frontend**: Next.js (App Router), React, Tailwind CSS, Zustand
-- **Backend**: Python, Flask, Flask-SQLAlchemy, Flask-CORS
+- **Backend**: Python, Flask, Flask-SQLAlchemy, Flask-CORS, official `ollama` SDK, `mcp` SDK
 - **Database**: SQLite (`alpaca.db` shared with GTK Alpaca)
 - **Speech Synthesis**: Kokoro TTS Server
+- **Extensibility**: Model Context Protocol (MCP) client
 - **Orchestration**: Docker & Docker Compose
 
 ---
@@ -85,15 +91,22 @@ Normal conversation | Image recognition | Markdown to HTML
 
 2. Configure environment variables in `.env`:
    ```bash
+   cp .env.sample .env
+   ```
+   Adjust `.env` as needed:
+   ```bash
+   COMPOSE_PROJECT_NAME=walpaca
+   COMPOSE_FILE=docker-compose.yml
    NETWORK_ADDRESS=127.0.0.1
    VPN_ADDRESS=127.0.0.1
-   CORS_DOMAINS="http://localhost:3000"
+   CORS_DOMAINS="http://localhost:3100"
    KOKORO_API_KEY=your-kokoro-key-here
    ```
 
-3. Ensure `alpaca.db` is present in the project root:
+3. Ensure `alpaca.db` and required directories are present in the project root:
    ```bash
    touch alpaca.db
+   mkdir -p personas lorebook prompts config
    ```
 
 4. Launch services:
@@ -101,7 +114,7 @@ Normal conversation | Image recognition | Markdown to HTML
    docker compose up -d
    ```
 
-5. Access the web interface at `http://localhost:3000`.
+5. Access the web interface at `http://localhost:3100` (Backend API on `http://localhost:5100`).
 
 ---
 

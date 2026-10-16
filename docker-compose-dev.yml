@@ -5,9 +5,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:3000:3000"
-      - "${NETWORK_ADDRESS}:3000:3000"
-      - "${VPN_ADDRESS}:3000:3000"
+      - "127.0.0.1:3100:3000"
+      - "${NETWORK_ADDRESS}:3100:3000"
+      - "${VPN_ADDRESS}:3100:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -29,9 +29,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:5000:5000"
-      - "${NETWORK_ADDRESS}:5000:5000"
-      - "${VPN_ADDRESS}:5000:5000"
+      - "127.0.0.1:5100:5000"
+      - "${NETWORK_ADDRESS}:5100:5000"
+      - "${VPN_ADDRESS}:5100:5000"
     volumes:
       - ./backend:/app
       - ./alpaca.db:/app/alpaca.db

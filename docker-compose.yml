@@ -1,13 +1,37 @@
 services:
+  frontend:
+    container_name: walpaca_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:3100:3000"
+      - "${NETWORK_ADDRESS}:3100:3000"
+      - "${VPN_ADDRESS}:3100:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      CORS_DOMAINS: "${CORS_DOMAINS}"
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
+    command: sh run_server.sh
+
   backend:
     container_name: walpaca_backend
     build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:5000:5000"
-      - "${NETWORK_ADDRESS}:5000:5000"
-      - "${VPN_ADDRESS}:5000:5000"
+      - "127.0.0.1:5100:5000"
+      - "${NETWORK_ADDRESS}:5100:5000"
+      - "${VPN_ADDRESS}:5100:5000"
     volumes:
       - ./backend:/app
       - ./alpaca.db:/app/alpaca.db
@@ -19,30 +43,6 @@ services:
       ALPACA_DB_PATH: "/app/alpaca.db"
       TTS_SERVER_URL: "http://kokoro:8880"
       TTS_API_KEY: ${KOKORO_API_KEY}
-      CORS_DOMAINS: "${CORS_DOMAINS}"
-    restart: always
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1g"
-        max-file: "3"
-    command: sh run_server.sh
-
-  frontend:
-    container_name: walpaca_frontend
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:3000:3000"
-      - "${NETWORK_ADDRESS}:3000:3000"
-      - "${VPN_ADDRESS}:3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - backend
-    environment:
       CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
     logging:

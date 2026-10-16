@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-img-element */
 
 import React, { useState } from "react";
-import { BrainIcon, MetadataIcon, DownloadIcon, AudioIcon } from "../icons/Icons";
+import { BrainIcon, MetadataIcon, DownloadIcon, AudioIcon, ToolIcon } from "../icons/Icons";
 import { isCharEnabled, getCharacterName, formatAvatarPicture, DEFAULT_MODEL_AVATAR } from "@/lib/characterUtils";
 
 export interface MessageAttachment {
@@ -143,6 +143,95 @@ export const AudioAttachmentCard: React.FC<AudioAttachmentCardProps> = ({ attach
                         preload="metadata"
                         className="w-full h-8 rounded-lg outline-none"
                     />
+                </div>
+            )}
+        </div>
+    );
+};
+
+export interface ToolAttachmentCardProps {
+    attachment: MessageAttachment | any;
+    isSelf?: boolean;
+}
+
+export const ToolAttachmentCard: React.FC<ToolAttachmentCardProps> = ({ attachment, isSelf }) => {
+    const [expanded, setExpanded] = useState(false);
+    let parsedData: any = null;
+    try {
+        parsedData = typeof attachment.content === "string" ? JSON.parse(attachment.content) : attachment.content;
+    } catch {
+        parsedData = attachment.content;
+    }
+
+    const toolName = attachment.name ? attachment.name.replace(/^Tool:\s*/i, "") : "Tool Execution";
+
+    return (
+        <div
+            className={`rounded-2xl border transition-all overflow-hidden my-1.5 w-full max-w-full ${
+                isSelf ? "bg-white/10 border-white/25 text-white shadow-xs" : "bg-white border-[#e2e5f1] text-[#2d3142] shadow-xs"
+            }`}
+        >
+            <div
+                onClick={() => setExpanded(!expanded)}
+                className="flex items-center justify-between px-3.5 py-2.5 gap-3 cursor-pointer hover:bg-black/2 transition-colors select-none"
+            >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div
+                        className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                            isSelf ? "bg-white/20 text-white" : "bg-[#10b981]/15 text-[#059669]"
+                        }`}
+                    >
+                        <ToolIcon className="w-4 h-4" />
+                    </div>
+                    <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-xs font-bold font-mono text-[#059669] truncate">
+                            {toolName}
+                        </span>
+                        <span className={`text-[10px] ${isSelf ? "text-white/75" : "text-[#8e90a6]"}`}>
+                            MCP Tool Execution
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#ecfdf5] text-[#059669] border border-[#a7f3d0]">
+                        Executed
+                    </span>
+                    <button
+                        type="button"
+                        className="p-1 rounded-lg text-xs text-[#8e90a6] hover:text-[#202022]"
+                    >
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+                        >
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            {expanded && (
+                <div className="p-3 border-t border-[#e2e5f1] bg-[#f9fafc] text-xs font-mono space-y-2 overflow-x-auto max-h-72 custom-scrollbar">
+                    {parsedData?.call && (
+                        <div>
+                            <span className="text-[10px] font-bold uppercase text-[#8e90a6] block mb-0.5">Parameters:</span>
+                            <pre className="bg-white p-2 rounded-xl border border-[#e8ebf3] text-[11px] text-[#202022] whitespace-pre-wrap">
+                                {typeof parsedData.call === "object" ? JSON.stringify(parsedData.call, null, 2) : String(parsedData.call)}
+                            </pre>
+                        </div>
+                    )}
+                    <div>
+                        <span className="text-[10px] font-bold uppercase text-[#8e90a6] block mb-0.5">Result:</span>
+                        <pre className="bg-white p-2 rounded-xl border border-[#e8ebf3] text-[11px] text-[#059669] whitespace-pre-wrap">
+                            {typeof parsedData?.result === "object" ? JSON.stringify(parsedData.result, null, 2) : typeof parsedData === "object" ? JSON.stringify(parsedData, null, 2) : String(parsedData)}
+                        </pre>
+                    </div>
                 </div>
             )}
         </div>
@@ -791,13 +880,21 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                                                   })
                                               )}
                                               {(() => {
+                                                  const toolAtts = (msg.attachments || []).filter((att) => att.type?.toLowerCase() === "tool");
                                                   const audioAtts = (msg.attachments || []).filter(isAudioAttachment);
                                                   const docAtts = (msg.attachments || []).filter(
-                                                      (att) => att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att) && !isAudioAttachment(att),
+                                                      (att) => att.type?.toLowerCase() !== "tool" && att.type !== "thought" && att.type !== "metadata" && !isImageAttachment(att) && !isAudioAttachment(att),
                                                   );
-                                                  if (audioAtts.length === 0 && docAtts.length === 0) return null;
+                                                  if (toolAtts.length === 0 && audioAtts.length === 0 && docAtts.length === 0) return null;
                                                   return (
                                                       <div className="flex flex-col gap-2 mt-3 w-full max-w-full">
+                                                          {toolAtts.map((att, idx) => (
+                                                              <ToolAttachmentCard
+                                                                  key={att.id || `tool-${idx}`}
+                                                                  attachment={att}
+                                                                  isSelf={false}
+                                                              />
+                                                          ))}
                                                           {audioAtts.map((att, idx) => (
                                                               <AudioAttachmentCard
                                                                   key={att.id || `audio-${idx}`}

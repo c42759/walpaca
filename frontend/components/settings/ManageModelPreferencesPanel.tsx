@@ -460,7 +460,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                     </p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-5">
                     {filteredPreferences.map((pref) => {
                         const charDisplayName = getCharacterDisplayName(pref);
                         const modelDisplayName = getModelDisplayName(pref);
