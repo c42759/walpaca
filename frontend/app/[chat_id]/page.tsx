@@ -864,9 +864,10 @@ export default function ChatPage() {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [selectedAttachments, setSelectedAttachments] = useState<SelectedAttachment[]>([]);
 
-    const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
+    const handleFilesAdded = (files: FileList | File[] | null | undefined) => {
+        if (!files) return;
+        const fileList = Array.from(files);
+        if (fileList.length === 0) return;
 
         const currentCount = selectedAttachments.length;
         const maxAllowed = 4;
@@ -874,12 +875,11 @@ export default function ChatPage() {
 
         if (remaining <= 0) {
             alert("Maximum limit of 4 attachments (images or document files) reached.");
-            if (e.target) e.target.value = "";
             return;
         }
 
-        const selectedFiles = Array.from(files).slice(0, remaining);
-        if (files.length > remaining) {
+        const selectedFiles = fileList.slice(0, remaining);
+        if (fileList.length > remaining) {
             alert(`Only ${remaining} more attachment(s) allowed (limit is 4 total).`);
         }
 
@@ -893,7 +893,7 @@ export default function ChatPage() {
                     if (typeof reader.result === "string") {
                         resolve({
                             id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                            name: file.name,
+                            name: file.name || (attType === "image" ? "pasted-image.png" : "attachment"),
                             type: attType,
                             content: reader.result,
                             size: file.size,
@@ -920,7 +920,10 @@ export default function ChatPage() {
             .catch((err) => {
                 console.error("Error reading attached files:", err);
             });
+    };
 
+    const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        handleFilesAdded(e.target.files);
         if (e.target) e.target.value = "";
     };
 
@@ -4026,6 +4029,7 @@ export default function ChatPage() {
                                 handleSendMessage={handleSendMessage}
                                 selectedAttachments={selectedAttachments}
                                 handleAttachmentSelect={handleAttachmentSelect}
+                                onFilesAdded={handleFilesAdded}
                                 handleRemoveSelectedAttachment={handleRemoveSelectedAttachment}
                                 isThinkingEnabled={isThinkingEnabled}
                                 setIsThinkingEnabled={setIsThinkingEnabled}
