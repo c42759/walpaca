@@ -411,6 +411,42 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
     handleCallForAnswer,
     messagesEndRef,
 }) => {
+    const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+
+    const handleCopyMessage = async (msgId: string, content: string) => {
+        if (!content) return;
+        let success = false;
+        if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(content);
+                success = true;
+            } catch {
+                success = false;
+            }
+        }
+        if (!success && typeof document !== "undefined") {
+            try {
+                const textarea = document.createElement("textarea");
+                textarea.value = content;
+                textarea.style.position = "fixed";
+                textarea.style.opacity = "0";
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textarea);
+                success = true;
+            } catch {
+                success = false;
+            }
+        }
+        if (success) {
+            setCopiedMsgId(msgId);
+            setTimeout(() => {
+                setCopiedMsgId((curr) => (curr === msgId ? null : curr));
+            }, 2000);
+        }
+    };
+
     return (
         <div className="flex-1 overflow-y-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 flex flex-col">
             {messages.length === 0
@@ -554,6 +590,23 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                                                       );
                                                   })()}
                                                   <div className="flex items-center justify-end gap-2 text-sm text-white/80 mt-2">
+                                                      <button
+                                                          type="button"
+                                                          onClick={() => handleCopyMessage(msg.id, msg.content)}
+                                                          className="p-1 rounded-lg bg-white/10 hover:bg-white/25 text-white transition-all cursor-pointer flex items-center justify-center"
+                                                          title={copiedMsgId === msg.id ? "Copied to clipboard!" : "Copy markdown"}
+                                                        >
+                                                          {copiedMsgId === msg.id ? (
+                                                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                                  <polyline points="20 6 9 17 4 12" />
+                                                              </svg>
+                                                          ) : (
+                                                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                                              </svg>
+                                                          )}
+                                                      </button>
                                                       <button
                                                           type="button"
                                                           onClick={() => handleOpenForkModal(msg)}
@@ -765,6 +818,23 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                                                           <span>Metadata</span>
                                                       </button>
                                                   )}
+                                                  <button
+                                                      type="button"
+                                                      onClick={() => handleCopyMessage(msg.id, msg.content)}
+                                                      className="p-1.5 rounded-xl bg-white border border-[#e2e5f1] text-[#8e90a6] hover:text-[#7678ed] hover:border-[#7678ed] hover:bg-[#f4f6fc] transition-all shadow-xs cursor-pointer flex items-center justify-center"
+                                                      title={copiedMsgId === msg.id ? "Copied to clipboard!" : "Copy markdown"}
+                                                  >
+                                                      {copiedMsgId === msg.id ? (
+                                                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                              <polyline points="20 6 9 17 4 12" />
+                                                          </svg>
+                                                      ) : (
+                                                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                                          </svg>
+                                                      )}
+                                                  </button>
                                                   <button
                                                       type="button"
                                                       onClick={() => handleOpenForkModal(msg)}
