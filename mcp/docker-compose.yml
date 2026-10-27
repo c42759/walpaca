@@ -1,0 +1,14 @@
+services:
+    fetch:
+        container_name: walpaca_mcp_fetch
+        build: ./fetch
+        ports:
+            - "8081:8080"
+        restart: always
+
+    web-search:
+        container_name: walpaca_mcp_web_search
+        build: ./web-search
+        ports:
+            - "8082:8080"
+        restart: always

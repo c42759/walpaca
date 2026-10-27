@@ -19,6 +19,7 @@ export interface ChatInputProps {
     selectedAttachments: SelectedAttachment[];
     handleAttachmentSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
     handleRemoveSelectedAttachment: (index: number) => void;
+    onFilesAdded?: (files: File[]) => void;
     isThinkingEnabled: boolean;
     setIsThinkingEnabled: React.Dispatch<React.SetStateAction<boolean>>;
     setIsSelectModelModalOpen: (open: boolean) => void;
@@ -65,6 +66,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     selectedAttachments,
     handleAttachmentSelect,
     handleRemoveSelectedAttachment,
+    onFilesAdded,
     isThinkingEnabled,
     setIsThinkingEnabled,
     setIsSelectModelModalOpen,
@@ -80,6 +82,86 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 }) => {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const [isDraggingOver, setIsDraggingOver] = React.useState(false);
+    const dragCounterRef = useRef(0);
+
+    const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        if (!onFilesAdded) return;
+        const clipboardData = e.clipboardData;
+        if (!clipboardData) return;
+
+        const imageFiles: File[] = [];
+
+        if (clipboardData.files && clipboardData.files.length > 0) {
+            for (let i = 0; i < clipboardData.files.length; i++) {
+                const file = clipboardData.files[i];
+                if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(file.name)) {
+                    imageFiles.push(file);
+                }
+            }
+        }
+
+        if (imageFiles.length === 0 && clipboardData.items && clipboardData.items.length > 0) {
+            for (let i = 0; i < clipboardData.items.length; i++) {
+                const item = clipboardData.items[i];
+                if (item.type.startsWith("image/")) {
+                    const file = item.getAsFile();
+                    if (file) {
+                        const filename =
+                            file.name && file.name !== "image.png" && file.name !== "blob"
+                                ? file.name
+                                : `clipboard-${Date.now()}.png`;
+                        const renamedFile = new File([file], filename, { type: file.type });
+                        imageFiles.push(renamedFile);
+                    }
+                }
+            }
+        }
+
+        if (imageFiles.length > 0) {
+            e.preventDefault();
+            onFilesAdded(imageFiles);
+        }
+    };
+
+    const handleDragEnter = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounterRef.current += 1;
+        if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes("Files")) {
+            setIsDraggingOver(true);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) {
+            e.dataTransfer.dropEffect = "copy";
+        }
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounterRef.current -= 1;
+        if (dragCounterRef.current <= 0) {
+            dragCounterRef.current = 0;
+            setIsDraggingOver(false);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounterRef.current = 0;
+        setIsDraggingOver(false);
+
+        if (onFilesAdded && e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const files = Array.from(e.dataTransfer.files);
+            onFilesAdded(files);
+        }
+    };
 
     useEffect(() => {
         if (promptTextareaRef && "current" in promptTextareaRef) {
@@ -108,7 +190,28 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
 
     return (
-        <form onSubmit={handleSendMessage} className="p-2.5 sm:p-4 px-3 sm:px-6 md:px-8 border-t border-[#eef0f6] bg-white flex flex-col gap-2 sm:gap-3 pb-[calc(0.6rem+env(safe-area-inset-bottom,0px))]">
+        <form
+            onSubmit={handleSendMessage}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className="relative p-2.5 sm:p-4 px-3 sm:px-6 md:px-8 border-t border-[#eef0f6] bg-white flex flex-col gap-2 sm:gap-3 pb-[calc(0.6rem+env(safe-area-inset-bottom,0px))]"
+        >
+            {/* Drag and Drop Overlay */}
+            {isDraggingOver && (
+                <div className="absolute inset-0 z-20 m-1.5 sm:m-2 rounded-2xl border-2 border-dashed border-[#7678ed] bg-white/95 backdrop-blur-xs flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 text-[#7678ed] shadow-lg pointer-events-none transition-all">
+                    <div className="w-10 h-10 rounded-xl bg-[#7678ed]/15 flex items-center justify-center shrink-0">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                        </svg>
+                    </div>
+                    <div className="flex flex-col text-center sm:text-left">
+                        <span className="text-sm font-bold text-[#202022]">Drop files or images here</span>
+                        <span className="text-xs text-[#8e90a6] font-medium">Attach directly to your next message</span>
+                    </div>
+                </div>
+            )}
             <input
                 type="file"
                 ref={fileInputRef}
@@ -324,6 +427,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                             autoResizeTextarea(e.currentTarget);
                         }
                     }}
+                    onPaste={handlePaste}
                     onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
