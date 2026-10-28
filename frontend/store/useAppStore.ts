@@ -26,6 +26,8 @@ export interface AppPreferences {
     pin_security_enabled?: boolean;
     pin_auto_lock_timeout?: string;
     processing_poll_interval?: number;
+    tts_server_url?: string;
+    stt_server_url?: string;
 }
 
 
@@ -253,6 +255,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         default_audio_output: "default",
         pin_auto_lock_timeout: "15m",
         processing_poll_interval: 2,
+        tts_server_url: "",
+        stt_server_url: "",
     },
 
     appPreferencesLoaded: false,

@@ -19,7 +19,20 @@ class TTSEndpointTestCase(unittest.TestCase):
                 pref = Preference(key="pin_security_enabled")
                 pref.set_value(False)
                 db.session.add(pref)
+
+            tts_pref = Preference.query.get("tts_server_url")
+            if tts_pref:
+                tts_pref.set_value("")
             db.session.commit()
+
+    def tearDown(self):
+        with self.app.app_context():
+            from models import Preference, db
+            tts_pref = Preference.query.get("tts_server_url")
+            if tts_pref:
+                tts_pref.set_value("")
+                db.session.commit()
+
 
     def test_tts_missing_text_returns_400(self):
         response = self.client.post("/api/tts", json={})
@@ -77,6 +90,29 @@ class TTSEndpointTestCase(unittest.TestCase):
             },
         )
 
+    @patch("routes.api.urllib.request.urlopen")
+    def test_tts_custom_server_url_preference(self, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Type": "audio/mpeg"}
+        mock_response.read.side_effect = [b"audio_bytes", b""]
+        mock_urlopen.return_value = mock_response
+
+        with self.app.app_context():
+            from models import Preference, db
+            pref = Preference.query.get("tts_server_url")
+            if not pref:
+                pref = Preference(key="tts_server_url")
+                db.session.add(pref)
+            pref.set_value("http://custom-tts.local:9999/")
+            db.session.commit()
+
+        response = self.client.post("/api/tts", json={"text": "Custom test"})
+        self.assertEqual(response.status_code, 200)
+
+        req = mock_urlopen.call_args[0][0]
+        self.assertEqual(req.full_url, "http://custom-tts.local:9999/v1/audio/speech")
+
 
 if __name__ == "__main__":
     unittest.main()
+

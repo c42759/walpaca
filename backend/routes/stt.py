@@ -1,6 +1,7 @@
 import os
 import requests
 from flask import Blueprint, request, jsonify
+from models import Preference
 
 stt_bp = Blueprint("stt", __name__)
 
@@ -14,7 +15,13 @@ def transcribe_audio():
     if not uploaded_file or uploaded_file.filename == "":
         return jsonify({"error": "Empty audio file"}), 400
 
-    whisper_server_url = os.getenv("WHISPER_SERVER_URL", "http://whisper:9000").rstrip("/")
+    pref_row = Preference.query.get("stt_server_url")
+    custom_stt_url = pref_row.get_value() if pref_row else None
+    if custom_stt_url and str(custom_stt_url).strip():
+        whisper_server_url = str(custom_stt_url).strip().rstrip("/")
+    else:
+        whisper_server_url = os.getenv("WHISPER_SERVER_URL", "http://whisper:9000").rstrip("/")
+
     whisper_api_key = os.getenv("WHISPER_API_KEY")
 
     target_url = f"{whisper_server_url}/v1/audio/transcriptions"

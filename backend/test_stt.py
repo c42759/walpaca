@@ -17,7 +17,20 @@ class STTEndpointTestCase(unittest.TestCase):
                 pref = Preference(key="pin_security_enabled")
                 pref.set_value(False)
                 db.session.add(pref)
+
+            stt_pref = Preference.query.get("stt_server_url")
+            if stt_pref:
+                stt_pref.set_value("")
             db.session.commit()
+
+    def tearDown(self):
+        with self.app.app_context():
+            from models import Preference, db
+            stt_pref = Preference.query.get("stt_server_url")
+            if stt_pref:
+                stt_pref.set_value("")
+                db.session.commit()
+
 
     def test_stt_missing_file_returns_400(self):
         response = self.client.post("/api/stt", data={})
@@ -87,6 +100,37 @@ class STTEndpointTestCase(unittest.TestCase):
         self.assertIn("error", data)
         self.assertIn("Whisper transcription failed", data["error"])
 
+    @patch("routes.stt.requests.post")
+    def test_stt_custom_server_url_preference(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"text": "Custom STT transcription"}
+        mock_post.return_value = mock_resp
+
+        with self.app.app_context():
+            from models import Preference, db
+            pref = Preference.query.get("stt_server_url")
+            if not pref:
+                pref = Preference(key="stt_server_url")
+                db.session.add(pref)
+            pref.set_value("http://custom-whisper.local:9001/")
+            db.session.commit()
+
+        audio_bytes = io.BytesIO(b"fake_audio_bytes")
+        response = self.client.post(
+            "/api/stt",
+            data={
+                "file": (audio_bytes, "test.wav", "audio/wav"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        mock_post.assert_called_once()
+        args, _ = mock_post.call_args
+        self.assertEqual(args[0], "http://custom-whisper.local:9001/v1/audio/transcriptions")
+
 
 if __name__ == "__main__":
     unittest.main()
+

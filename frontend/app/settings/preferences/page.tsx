@@ -15,6 +15,8 @@ interface PreferencesData {
     pin_security_enabled?: boolean;
     pin_auto_lock_timeout?: string;
     processing_poll_interval?: number;
+    tts_server_url?: string;
+    stt_server_url?: string;
 }
 
 
@@ -661,6 +663,54 @@ export default function PreferencesSettingsPage() {
                                             </option>
                                         )}
                                 </select>
+                            </div>
+                        </div>
+
+                        {/* SPEECH & VOICE SERVERS (TTS & STT) */}
+                        <div className="space-y-5 bg-white border border-[#e8ebf3] rounded-2xl p-6 shadow-xs">
+                            <div>
+                                <h4 className="text-base font-bold text-[#202022]">Voice & Speech Services (TTS & STT)</h4>
+                                <p className="text-xs text-[#8e90a6] mt-0.5">
+                                    Configure custom server addresses for text-to-speech (TTS) and speech-to-text (STT) transcription. Leave empty to use the built-in services.
+                                </p>
+                            </div>
+
+                            {/* TTS Server URL */}
+                            <div className="space-y-1.5 pt-3 border-t border-[#e8ebf3]">
+                                <label className="text-sm font-bold text-[#202022] flex items-center justify-between">
+                                    <span>Text-to-Speech (TTS) Server Address</span>
+                                    <span className="text-[11px] font-semibold text-[#8e90a6]">Kokoro / OpenAI compatible</span>
+                                </label>
+                                <p className="text-xs text-[#8e90a6]">
+                                    Target HTTP endpoint for speech synthesis. Leave blank to use default built-in Kokoro container.
+                                </p>
+                                <input
+                                    type="text"
+                                    disabled={isLoading}
+                                    value={preferences.tts_server_url || ""}
+                                    onChange={(e) => handleUpdatePreference("tts_server_url", e.target.value)}
+                                    placeholder="http://kokoro:8880"
+                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-4 py-2.5 text-sm font-semibold text-[#202022] placeholder-[#8e90a6]/60 outline-none focus:border-[#7678ed] focus:bg-white transition-all disabled:opacity-50"
+                                />
+                            </div>
+
+                            {/* STT Server URL */}
+                            <div className="space-y-1.5 pt-3 border-t border-[#e8ebf3]">
+                                <label className="text-sm font-bold text-[#202022] flex items-center justify-between">
+                                    <span>Speech-to-Text (STT) Server Address</span>
+                                    <span className="text-[11px] font-semibold text-[#8e90a6]">Faster-Whisper / OpenAI compatible</span>
+                                </label>
+                                <p className="text-xs text-[#8e90a6]">
+                                    Target HTTP endpoint for audio transcription. Leave blank to use default built-in Whisper container.
+                                </p>
+                                <input
+                                    type="text"
+                                    disabled={isLoading}
+                                    value={preferences.stt_server_url || ""}
+                                    onChange={(e) => handleUpdatePreference("stt_server_url", e.target.value)}
+                                    placeholder="http://whisper:9000"
+                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-4 py-2.5 text-sm font-semibold text-[#202022] placeholder-[#8e90a6]/60 outline-none focus:border-[#7678ed] focus:bg-white transition-all disabled:opacity-50"
+                                />
                             </div>
                         </div>
                     </div>
