@@ -15,6 +15,7 @@ from routes.preferences import preferences_bp
 from routes.prompts import prompts_bp
 from routes.search import search_bp
 from routes.tts import tts_bp
+from routes.stt import stt_bp
 from routes.mcp import mcp_bp
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -28,6 +29,7 @@ api_bp.register_blueprint(instances_bp)
 api_bp.register_blueprint(model_preferences_bp)
 api_bp.register_blueprint(search_bp)
 api_bp.register_blueprint(tts_bp)
+api_bp.register_blueprint(stt_bp)
 api_bp.register_blueprint(generate_bp)
 api_bp.register_blueprint(lorebook_bp)
 api_bp.register_blueprint(personas_bp)
