@@ -26,6 +26,11 @@ export interface AppPreferences {
     pin_security_enabled?: boolean;
     pin_auto_lock_timeout?: string;
     processing_poll_interval?: number;
+    tts_server_url?: string;
+    tts_api_key?: string;
+    stt_server_url?: string;
+    stt_api_key?: string;
+    attach_all_files?: boolean;
 }
 
 
@@ -113,6 +118,8 @@ interface AppStoreState {
     setIsMobileNavOpen: (open: boolean) => void;
     isRightDrawerOpen: boolean;
     setIsRightDrawerOpen: (open: boolean) => void;
+    isRightSidebarCollapsed: boolean;
+    setIsRightSidebarCollapsed: (collapsed: boolean) => void;
 
     // Long-lived Data States
     instances: InstanceItem[];
@@ -228,6 +235,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     setIsMobileNavOpen: (open) => set({ isMobileNavOpen: open }),
     isRightDrawerOpen: false,
     setIsRightDrawerOpen: (open) => set({ isRightDrawerOpen: open }),
+    isRightSidebarCollapsed: false,
+    setIsRightSidebarCollapsed: (collapsed) => set({ isRightSidebarCollapsed: collapsed }),
 
     instances: [],
     instancesLoaded: false,
@@ -249,6 +258,11 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         default_audio_output: "default",
         pin_auto_lock_timeout: "15m",
         processing_poll_interval: 2,
+        tts_server_url: "",
+        tts_api_key: "",
+        stt_server_url: "",
+        stt_api_key: "",
+        attach_all_files: false,
     },
 
     appPreferencesLoaded: false,

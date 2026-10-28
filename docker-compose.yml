@@ -11,8 +11,6 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    depends_on:
-      - backend
     environment:
       CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
@@ -21,6 +19,9 @@ services:
       options:
         max-size: "1g"
         max-file: "3"
+    depends_on:
+      - backend
+      - kokoro
     command: sh run_server.sh
 
   backend:
@@ -43,6 +44,8 @@ services:
       ALPACA_DB_PATH: "/app/alpaca.db"
       TTS_SERVER_URL: "http://kokoro:8880"
       TTS_API_KEY: ${KOKORO_API_KEY}
+      WHISPER_SERVER_URL: "http://whisper:9000"
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
       CORS_DOMAINS: "${CORS_DOMAINS}"
     restart: always
     logging:
@@ -67,6 +70,26 @@ services:
         max-file: "3"
     restart: always
 
+  whisper:
+    container_name: walpaca_whisper
+    image: hwdsl2/whisper-server:latest # Use `hwdsl2/whisper-server:cuda` if you have an NVIDIA GPU
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "${NETWORK_ADDRESS}:9000:9000"
+      - "${VPN_ADDRESS}:9000:9000"
+    volumes:
+      - whisper-data:/var/lib/whisper
+    environment:
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
+      WHISPER_MODEL: base # Options: tiny, base, small, medium, large-v3, large-v3-turbo
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "3"
+
 volumes:
   kokoro-data:
   kokoro_cache:
+  whisper-data:

@@ -15,7 +15,13 @@ DEFAULT_PREFERENCES = {
     "default_audio_output": "default",
     "pin_auto_lock_timeout": "15m",
     "processing_poll_interval": 2,
+    "tts_server_url": "",
+    "stt_server_url": "",
+    "tts_api_key": "",
+    "stt_api_key": "",
+    "attach_all_files": False,
 }
+
 
 
 

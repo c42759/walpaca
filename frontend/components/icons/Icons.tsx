@@ -224,3 +224,34 @@ export const PuzzleIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { classNa
         <path d="M19.439 7.85c0-1.57-1.28-2.85-2.85-2.85v-1.5a1.5 1.5 0 0 0-1.5-1.5h-4.18a1.5 1.5 0 0 0-1.5 1.5v1.5c-1.57 0-2.85 1.28-2.85 2.85h-1.5a1.5 1.5 0 0 0-1.5 1.5v4.18a1.5 1.5 0 0 0 1.5 1.5h1.5c0 1.57 1.28 2.85 2.85 2.85v1.5a1.5 1.5 0 0 0 1.5 1.5h4.18a1.5 1.5 0 0 0 1.5-1.5v-1.5c1.57 0 2.85-1.28 2.85-2.85h1.5a1.5 1.5 0 0 0 1.5-1.5v-4.18a1.5 1.5 0 0 0-1.5-1.5h-1.5z" />
     </svg>
 );
+
+export const CollapseRightIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="18" height="18" x="3" y="3" rx="2" />
+        <path d="M15 3v18" />
+        <path d="m10 9 3 3-3 3" />
+    </svg>
+);
+
+export const MicIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { className?: string; strokeWidth?: number | string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <line x1="12" y1="19" x2="12" y2="22" />
+    </svg>
+);
+export const EyeIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { className?: string; strokeWidth?: number | string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+        <circle cx="12" cy="12" r="3" />
+    </svg>
+);
+
+export const EyeOffIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { className?: string; strokeWidth?: number | string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+        <line x1="2" y1="2" x2="22" y2="22" />
+    </svg>
+);

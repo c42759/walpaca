@@ -19,7 +19,7 @@ import { ChatMessageList } from "@/components/chat/ChatMessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { PersonaDetailsModal, PersonaDetailsData } from "@/components/chat/PersonaDetailsModal";
 import { CustomPromptsModal } from "@/components/chat/CustomPromptsModal";
-import { BrainIcon, MetadataIcon, ServerIcon, CloseIcon } from "@/components/icons/Icons";
+import { BrainIcon, MetadataIcon, ServerIcon, CloseIcon, CollapseRightIcon } from "@/components/icons/Icons";
 import { WidgetSimple, WidgetToggle, WidgetWithCustomHeader } from "@/components/ui/Widget";
 
 // --- Types ---
@@ -959,6 +959,8 @@ export default function ChatPage() {
         setIsCreatingFolder,
         isRightDrawerOpen,
         setIsRightDrawerOpen,
+        isRightSidebarCollapsed,
+        setIsRightSidebarCollapsed,
     } = useAppStore();
 
     const [activeAttachmentModal, setActiveAttachmentModal] = useState<{ title: string; type: string; content: string } | null>(null);
@@ -4282,10 +4284,23 @@ export default function ChatPage() {
 
                     return (
                         <>
-                            {/* Desktop permanent column (>= lg) */}
-                            <aside className="hidden lg:flex w-[290px] xl:w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex-col gap-4 overflow-y-auto shrink-0">
-                                {drawerCards}
-                            </aside>
+                            {/* Desktop column (>= lg) */}
+                            {!isRightSidebarCollapsed && (
+                                <aside className="hidden lg:flex w-[290px] xl:w-[330px] bg-[#f9fafc] border-l border-[#e8ebf3] p-4 flex-col gap-4 overflow-y-auto shrink-0 animate-in fade-in duration-200">
+                                    <div className="flex items-center justify-between pb-2 border-b border-[#e8ebf3] shrink-0">
+                                        <span className="font-bold text-base text-[#202022]">Details &amp; Context</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsRightSidebarCollapsed(true)}
+                                            className="p-1.5 rounded-xl hover:bg-[#eaecf9] text-[#8e90a6] hover:text-[#202022] transition-colors cursor-pointer"
+                                            title="Collapse sidebar"
+                                        >
+                                            <CollapseRightIcon className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                    {drawerCards}
+                                </aside>
+                            )}
 
                             {/* Mobile / Tablet Slide-over Drawer (< lg) */}
                             {isRightDrawerOpen && (

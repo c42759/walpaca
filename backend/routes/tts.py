@@ -9,6 +9,8 @@ from flask import Response
 from flask import Blueprint
 from flask import stream_with_context
 
+from models import Preference
+
 tts_bp = Blueprint("tts", __name__)
 
 
@@ -40,9 +42,18 @@ def text_to_speech():
                "speed": speed,
                "response_format": response_format}
 
-    tts_server_url = os.getenv("TTS_SERVER_URL", "http://kokoro:8880").rstrip("/")
-    tts_api_key = os.getenv("TTS_API_KEY")
-
+    pref_row = Preference.query.get("tts_server_url")
+    custom_tts_url = pref_row.get_value() if pref_row else None
+    if custom_tts_url and str(custom_tts_url).strip():
+        tts_server_url = str(custom_tts_url).strip().rstrip("/")
+    else:
+        tts_server_url = os.getenv("TTS_SERVER_URL", "http://kokoro:8880").rstrip("/")
+    pref_key_row = Preference.query.get("tts_api_key")
+    custom_tts_key = pref_key_row.get_value() if pref_key_row else None
+    if custom_tts_key and str(custom_tts_key).strip():
+        tts_api_key = str(custom_tts_key).strip()
+    else:
+        tts_api_key = os.getenv("TTS_API_KEY") or os.getenv("KOKORO_API_KEY")
     target_url = f"{tts_server_url}/v1/audio/speech"
 
     payload_bytes = json.dumps(payload).encode("utf-8")

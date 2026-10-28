@@ -43,6 +43,8 @@ services:
       ALPACA_DB_PATH: "/app/alpaca.db"
       TTS_SERVER_URL: "http://kokoro:8880"
       TTS_API_KEY: ${KOKORO_API_KEY}
+      WHISPER_SERVER_URL: "http://whisper:9000"
+      WHISPER_API_KEY: ${WHISPER_API_KEY}
       CORS_DOMAINS: "${CORS_DOMAINS}"
     logging:
       driver: "json-file"

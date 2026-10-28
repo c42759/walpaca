@@ -8,6 +8,7 @@ from flask import request
 from flask import Response
 from flask import stream_with_context
 from flask import current_app
+from flask import has_app_context
 
 from models import db
 from models import Chat
@@ -16,6 +17,7 @@ from models import Attachment
 from models import Instance
 from models import InstanceModel
 from models import ModelPreferences
+from models import Preference
 from models import generate_uuid
 from models import current_alpaca_timestamp
 from utils.mcp_manager import McpManager
@@ -497,9 +499,23 @@ def _format_message_attachments(content: str, attachments: list) -> tuple:
 
 
 def _build_messages_payload(data: dict, chat_id: str = None) -> list:
-    """Constructs normalized message payload with multimodal images and document attachments."""
+    """Constructs normalized message payload with multimodal images and document attachments.
+    Respects attach_all_files preference: if True, attaches all files to corresponding messages;
+    if False, only attaches files/images to the last message sent by the user.
+    """
     prompt = data.get("prompt")
     messages = data.get("messages")
+
+    attach_all_files = data.get("attach_all_files")
+    if attach_all_files is None:
+        if has_app_context():
+            try:
+                pref_row = Preference.query.get("attach_all_files")
+                attach_all_files = bool(pref_row.get_value()) if pref_row else False
+            except Exception:
+                attach_all_files = False
+        else:
+            attach_all_files = False
 
     if chat_id and not messages and not prompt:
         chat = Chat.query.get(chat_id)
@@ -509,9 +525,20 @@ def _build_messages_payload(data: dict, chat_id: str = None) -> list:
                 .order_by(Message.date_time.asc())
                 .all()
             )
+            # Find the index of the last user message
+            last_user_idx = None
+            for i in range(len(chat_msgs) - 1, -1, -1):
+                if chat_msgs[i].role == "user":
+                    last_user_idx = i
+                    break
+
             built = []
-            for m in chat_msgs:
-                c, imgs = _format_message_attachments(m.content, m.attachments)
+            for i, m in enumerate(chat_msgs):
+                if (attach_all_files or i == last_user_idx) and m.attachments:
+                    c, imgs = _format_message_attachments(m.content, m.attachments)
+                else:
+                    c = m.content or ""
+                    imgs = []
                 msg_obj = {"role": m.role, "content": c}
                 if imgs:
                     msg_obj["images"] = imgs
@@ -527,19 +554,31 @@ def _build_messages_payload(data: dict, chat_id: str = None) -> list:
         return [user_msg]
 
     if messages:
-        built = []
-        for m in messages:
-            m_copy = dict(m)
-            raw_atts = m_copy.get("attachments", [])
-            content, att_imgs = _format_message_attachments(m_copy.get("content", ""), raw_atts)
-            m_copy["content"] = content
+        # Find the index of the last user message
+        last_user_idx = None
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                last_user_idx = i
+                break
 
-            existing_imgs = [clean_base64_image(img) for img in m_copy.get("images", []) if clean_base64_image(img)]
-            all_imgs = existing_imgs + [img for img in att_imgs if img not in existing_imgs]
-            if all_imgs:
-                m_copy["images"] = all_imgs
-            elif "images" in m_copy:
-                del m_copy["images"]
+        built = []
+        for i, m in enumerate(messages):
+            m_copy = dict(m)
+            if attach_all_files or i == last_user_idx:
+                raw_atts = m_copy.get("attachments", [])
+                content, att_imgs = _format_message_attachments(m_copy.get("content", ""), raw_atts)
+                m_copy["content"] = content
+
+                existing_imgs = [clean_base64_image(img) for img in m_copy.get("images", []) if clean_base64_image(img)]
+                all_imgs = existing_imgs + [img for img in att_imgs if img not in existing_imgs]
+                if all_imgs:
+                    m_copy["images"] = all_imgs
+                elif "images" in m_copy:
+                    del m_copy["images"]
+            else:
+                m_copy["content"] = m_copy.get("content", "")
+                if "images" in m_copy:
+                    del m_copy["images"]
 
             built.append(m_copy)
         return built

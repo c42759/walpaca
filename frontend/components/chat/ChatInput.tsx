@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
-import { BrainIcon, PromptIcon } from "../icons/Icons";
+import React, { useRef, useEffect, useState } from "react";
+import { BrainIcon, PromptIcon, MicIcon, UploadIcon, CloseIcon, PlusIcon } from "../icons/Icons";
+import { getApiUrl } from "@/lib/api";
 
 export interface SelectedAttachment {
     id: string;
@@ -81,9 +82,162 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     autoResizeTextarea = defaultAutoResizeTextarea,
 }) => {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const audioFileInputRef = useRef<HTMLInputElement | null>(null);
     const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
     const [isDraggingOver, setIsDraggingOver] = React.useState(false);
     const dragCounterRef = useRef(0);
+
+    // Voice Recording & Audio Transcription States
+    const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingSeconds, setRecordingSeconds] = useState(0);
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    const [transcribeError, setTranscribeError] = useState<string | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const mediaStreamRef = useRef<MediaStream | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current);
+            if (mediaStreamRef.current) {
+                mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+            }
+        };
+    }, []);
+
+    const formatRecordingTime = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    };
+
+    const sendAudioForTranscription = async (fileOrBlob: Blob, filename = "recording.webm") => {
+        setIsTranscribing(true);
+        setTranscribeError(null);
+        try {
+            const formData = new FormData();
+            formData.append("file", fileOrBlob, filename);
+
+            const apiUrl = getApiUrl();
+            const res = await fetch(`${apiUrl}/stt`, {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || errData.error || `Transcription failed (HTTP ${res.status})`);
+            }
+
+            const data = await res.json();
+            const text = (data.text || "").trim();
+            if (text) {
+                setInputText(inputText ? `${inputText} ${text}` : text);
+                setTimeout(() => {
+                    const el = promptTextareaRef?.current || internalTextareaRef.current;
+                    if (el) {
+                        autoResizeTextarea(el);
+                        el.focus();
+                    }
+                }, 50);
+            }
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Failed to transcribe audio";
+            setTranscribeError(msg);
+            setTimeout(() => setTranscribeError(null), 5000);
+        } finally {
+            setIsTranscribing(false);
+        }
+    };
+
+    const startRecording = async () => {
+        setIsActionsMenuOpen(false);
+        setTranscribeError(null);
+        try {
+            if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error("Microphone access is not supported in this browser");
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaStreamRef.current = stream;
+
+            let mimeType = "audio/webm;codecs=opus";
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = MediaRecorder.isTypeSupported("audio/webm")
+                    ? "audio/webm"
+                    : MediaRecorder.isTypeSupported("audio/mp4")
+                    ? "audio/mp4"
+                    : "";
+            }
+
+            const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+            mediaRecorderRef.current = recorder;
+            audioChunksRef.current = [];
+
+            recorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                    audioChunksRef.current.push(e.data);
+                }
+            };
+
+            recorder.start(250);
+            setIsRecording(true);
+            setRecordingSeconds(0);
+
+            if (timerRef.current) clearInterval(timerRef.current);
+            timerRef.current = setInterval(() => {
+                setRecordingSeconds((prev) => prev + 1);
+            }, 1000);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Could not access microphone";
+            setTranscribeError(msg);
+            setTimeout(() => setTranscribeError(null), 5000);
+        }
+    };
+
+    const stopRecording = (shouldTranscribe = true) => {
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
+
+        const recorder = mediaRecorderRef.current;
+        if (recorder && recorder.state !== "inactive") {
+            recorder.onstop = () => {
+                if (shouldTranscribe && audioChunksRef.current.length > 0) {
+                    const mimeType = recorder.mimeType || "audio/webm";
+                    const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("wav") ? "wav" : "webm";
+                    const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+                    sendAudioForTranscription(audioBlob, `voice-recording.${ext}`);
+                }
+                audioChunksRef.current = [];
+            };
+            recorder.stop();
+        }
+
+        if (mediaStreamRef.current) {
+            mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+            mediaStreamRef.current = null;
+        }
+
+        setIsRecording(false);
+        setRecordingSeconds(0);
+    };
+
+    const cancelRecording = () => {
+        stopRecording(false);
+    };
+
+    const handleAudioFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setIsActionsMenuOpen(false);
+        const file = e.target.files?.[0];
+        if (file) {
+            sendAudioForTranscription(file, file.name);
+        }
+        e.target.value = "";
+    };
 
     const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
         if (!onFilesAdded) return;
@@ -220,6 +374,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 onChange={handleAttachmentSelect}
                 className="hidden"
             />
+            <input
+                ref={audioFileInputRef}
+                type="file"
+                accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.flac"
+                onChange={handleAudioFileChange}
+                className="hidden"
+            />
 
             {/* Attachments Preview Strip */}
             {selectedAttachments.length > 0 && (
@@ -330,6 +491,28 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 </div>
             )}
 
+            {/* Transcribing Banner or Error Toast */}
+            {isTranscribing && (
+                <div className="mb-2 px-3.5 py-2 rounded-xl bg-[#7678ed]/10 border border-[#7678ed]/20 text-xs sm:text-sm font-semibold text-[#7678ed] flex items-center gap-2 animate-in fade-in duration-200">
+                    <svg className="w-4 h-4 animate-spin shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10" />
+                    </svg>
+                    <span>Transcribing audio with Whisper...</span>
+                </div>
+            )}
+            {transcribeError && (
+                <div className="mb-2 px-3.5 py-2 rounded-xl bg-rose-50 border border-rose-200 text-xs sm:text-sm font-semibold text-rose-600 flex items-center justify-between gap-2 animate-in fade-in duration-200">
+                    <span className="truncate">{transcribeError}</span>
+                    <button
+                        type="button"
+                        onClick={() => setTranscribeError(null)}
+                        className="p-1 hover:text-rose-800 transition-colors cursor-pointer shrink-0"
+                    >
+                        <CloseIcon className="w-4 h-4" />
+                    </button>
+                </div>
+            )}
+
             <div className="flex items-center gap-1.5 sm:gap-2.5 w-full">
                 {/* Combined Model & Instance Selector Button */}
                 <button
@@ -389,64 +572,213 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     <BrainIcon className="w-5 h-5" />
                 </button>
 
-                {/* Attach file button */}
-                <button
-                    type="button"
-                    disabled={selectedAttachments.length >= 4}
-                    onClick={() => {
-                        if (selectedAttachments.length < 4) {
-                            fileInputRef.current?.click();
-                        }
-                    }}
-                    className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#8e90a6] disabled:hover:bg-transparent"
-                    title={selectedAttachments.length >= 4 ? "Maximum 4 attachments reached" : "Attach file (Max 4 attachments)"}
-                >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                    </svg>
-                </button>
-
-                <textarea
-                    ref={(el) => {
-                        internalTextareaRef.current = el;
-                        if (autoResizeTextarea) {
-                            autoResizeTextarea(el);
-                        }
-                    }}
-                    rows={1}
-                    placeholder="Write a message..."
-                    value={inputText}
-                    onChange={(e) => {
-                        setInputText(e.target.value);
-                        if (autoResizeTextarea) {
-                            autoResizeTextarea(e.currentTarget);
-                        }
-                    }}
-                    onInput={(e) => {
-                        if (autoResizeTextarea) {
-                            autoResizeTextarea(e.currentTarget);
-                        }
-                    }}
-                    onPaste={handlePaste}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            if (inputText.trim() || selectedAttachments.length > 0) {
-                                handleSendMessage(e);
+                {/* Unified Actions Menu (Attach, Custom Prompts, Record Audio, Upload Audio File) */}
+                <div className="relative shrink-0">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (isRecording) {
+                                stopRecording(true);
+                            } else {
+                                setIsActionsMenuOpen((prev) => !prev);
                             }
+                        }}
+                        disabled={isTranscribing}
+                        className={`p-2.5 rounded-2xl transition-all cursor-pointer ${
+                            isRecording
+                                ? "bg-rose-500 text-white animate-pulse"
+                                : isTranscribing
+                                ? "bg-[#7678ed]/20 text-[#7678ed]"
+                                : isActionsMenuOpen
+                                ? "text-[#7678ed] bg-[#7678ed]/15 shadow-xs"
+                                : "text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc]"
+                        }`}
+                        title={
+                            isRecording
+                                ? "Recording in progress... (Click to transcribe)"
+                                : isTranscribing
+                                ? "Transcribing audio..."
+                                : "Attach, Prompts, Voice & Audio"
                         }
-                    }}
-                    className="flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-3.5 py-2.5 sm:px-5 sm:py-3.5 text-base sm:text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]"
-                />
+                    >
+                        {isTranscribing ? (
+                            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10" />
+                            </svg>
+                        ) : (
+                            <PlusIcon className={`w-5 h-5 transition-transform duration-200 ${isActionsMenuOpen ? "rotate-45" : ""}`} />
+                        )}
+                    </button>
 
-                <button
-                    type="button"
-                    onClick={onOpenCustomPromptsModal}
-                    className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0 cursor-pointer"
-                    title="Custom Prompts"
-                >
-                    <PromptIcon className="w-5 h-5" />
-                </button>
+                    {/* Actions Popover */}
+                    {isActionsMenuOpen && !isRecording && (
+                        <>
+                            <div className="fixed inset-0 z-30" onClick={() => setIsActionsMenuOpen(false)} />
+                            <div className="absolute left-0 bottom-full mb-2 w-72 bg-white rounded-2xl shadow-xl border border-[#e8ebf3] py-2 z-40 select-none animate-in fade-in zoom-in-95 duration-150 divide-y divide-[#f0f2f9]">
+                                <div className="px-1 py-1 space-y-0.5">
+                                    {/* Attach */}
+                                    <button
+                                        type="button"
+                                        disabled={selectedAttachments.length >= 4}
+                                        onClick={() => {
+                                            setIsActionsMenuOpen(false);
+                                            if (selectedAttachments.length < 4) {
+                                                fileInputRef.current?.click();
+                                            }
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                                    >
+                                        <span className="p-2 rounded-xl bg-[#7678ed]/10 text-[#7678ed] shrink-0">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                                            </svg>
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-[#202022]">Attach</span>
+                                                {selectedAttachments.length > 0 && (
+                                                    <span className="text-[11px] font-semibold text-[#8e90a6]">
+                                                        {selectedAttachments.length}/4
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Files, images, documents</p>
+                                        </div>
+                                    </button>
+
+                                    {/* Custom Prompts */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsActionsMenuOpen(false);
+                                            onOpenCustomPromptsModal?.();
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
+                                    >
+                                        <span className="p-2 rounded-xl bg-amber-50 text-amber-600 shrink-0">
+                                            <PromptIcon className="w-[18px] h-[18px]" />
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-[#202022] block">Custom prompts</span>
+                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Prompt templates & snippets</p>
+                                        </div>
+                                    </button>
+                                </div>
+
+                                <div className="px-1 py-1 space-y-0.5">
+                                    {/* Record Audio (Record and Transcribe) */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsActionsMenuOpen(false);
+                                            startRecording();
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
+                                    >
+                                        <span className="p-2 rounded-xl bg-rose-50 text-rose-500 shrink-0">
+                                            <MicIcon className="w-[18px] h-[18px]" />
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-[#202022] block">Record Audio</span>
+                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Record and transcribe voice</p>
+                                        </div>
+                                    </button>
+
+                                    {/* Upload Audio File (Transcribe audio file) */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsActionsMenuOpen(false);
+                                            audioFileInputRef.current?.click();
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
+                                    >
+                                        <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
+                                            <UploadIcon className="w-[18px] h-[18px]" />
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-[#202022] block">Upload Audio File</span>
+                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Transcribe audio file</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {isRecording ? (
+                    <div className="flex-1 bg-[#f0f2f9] text-[#202022] rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3.5 flex items-center justify-between gap-3 animate-in fade-in duration-200 min-h-[44px] sm:min-h-[52px]">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                            <span className="font-semibold text-sm sm:text-base text-rose-600 shrink-0">
+                                Recording
+                            </span>
+                            <span className="text-xs sm:text-sm font-mono text-[#5d6075] bg-white/80 px-2 py-0.5 rounded-md border border-[#e2e5f1] shrink-0">
+                                {formatRecordingTime(recordingSeconds)}
+                            </span>
+                            <span className="text-xs text-[#8e90a6] hidden sm:inline truncate">
+                                Speak into your microphone...
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                type="button"
+                                onClick={cancelRecording}
+                                className="px-2.5 py-1 text-xs font-semibold text-[#8e90a6] hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                title="Cancel recording"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => stopRecording(true)}
+                                className="px-3 py-1 bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                                title="Done and transcribe"
+                            >
+                                Transcribe
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <textarea
+                        ref={(el) => {
+                            internalTextareaRef.current = el;
+                            if (autoResizeTextarea) {
+                                autoResizeTextarea(el);
+                            }
+                            if (promptTextareaRef) {
+                                (promptTextareaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
+                            }
+                        }}
+                        rows={1}
+                        placeholder={isTranscribing ? "Transcribing audio..." : "Write a message..."}
+                        value={inputText}
+                        onChange={(e) => {
+                            setInputText(e.target.value);
+                            if (autoResizeTextarea) {
+                                autoResizeTextarea(e.currentTarget);
+                            }
+                        }}
+                        onInput={(e) => {
+                            if (autoResizeTextarea) {
+                                autoResizeTextarea(e.currentTarget);
+                            }
+                        }}
+                        onPaste={handlePaste}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                if (inputText.trim() || selectedAttachments.length > 0) {
+                                    handleSendMessage(e);
+                                }
+                            }
+                        }}
+                        disabled={isTranscribing}
+                        className="flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-3.5 py-2.5 sm:px-5 sm:py-3.5 text-base sm:text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]"
+                    />
+                )}
+
 
                 <button
                     type="submit"
