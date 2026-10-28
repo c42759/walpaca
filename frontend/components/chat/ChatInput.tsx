@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect, useState } from "react";
-import { BrainIcon, PromptIcon, MicIcon, UploadIcon, CloseIcon } from "../icons/Icons";
+import { BrainIcon, PromptIcon, MicIcon, UploadIcon, CloseIcon, PlusIcon } from "../icons/Icons";
 import { getApiUrl } from "@/lib/api";
 
 export interface SelectedAttachment {
@@ -88,7 +88,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     const dragCounterRef = useRef(0);
 
     // Voice Recording & Audio Transcription States
-    const [isMicMenuOpen, setIsMicMenuOpen] = useState(false);
+    const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
     const [isTranscribing, setIsTranscribing] = useState(false);
@@ -153,7 +153,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     };
 
     const startRecording = async () => {
-        setIsMicMenuOpen(false);
+        setIsActionsMenuOpen(false);
         setTranscribeError(null);
         try {
             if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -231,7 +231,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     };
 
     const handleAudioFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setIsMicMenuOpen(false);
+        setIsActionsMenuOpen(false);
         const file = e.target.files?.[0];
         if (file) {
             sendAudioForTranscription(file, file.name);
@@ -372,6 +372,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 accept="image/*,.mp3,.wav,audio/*,.txt,.md,.css,.js,.jsx,.ts,.tsx,.php,.py,.html,.json,.xml,.csv,.c,.cpp,.h,.hpp,.cs,.java,.rb,.rs,.go,.sql,.sh,.yaml,.yml,.dockerfile,.env,.odt,.docx,.pptx,.pdf"
                 multiple
                 onChange={handleAttachmentSelect}
+                className="hidden"
+            />
+            <input
+                ref={audioFileInputRef}
+                type="file"
+                accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.flac"
+                onChange={handleAudioFileChange}
                 className="hidden"
             />
 
@@ -565,22 +572,140 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     <BrainIcon className="w-5 h-5" />
                 </button>
 
-                {/* Attach file button */}
-                <button
-                    type="button"
-                    disabled={selectedAttachments.length >= 4}
-                    onClick={() => {
-                        if (selectedAttachments.length < 4) {
-                            fileInputRef.current?.click();
+                {/* Unified Actions Menu (Attach, Custom Prompts, Record Audio, Upload Audio File) */}
+                <div className="relative shrink-0">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (isRecording) {
+                                stopRecording(true);
+                            } else {
+                                setIsActionsMenuOpen((prev) => !prev);
+                            }
+                        }}
+                        disabled={isTranscribing}
+                        className={`p-2.5 rounded-2xl transition-all cursor-pointer ${
+                            isRecording
+                                ? "bg-rose-500 text-white animate-pulse"
+                                : isTranscribing
+                                ? "bg-[#7678ed]/20 text-[#7678ed]"
+                                : isActionsMenuOpen
+                                ? "text-[#7678ed] bg-[#7678ed]/15 shadow-xs"
+                                : "text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc]"
+                        }`}
+                        title={
+                            isRecording
+                                ? "Recording in progress... (Click to transcribe)"
+                                : isTranscribing
+                                ? "Transcribing audio..."
+                                : "Attach, Prompts, Voice & Audio"
                         }
-                    }}
-                    className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[#8e90a6] disabled:hover:bg-transparent"
-                    title={selectedAttachments.length >= 4 ? "Maximum 4 attachments reached" : "Attach file (Max 4 attachments)"}
-                >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                    </svg>
-                </button>
+                    >
+                        {isTranscribing ? (
+                            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10" />
+                            </svg>
+                        ) : (
+                            <PlusIcon className={`w-5 h-5 transition-transform duration-200 ${isActionsMenuOpen ? "rotate-45" : ""}`} />
+                        )}
+                    </button>
+
+                    {/* Actions Popover */}
+                    {isActionsMenuOpen && !isRecording && (
+                        <>
+                            <div className="fixed inset-0 z-30" onClick={() => setIsActionsMenuOpen(false)} />
+                            <div className="absolute left-0 bottom-full mb-2 w-72 bg-white rounded-2xl shadow-xl border border-[#e8ebf3] py-2 z-40 select-none animate-in fade-in zoom-in-95 duration-150 divide-y divide-[#f0f2f9]">
+                                <div className="px-1 py-1 space-y-0.5">
+                                    {/* Attach */}
+                                    <button
+                                        type="button"
+                                        disabled={selectedAttachments.length >= 4}
+                                        onClick={() => {
+                                            setIsActionsMenuOpen(false);
+                                            if (selectedAttachments.length < 4) {
+                                                fileInputRef.current?.click();
+                                            }
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                                    >
+                                        <span className="p-2 rounded-xl bg-[#7678ed]/10 text-[#7678ed] shrink-0">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                                            </svg>
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-[#202022]">Attach</span>
+                                                {selectedAttachments.length > 0 && (
+                                                    <span className="text-[11px] font-semibold text-[#8e90a6]">
+                                                        {selectedAttachments.length}/4
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Files, images, documents</p>
+                                        </div>
+                                    </button>
+
+                                    {/* Custom Prompts */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsActionsMenuOpen(false);
+                                            onOpenCustomPromptsModal?.();
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
+                                    >
+                                        <span className="p-2 rounded-xl bg-amber-50 text-amber-600 shrink-0">
+                                            <PromptIcon className="w-[18px] h-[18px]" />
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-[#202022] block">Custom prompts</span>
+                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Prompt templates & snippets</p>
+                                        </div>
+                                    </button>
+                                </div>
+
+                                <div className="px-1 py-1 space-y-0.5">
+                                    {/* Record Audio (Record and Transcribe) */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsActionsMenuOpen(false);
+                                            startRecording();
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
+                                    >
+                                        <span className="p-2 rounded-xl bg-rose-50 text-rose-500 shrink-0">
+                                            <MicIcon className="w-[18px] h-[18px]" />
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-[#202022] block">Record Audio</span>
+                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Record and transcribe voice</p>
+                                        </div>
+                                    </button>
+
+                                    {/* Upload Audio File (Transcribe audio file) */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsActionsMenuOpen(false);
+                                            audioFileInputRef.current?.click();
+                                        }}
+                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
+                                    >
+                                        <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
+                                            <UploadIcon className="w-[18px] h-[18px]" />
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-[#202022] block">Upload Audio File</span>
+                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Transcribe audio file</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
 
                 {isRecording ? (
                     <div className="flex-1 bg-[#f0f2f9] text-[#202022] rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3.5 flex items-center justify-between gap-3 animate-in fade-in duration-200 min-h-[44px] sm:min-h-[52px]">
@@ -654,94 +779,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     />
                 )}
 
-                <button
-                    type="button"
-                    onClick={onOpenCustomPromptsModal}
-                    className="p-2.5 text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc] rounded-2xl transition-colors shrink-0 cursor-pointer"
-                    title="Custom Prompts"
-                >
-                    <PromptIcon className="w-5 h-5" />
-                </button>
-
-                {/* Microphone & Voice / Audio Input Option */}
-                <div className="relative shrink-0">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (isRecording) {
-                                stopRecording(true);
-                            } else {
-                                setIsMicMenuOpen((prev) => !prev);
-                            }
-                        }}
-                        disabled={isTranscribing}
-                        className={`p-2.5 rounded-2xl transition-colors cursor-pointer ${
-                            isRecording
-                                ? "bg-rose-500 text-white animate-pulse"
-                                : isTranscribing
-                                ? "bg-[#7678ed]/20 text-[#7678ed]"
-                                : isMicMenuOpen
-                                ? "text-[#7678ed] bg-[#7678ed]/10"
-                                : "text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc]"
-                        }`}
-                        title={
-                            isRecording
-                                ? "Stop & Transcribe"
-                                : isTranscribing
-                                ? "Transcribing audio..."
-                                : "Voice & Audio Input (Whisper STT)"
-                        }
-                    >
-                        {isTranscribing ? (
-                            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10" />
-                            </svg>
-                        ) : (
-                            <MicIcon className="w-5 h-5" />
-                        )}
-                    </button>
-
-                    {/* Mic Options Popover */}
-                    {isMicMenuOpen && !isRecording && (
-                        <>
-                            <div className="fixed inset-0 z-30" onClick={() => setIsMicMenuOpen(false)} />
-                            <div className="absolute right-0 bottom-full mb-2 w-52 bg-white rounded-2xl shadow-xl border border-[#e8ebf3] py-1.5 z-40 select-none animate-in fade-in zoom-in-95 duration-150">
-                                <button
-                                    type="button"
-                                    onClick={startRecording}
-                                    className="w-full text-left px-3.5 py-2.5 text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer"
-                                >
-                                    <span className="p-1.5 rounded-lg bg-[#7678ed]/10 text-[#7678ed]">
-                                        <MicIcon className="w-4 h-4" />
-                                    </span>
-                                    <span>Record Voice</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIsMicMenuOpen(false);
-                                        audioFileInputRef.current?.click();
-                                    }}
-                                    className="w-full text-left px-3.5 py-2.5 text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-2.5 cursor-pointer"
-                                >
-                                    <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
-                                        <UploadIcon className="w-4 h-4" />
-                                    </span>
-                                    <span>Upload Audio File</span>
-                                </button>
-                            </div>
-                        </>
-                    )}
-
-                    {/* Hidden Audio File Input */}
-                    <input
-                        ref={audioFileInputRef}
-                        type="file"
-                        accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.flac"
-                        onChange={handleAudioFileChange}
-                        className="hidden"
-                    />
-                </div>
 
                 <button
                     type="submit"
