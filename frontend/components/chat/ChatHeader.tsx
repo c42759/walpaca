@@ -44,7 +44,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     onPrevMatch,
 }) => {
     const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
-    const { isRightDrawerOpen, setIsRightDrawerOpen } = useAppStore();
+    const { isRightDrawerOpen, setIsRightDrawerOpen, isRightSidebarCollapsed, setIsRightSidebarCollapsed } = useAppStore();
     const searchInputRef = React.useRef<HTMLInputElement | null>(null);
 
     React.useEffect(() => {
@@ -86,12 +86,22 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
             {/* Action Icons */}
             <div className="flex items-center gap-1.5 sm:gap-3 text-[#8e90a6] relative shrink-0">
-                {/* Context Drawer Toggle for Mobile / Tablet (< lg) */}
+                {/* Context Drawer / Sidebar Toggle */}
                 <button
                     type="button"
-                    onClick={() => setIsRightDrawerOpen(!isRightDrawerOpen)}
-                    className={`p-2 rounded-xl transition-colors cursor-pointer lg:hidden ${
-                        isRightDrawerOpen ? "text-[#7678ed] bg-[#7678ed]/10" : "hover:text-[#202022] hover:bg-[#f4f6fc]"
+                    onClick={() => {
+                        if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                            setIsRightDrawerOpen(!isRightDrawerOpen);
+                        } else {
+                            setIsRightSidebarCollapsed(!isRightSidebarCollapsed);
+                        }
+                    }}
+                    className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                        isRightDrawerOpen ? "text-[#7678ed] bg-[#7678ed]/10" : "text-[#8e90a6] hover:text-[#202022] hover:bg-[#f4f6fc]"
+                    } ${
+                        !isRightSidebarCollapsed
+                            ? "lg:text-[#7678ed] lg:bg-[#7678ed]/10"
+                            : "lg:text-[#8e90a6] lg:bg-transparent lg:hover:text-[#202022] lg:hover:bg-[#f4f6fc]"
                     }`}
                     title="Toggle context details"
                 >

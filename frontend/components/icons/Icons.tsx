@@ -224,3 +224,12 @@ export const PuzzleIcon = ({ className = "w-4 h-4", strokeWidth = 2 }: { classNa
         <path d="M19.439 7.85c0-1.57-1.28-2.85-2.85-2.85v-1.5a1.5 1.5 0 0 0-1.5-1.5h-4.18a1.5 1.5 0 0 0-1.5 1.5v1.5c-1.57 0-2.85 1.28-2.85 2.85h-1.5a1.5 1.5 0 0 0-1.5 1.5v4.18a1.5 1.5 0 0 0 1.5 1.5h1.5c0 1.57 1.28 2.85 2.85 2.85v1.5a1.5 1.5 0 0 0 1.5 1.5h4.18a1.5 1.5 0 0 0 1.5-1.5v-1.5c1.57 0 2.85-1.28 2.85-2.85h1.5a1.5 1.5 0 0 0 1.5-1.5v-4.18a1.5 1.5 0 0 0-1.5-1.5h-1.5z" />
     </svg>
 );
+
+export const CollapseRightIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="18" height="18" x="3" y="3" rx="2" />
+        <path d="M15 3v18" />
+        <path d="m10 9 3 3-3 3" />
+    </svg>
+);
+

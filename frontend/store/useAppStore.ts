@@ -113,6 +113,8 @@ interface AppStoreState {
     setIsMobileNavOpen: (open: boolean) => void;
     isRightDrawerOpen: boolean;
     setIsRightDrawerOpen: (open: boolean) => void;
+    isRightSidebarCollapsed: boolean;
+    setIsRightSidebarCollapsed: (collapsed: boolean) => void;
 
     // Long-lived Data States
     instances: InstanceItem[];
@@ -228,6 +230,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     setIsMobileNavOpen: (open) => set({ isMobileNavOpen: open }),
     isRightDrawerOpen: false,
     setIsRightDrawerOpen: (open) => set({ isRightDrawerOpen: open }),
+    isRightSidebarCollapsed: false,
+    setIsRightSidebarCollapsed: (collapsed) => set({ isRightSidebarCollapsed: collapsed }),
 
     instances: [],
     instancesLoaded: false,
