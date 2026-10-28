@@ -21,6 +21,9 @@ services:
       options:
         max-size: "1g"
         max-file: "3"
+    depends_on:
+      - backend
+      - kokoro
     command: sh run_server.sh
 
   backend:
@@ -66,6 +69,27 @@ services:
         max-size: "1g"
         max-file: "3"
     restart: always
+
+  # Source: https://privocio.com/blog/self-hosted-speech-to-text-docker-whisper-open-source-options
+  whisper:
+    image: ghcr.io/systran/faster-whisper:latest
+    container_name: whisper-api
+    # ports:
+    #   - "8000:8000"
+    environment:
+      - MODEL=base/tiny
+      # - COMPUTE_TYPE=float16
+      # - CPU_THREADS=8
+    volumes:
+      - ./models:/root/.cache/huggingface
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    restart: unless-stopped
 
 volumes:
   kokoro-data:
