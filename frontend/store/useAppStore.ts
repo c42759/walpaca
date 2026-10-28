@@ -30,6 +30,7 @@ export interface AppPreferences {
     tts_api_key?: string;
     stt_server_url?: string;
     stt_api_key?: string;
+    attach_all_files?: boolean;
 }
 
 
@@ -261,6 +262,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         tts_api_key: "",
         stt_server_url: "",
         stt_api_key: "",
+        attach_all_files: false,
     },
 
     appPreferencesLoaded: false,

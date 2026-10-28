@@ -20,6 +20,7 @@ interface PreferencesData {
     tts_api_key?: string;
     stt_server_url?: string;
     stt_api_key?: string;
+    attach_all_files?: boolean;
 }
 
 
@@ -618,6 +619,22 @@ export default function PreferencesSettingsPage() {
                                     disabled={isLoading}
                                     checked={preferences.auto_scroll}
                                     onChange={(e) => handleUpdatePreference("auto_scroll", e.target.checked)}
+                                    className="w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer disabled:opacity-50"
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between pb-4 border-b border-[#e8ebf3]">
+                                <div>
+                                    <h4 className="text-base font-bold text-[#202022]">Attach All Files to Context</h4>
+                                    <p className="text-xs text-[#8e90a6] mt-0.5">
+                                        When enabled, attaches all files to their corresponding messages in LLM history. When disabled, only attaches files from the user&apos;s last message.
+                                    </p>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    disabled={isLoading}
+                                    checked={preferences.attach_all_files || false}
+                                    onChange={(e) => handleUpdatePreference("attach_all_files", e.target.checked)}
                                     className="w-5 h-5 rounded-md text-[#7678ed] focus:ring-[#7678ed] accent-[#7678ed] cursor-pointer disabled:opacity-50"
                                 />
                             </div>

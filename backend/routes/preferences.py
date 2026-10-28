@@ -19,6 +19,7 @@ DEFAULT_PREFERENCES = {
     "stt_server_url": "",
     "tts_api_key": "",
     "stt_api_key": "",
+    "attach_all_files": False,
 }
 
 
