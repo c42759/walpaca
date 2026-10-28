@@ -21,6 +21,9 @@ class STTEndpointTestCase(unittest.TestCase):
             stt_pref = Preference.query.get("stt_server_url")
             if stt_pref:
                 stt_pref.set_value("")
+            stt_key_pref = Preference.query.get("stt_api_key")
+            if stt_key_pref:
+                stt_key_pref.set_value("")
             db.session.commit()
 
     def tearDown(self):
@@ -29,7 +32,10 @@ class STTEndpointTestCase(unittest.TestCase):
             stt_pref = Preference.query.get("stt_server_url")
             if stt_pref:
                 stt_pref.set_value("")
-                db.session.commit()
+            stt_key_pref = Preference.query.get("stt_api_key")
+            if stt_key_pref:
+                stt_key_pref.set_value("")
+            db.session.commit()
 
 
     def test_stt_missing_file_returns_400(self):
@@ -129,6 +135,36 @@ class STTEndpointTestCase(unittest.TestCase):
         mock_post.assert_called_once()
         args, _ = mock_post.call_args
         self.assertEqual(args[0], "http://custom-whisper.local:9001/v1/audio/transcriptions")
+
+    @patch("routes.stt.requests.post")
+    def test_stt_custom_api_key_preference(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"text": "Custom STT with key"}
+        mock_post.return_value = mock_resp
+
+        with self.app.app_context():
+            from models import Preference, db
+            pref = Preference.query.get("stt_api_key")
+            if not pref:
+                pref = Preference(key="stt_api_key")
+                db.session.add(pref)
+            pref.set_value("secret-stt-token-456")
+            db.session.commit()
+
+        audio_bytes = io.BytesIO(b"fake_audio_bytes")
+        response = self.client.post(
+            "/api/stt",
+            data={
+                "file": (audio_bytes, "test.wav", "audio/wav"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs.get("headers", {}).get("Authorization"), "Bearer secret-stt-token-456")
 
 
 if __name__ == "__main__":

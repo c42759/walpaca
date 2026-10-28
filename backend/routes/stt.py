@@ -21,9 +21,12 @@ def transcribe_audio():
         whisper_server_url = str(custom_stt_url).strip().rstrip("/")
     else:
         whisper_server_url = os.getenv("WHISPER_SERVER_URL", "http://whisper:9000").rstrip("/")
-
-    whisper_api_key = os.getenv("WHISPER_API_KEY")
-
+    pref_key_row = Preference.query.get("stt_api_key")
+    custom_stt_key = pref_key_row.get_value() if pref_key_row else None
+    if custom_stt_key and str(custom_stt_key).strip():
+        whisper_api_key = str(custom_stt_key).strip()
+    else:
+        whisper_api_key = os.getenv("WHISPER_API_KEY")
     target_url = f"{whisper_server_url}/v1/audio/transcriptions"
 
     headers = {}

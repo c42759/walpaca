@@ -17,7 +17,10 @@ DEFAULT_PREFERENCES = {
     "processing_poll_interval": 2,
     "tts_server_url": "",
     "stt_server_url": "",
+    "tts_api_key": "",
+    "stt_api_key": "",
 }
+
 
 
 

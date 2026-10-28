@@ -5,6 +5,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { getApiUrl, apiFetch } from "@/lib/api";
 import { SettingsSidebar, SettingsCategory } from "@/components/settings/SettingsSidebar";
 import { SettingsHelpSidebar } from "@/components/settings/SettingsHelpSidebar";
+import { EyeIcon, EyeOffIcon } from "@/components/icons/Icons";
 
 interface PreferencesData {
     auto_play_voice: boolean;
@@ -16,7 +17,9 @@ interface PreferencesData {
     pin_auto_lock_timeout?: string;
     processing_poll_interval?: number;
     tts_server_url?: string;
+    tts_api_key?: string;
     stt_server_url?: string;
+    stt_api_key?: string;
 }
 
 
@@ -42,6 +45,8 @@ export default function PreferencesSettingsPage() {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [saveStatus, setSaveStatus] = useState<string>("");
     const [audioDevices, setAudioDevices] = useState<AudioDeviceOption[]>([]);
+    const [showTtsKey, setShowTtsKey] = useState<boolean>(false);
+    const [showSttKey, setShowSttKey] = useState<boolean>(false);
 
     // PIN Security UI state
     const [isConfiguringPin, setIsConfiguringPin] = useState<boolean>(false);
@@ -694,6 +699,36 @@ export default function PreferencesSettingsPage() {
                                 />
                             </div>
 
+                            {/* TTS API Key */}
+                            <div className="space-y-1.5 pt-2">
+                                <label className="text-sm font-bold text-[#202022] flex items-center justify-between">
+                                    <span>TTS API Key (Optional)</span>
+                                    <span className="text-[11px] font-semibold text-[#8e90a6]">Bearer Authentication</span>
+                                </label>
+                                <p className="text-xs text-[#8e90a6]">
+                                    API key / token sent with requests to custom TTS server. Leave empty if no authentication is required.
+                                </p>
+                                <div className="relative flex items-center">
+                                    <input
+                                        type={showTtsKey ? "text" : "password"}
+                                        disabled={isLoading}
+                                        value={preferences.tts_api_key || ""}
+                                        onChange={(e) => handleUpdatePreference("tts_api_key", e.target.value)}
+                                        placeholder="Optional TTS API key (Bearer token)..."
+                                        className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl pl-4 pr-11 py-2.5 text-sm font-semibold text-[#202022] placeholder-[#8e90a6]/60 outline-none focus:border-[#7678ed] focus:bg-white transition-all disabled:opacity-50"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTtsKey(!showTtsKey)}
+                                        className="absolute right-3 p-1.5 text-[#8e90a6] hover:text-[#202022] rounded-lg transition-colors focus:outline-none"
+                                        title={showTtsKey ? "Hide API Key" : "Show API Key"}
+                                        aria-label={showTtsKey ? "Hide API Key" : "Show API Key"}
+                                    >
+                                        {showTtsKey ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+
                             {/* STT Server URL */}
                             <div className="space-y-1.5 pt-3 border-t border-[#e8ebf3]">
                                 <label className="text-sm font-bold text-[#202022] flex items-center justify-between">
@@ -711,6 +746,36 @@ export default function PreferencesSettingsPage() {
                                     placeholder="http://whisper:9000"
                                     className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-4 py-2.5 text-sm font-semibold text-[#202022] placeholder-[#8e90a6]/60 outline-none focus:border-[#7678ed] focus:bg-white transition-all disabled:opacity-50"
                                 />
+                            </div>
+
+                            {/* STT API Key */}
+                            <div className="space-y-1.5 pt-2">
+                                <label className="text-sm font-bold text-[#202022] flex items-center justify-between">
+                                    <span>STT API Key (Optional)</span>
+                                    <span className="text-[11px] font-semibold text-[#8e90a6]">Bearer Authentication</span>
+                                </label>
+                                <p className="text-xs text-[#8e90a6]">
+                                    API key / token sent with requests to custom STT server. Leave empty if no authentication is required.
+                                </p>
+                                <div className="relative flex items-center">
+                                    <input
+                                        type={showSttKey ? "text" : "password"}
+                                        disabled={isLoading}
+                                        value={preferences.stt_api_key || ""}
+                                        onChange={(e) => handleUpdatePreference("stt_api_key", e.target.value)}
+                                        placeholder="Optional STT API key (Bearer token)..."
+                                        className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl pl-4 pr-11 py-2.5 text-sm font-semibold text-[#202022] placeholder-[#8e90a6]/60 outline-none focus:border-[#7678ed] focus:bg-white transition-all disabled:opacity-50"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSttKey(!showSttKey)}
+                                        className="absolute right-3 p-1.5 text-[#8e90a6] hover:text-[#202022] rounded-lg transition-colors focus:outline-none"
+                                        title={showSttKey ? "Hide API Key" : "Show API Key"}
+                                        aria-label={showSttKey ? "Hide API Key" : "Show API Key"}
+                                    >
+                                        {showSttKey ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
