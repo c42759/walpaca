@@ -32,7 +32,7 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 - [x] Regenerate messages
 - [x] Pull and delete models directly from the UI with real-time progress
 - [x] Model Context Protocol (MCP) tool integration (SSE/HTTP transports with multi-turn tool calling)
-- [x] Bundled MCP servers for web page fetching (`fetch`) and web search (`web-search`)
+- [x] Bundled MCP servers for web page fetching (`fetch`), web search (`web-search`), YouTube transcripts (`youtube`), and website scraping (`website`)
 - [x] Image and audio recognition (multimodal models) with clipboard paste & drag-and-drop
 - [x] Document recognition (plain text & code files) with configurable context attachment scope
 - [x] Code syntax highlighting
@@ -51,8 +51,8 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 - [x] 1on1 real-time voice conversation mode (VAD silence detection, auto-STT, streaming TTS & pitch-preserving speed control)
 - [x] Configurable TTS and STT server URLs and API keys in Preferences
 - [x] Mobile and tablet responsive design with drawer navigation
-- [ ] YouTube video recognition (transcript queries)
-- [ ] Website recognition (web scraping via URL)
+- [x] YouTube video recognition (transcript queries via `youtube` MCP)
+- [x] Website recognition (web scraping via URL via `website` MCP)
 - [ ] Connect to cloud-hosted OpenAI-compatible APIs using personal API keys
 
 ---
@@ -118,7 +118,7 @@ Normal conversation | Image recognition | Markdown to HTML
    ```bash
    docker compose up -d
    ```
-   *(Optional: Use `docker compose -f docker-compose-local.yml up -d` for `127.0.0.1`-only binding without Whisper, or run `docker compose -f mcp/docker-compose.yml up -d` to start the bundled `fetch` and `web-search` MCP servers on ports `8081` and `8082`.)*
+   *(Optional: Use `docker compose -f docker-compose-local.yml up -d` for `127.0.0.1`-only binding without Whisper, or run `docker compose -f mcp/docker-compose.yml up -d` to start the bundled `fetch`, `web-search`, `youtube`, and `website` MCP servers on ports `8081`–`8084`.)*
 
 5. Access the web interface at `http://localhost:3100` (Backend API on `http://localhost:5100`, Whisper STT on `http://localhost:9000`).
 
