@@ -2431,15 +2431,40 @@ export default function ChatPage() {
     const [micAudioLevel, setMicAudioLevel] = useState<number>(0);
     const [oneOnOneStatusDetail, setOneOnOneStatusDetail] = useState<string>("");
     const [oneOnOneError, setOneOnOneError] = useState<string | null>(null);
+    const [oneOnOnePlaybackRate, setOneOnOnePlaybackRate] = useState<number>(1);
 
     const isOneOnOneActiveRef = useRef<boolean>(false);
     const isOneOnOneMutedRef = useRef<boolean>(false);
     const oneOnOneStatusRef = useRef<OneOnOneAgentStatus>("hearing");
+    const oneOnOnePlaybackRateRef = useRef<number>(1);
     const oneOnOneStreamRef = useRef<MediaStream | null>(null);
     const oneOnOneAudioCtxRef = useRef<AudioContext | null>(null);
     const oneOnOneRecorderRef = useRef<MediaRecorder | null>(null);
     const oneOnOneVadRafRef = useRef<number | null>(null);
     const oneOnOneDiscardRef = useRef<boolean>(false);
+
+    const applyPitchPreservingPlaybackRate = useCallback((audio: HTMLAudioElement, rate: number) => {
+        const audioWithVendorPitch = audio as HTMLAudioElement & {
+            preservesPitch?: boolean;
+            mozPreservesPitch?: boolean;
+            webkitPreservesPitch?: boolean;
+        };
+        audioWithVendorPitch.preservesPitch = true;
+        audioWithVendorPitch.mozPreservesPitch = true;
+        audioWithVendorPitch.webkitPreservesPitch = true;
+        audio.playbackRate = rate;
+    }, []);
+
+    const handleOneOnOnePlaybackRateChange = useCallback(
+        (rate: number) => {
+            oneOnOnePlaybackRateRef.current = rate;
+            setOneOnOnePlaybackRate(rate);
+            if (audioRef.current) {
+                applyPitchPreservingPlaybackRate(audioRef.current, rate);
+            }
+        },
+        [applyPitchPreservingPlaybackRate],
+    );
 
     const updateOneOnOneStatus = useCallback((nextStatus: OneOnOneAgentStatus) => {
         oneOnOneStatusRef.current = nextStatus;
@@ -2670,6 +2695,7 @@ export default function ChatPage() {
 
             const audioUrl = URL.createObjectURL(blob);
             const audio = new Audio(audioUrl);
+            applyPitchPreservingPlaybackRate(audio, oneOnOnePlaybackRateRef.current);
             audioRef.current = audio;
             const defaultOutput = useAppStore.getState().appPreferences?.default_audio_output;
             await applyAudioOutputDevice(audio, defaultOutput);
@@ -3627,6 +3653,7 @@ export default function ChatPage() {
 
                     const audioUrl = URL.createObjectURL(blob);
                     const audio = new Audio(audioUrl);
+                    applyPitchPreservingPlaybackRate(audio, oneOnOnePlaybackRateRef.current);
                     audioRef.current = audio;
                     const defaultOutput = useAppStore.getState().appPreferences?.default_audio_output;
                     await applyAudioOutputDevice(audio, defaultOutput);
@@ -4502,6 +4529,8 @@ export default function ChatPage() {
                                                 onToggleMute={handleToggleOneOnOneMute}
                                                 onClose={handleToggleOneOnOne}
                                                 onInterrupt={handleInterruptOneOnOne}
+                                                playbackRate={oneOnOnePlaybackRate}
+                                                onPlaybackRateChange={handleOneOnOnePlaybackRateChange}
                                                 isUserSpeaking={isUserSpeakingInOneOnOne}
                                                 audioLevel={micAudioLevel}
                                                 assistantName={modelDisplayName}
@@ -4516,7 +4545,7 @@ export default function ChatPage() {
                             })()}
 
                             {/* Bottom Half (or Full Height when 1on1 is off): Chat History + Input Composer */}
-                            <div className={`${isOneOnOneActive ? "h-1/2" : "flex-1"} flex flex-col overflow-hidden w-full min-h-0`}>
+                            <div className="flex-1 flex flex-col overflow-hidden w-full min-h-0">
                                 {/* Conversation Messages */}
                                 <ChatMessageList
                                     messages={messages}

@@ -1,10 +1,17 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import React from "react";
-import { MicIcon, MicOffIcon, CloseIcon } from "../icons/Icons";
+import React, { useState } from "react";
+import { MicIcon, MicOffIcon, CloseIcon, CheckIcon } from "../icons/Icons";
 
 export type OneOnOneAgentStatus = "hearing" | "processing" | "talking";
+
+const PLAYBACK_SPEED_OPTIONS = [0.5, 0.75, 0.85, 0.95, 1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.35, 1.5, 1.75, 2];
+
+const formatPlaybackRate = (rate: number): string => {
+    const rounded = Math.round(rate * 100) / 100;
+    return `${rounded}x`;
+};
 
 export interface OneOnOnePanelProps {
     status: OneOnOneAgentStatus;
@@ -12,6 +19,8 @@ export interface OneOnOnePanelProps {
     onToggleMute: () => void;
     onClose: () => void;
     onInterrupt?: () => void;
+    playbackRate?: number;
+    onPlaybackRateChange?: (rate: number) => void;
     isUserSpeaking?: boolean;
     audioLevel?: number; // 0 to 1
     assistantName?: string;
@@ -27,6 +36,8 @@ export const OneOnOnePanel: React.FC<OneOnOnePanelProps> = ({
     onToggleMute,
     onClose,
     onInterrupt,
+    playbackRate = 1,
+    onPlaybackRateChange,
     isUserSpeaking = false,
     audioLevel = 0,
     assistantName = "Assistant",
@@ -35,6 +46,7 @@ export const OneOnOnePanel: React.FC<OneOnOnePanelProps> = ({
     errorText,
     onClearError,
 }) => {
+    const [isSpeedMenuOpen, setIsSpeedMenuOpen] = useState(false);
     const clampedLevel = Math.min(1, Math.max(0, audioLevel));
     const dynamicScale =
         status === "hearing" && !isMuted
@@ -241,8 +253,8 @@ export const OneOnOnePanel: React.FC<OneOnOnePanelProps> = ({
                 </div>
             </div>
 
-            {/* Bottom Controls Bar: Mic Mute Button + Stop Speaking Button */}
-            <div className="flex items-center gap-3 z-10">
+            {/* Bottom Controls Bar: Mic Mute Button + Playback Speed + Stop Speaking Button */}
+            <div className="flex items-center gap-2.5 sm:gap-3 z-20">
                 <button
                     type="button"
                     onClick={onToggleMute}
@@ -265,6 +277,111 @@ export const OneOnOnePanel: React.FC<OneOnOnePanelProps> = ({
                         </>
                     )}
                 </button>
+
+                {/* YouTube-Style Playback Speed Selector */}
+                {onPlaybackRateChange && (
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setIsSpeedMenuOpen((prev) => !prev)}
+                            className={`px-3.5 py-2 rounded-2xl font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border ${
+                                isSpeedMenuOpen || playbackRate !== 1
+                                    ? "bg-[#7678ed]/10 text-[#7678ed] border-[#7678ed]/30"
+                                    : "bg-white hover:bg-[#f4f6fc] text-[#202022] border-[#e2e5f1]"
+                            }`}
+                            title="Playback speed (pitch preserved)"
+                        >
+                            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 14 15.5 10.5" />
+                                <path d="M20.3 18c.4-1 .7-2.2.7-3.4A9 9 0 1 0 3 14.6c0 1.2.3 2.4.7 3.4" />
+                                <path d="M4 18h16" />
+                            </svg>
+                            <span>{formatPlaybackRate(playbackRate)}</span>
+                        </button>
+
+                        {isSpeedMenuOpen && (
+                            <>
+                                <div className="fixed inset-0 z-30" onClick={() => setIsSpeedMenuOpen(false)} />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 bg-white rounded-2xl shadow-xl border border-[#e2e5f1] py-2 z-40 animate-in fade-in zoom-in-95 duration-150 flex flex-col">
+                                    {/* Custom 0.05x Stepper + Range Slider */}
+                                    <div className="px-3 pb-2 border-b border-[#eef0f6]">
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#8e90a6]">
+                                                Custom (0.05x)
+                                            </span>
+                                            <span className="text-xs font-extrabold text-[#7678ed]">
+                                                {formatPlaybackRate(playbackRate)}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const next = Math.max(0.25, Math.round((playbackRate - 0.05) * 100) / 100);
+                                                    onPlaybackRateChange(next);
+                                                }}
+                                                disabled={playbackRate <= 0.25}
+                                                className="w-6 h-6 rounded-lg bg-[#f4f6fc] hover:bg-[#e8ebf3] disabled:opacity-40 text-[#202022] font-bold text-xs flex items-center justify-center cursor-pointer shrink-0"
+                                                title="Decrease speed by 0.05x"
+                                            >
+                                                -
+                                            </button>
+                                            <input
+                                                type="range"
+                                                min={0.25}
+                                                max={2}
+                                                step={0.05}
+                                                value={playbackRate}
+                                                onChange={(e) => {
+                                                    const val = Math.round(parseFloat(e.target.value) * 100) / 100;
+                                                    onPlaybackRateChange(val);
+                                                }}
+                                                className="w-full accent-[#7678ed] h-1.5 bg-[#eef0f6] rounded-lg cursor-pointer"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const next = Math.min(2, Math.round((playbackRate + 0.05) * 100) / 100);
+                                                    onPlaybackRateChange(next);
+                                                }}
+                                                disabled={playbackRate >= 2}
+                                                className="w-6 h-6 rounded-lg bg-[#f4f6fc] hover:bg-[#e8ebf3] disabled:opacity-40 text-[#202022] font-bold text-xs flex items-center justify-center cursor-pointer shrink-0"
+                                                title="Increase speed by 0.05x"
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Granular Quick Presets */}
+                                    <div className="max-h-36 overflow-y-auto pt-1">
+                                        {PLAYBACK_SPEED_OPTIONS.map((rate) => {
+                                            const isSelected = Math.abs(playbackRate - rate) < 0.01;
+                                            return (
+                                                <button
+                                                    key={rate}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        onPlaybackRateChange(rate);
+                                                        setIsSpeedMenuOpen(false);
+                                                    }}
+                                                    className={`w-full px-3 py-1.5 text-left text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                                                        isSelected
+                                                            ? "bg-[#7678ed]/10 text-[#7678ed] font-bold"
+                                                            : "text-[#202022] hover:bg-[#f4f6fc]"
+                                                    }`}
+                                                >
+                                                    <span>{rate === 1 ? "Normal (1x)" : `${rate}x`}</span>
+                                                    {isSelected && <CheckIcon className="w-3.5 h-3.5 text-[#7678ed] shrink-0" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
 
                 {(isTalking || isProcessing) && onInterrupt && (
                     <button
