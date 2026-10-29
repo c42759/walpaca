@@ -32,8 +32,9 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 - [x] Regenerate messages
 - [x] Pull and delete models directly from the UI with real-time progress
 - [x] Model Context Protocol (MCP) tool integration (SSE/HTTP transports with multi-turn tool calling)
-- [x] Image recognition (multimodal models)
-- [x] Document recognition (plain text files)
+- [x] Bundled MCP servers for web page fetching (`fetch`), web search (`web-search`), YouTube transcripts (`youtube`), and website scraping (`website`)
+- [x] Image and audio recognition (multimodal models) with clipboard paste & drag-and-drop
+- [x] Document recognition (plain text & code files) with configurable context attachment scope
 - [x] Code syntax highlighting
 - [x] Multiple concurrent conversations
 - [x] LLM Response background handler when browser is refreshed or closed
@@ -46,11 +47,13 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 - [x] Lorebooks & Personas with automatic system prompt injection
 - [x] In-chat match search and sidebar conversation search
 - [x] Text-to-speech integration via Kokoro TTS with OS media controls
+- [x] Speech-to-text integration via Whisper (live microphone recording & audio file upload)
+- [x] 1on1 real-time voice conversation mode (VAD silence detection, auto-STT, streaming TTS & pitch-preserving speed control)
+- [x] Configurable TTS and STT server URLs and API keys in Preferences
 - [x] Mobile and tablet responsive design with drawer navigation
-- [ ] YouTube video recognition (transcript queries)
-- [ ] Website recognition (web scraping via URL)
+- [x] YouTube video recognition (transcript queries via `youtube` MCP)
+- [x] Website recognition (web scraping via URL via `website` MCP)
 - [ ] Connect to cloud-hosted OpenAI-compatible APIs using personal API keys
-- [ ] Speech-to-text integration via Whisper
 
 ---
 
@@ -68,6 +71,7 @@ Normal conversation | Image recognition | Markdown to HTML
 - **Backend**: Python, Flask, Flask-SQLAlchemy, Flask-CORS, official `ollama` SDK, `mcp` SDK
 - **Database**: SQLite (`alpaca.db` shared with GTK Alpaca)
 - **Speech Synthesis**: Kokoro TTS Server
+- **Speech Recognition**: Whisper STT Server
 - **Extensibility**: Model Context Protocol (MCP) client
 - **Orchestration**: Docker & Docker Compose
 
@@ -101,6 +105,7 @@ Normal conversation | Image recognition | Markdown to HTML
    VPN_ADDRESS=127.0.0.1
    CORS_DOMAINS="http://localhost:3100"
    KOKORO_API_KEY=your-kokoro-key-here
+   WHISPER_API_KEY=your-whisper-key-here
    ```
 
 3. Ensure `alpaca.db` and required directories are present in the project root:
@@ -113,8 +118,9 @@ Normal conversation | Image recognition | Markdown to HTML
    ```bash
    docker compose up -d
    ```
+   *(Optional: Use `docker compose -f docker-compose-local.yml up -d` for `127.0.0.1`-only binding without Whisper, or run `docker compose -f mcp/docker-compose.yml up -d` to start the bundled `fetch`, `web-search`, `youtube`, and `website` MCP servers on ports `8081`–`8084`.)*
 
-5. Access the web interface at `http://localhost:3100` (Backend API on `http://localhost:5100`).
+5. Access the web interface at `http://localhost:3100` (Backend API on `http://localhost:5100`, Whisper STT on `http://localhost:9000`).
 
 ---
 
