@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useAppStore } from "@/store/useAppStore";
-import { ArrowLeftIcon, ServerIcon } from "../icons/Icons";
+import { ArrowLeftIcon, ServerIcon, OneOnOneIcon } from "../icons/Icons";
 
 export interface ChatHeaderProps {
     title: string;
@@ -22,6 +22,8 @@ export interface ChatHeaderProps {
     activeMatchIndex?: number;
     onNextMatch?: () => void;
     onPrevMatch?: () => void;
+    isOneOnOneActive?: boolean;
+    onToggleOneOnOne?: () => void;
 }
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
@@ -42,6 +44,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     activeMatchIndex = 0,
     onNextMatch,
     onPrevMatch,
+    isOneOnOneActive = false,
+    onToggleOneOnOne,
 }) => {
     const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
     const { isRightDrawerOpen, setIsRightDrawerOpen, isRightSidebarCollapsed, setIsRightSidebarCollapsed } = useAppStore();
@@ -86,6 +90,26 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
             {/* Action Icons */}
             <div className="flex items-center gap-1.5 sm:gap-3 text-[#8e90a6] relative shrink-0">
+                {/* 1on1 Voice Mode Toggle Button */}
+                {onToggleOneOnOne && (
+                    <button
+                        type="button"
+                        onClick={onToggleOneOnOne}
+                        className={`px-2.5 sm:px-3.5 py-1.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer border ${
+                            isOneOnOneActive
+                                ? "bg-[#7678ed] text-white border-[#7678ed] shadow-sm shadow-[#7678ed]/30"
+                                : "bg-[#f4f6fc] text-[#202022] border-[#e2e5f1] hover:border-[#7678ed]/50 hover:text-[#7678ed]"
+                        }`}
+                        title={isOneOnOneActive ? "Exit 1on1 Voice Mode" : "Start 1on1 Voice Mode"}
+                    >
+                        <OneOnOneIcon className="w-4 h-4 shrink-0" />
+                        <span>1on1</span>
+                        {isOneOnOneActive && (
+                            <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0" />
+                        )}
+                    </button>
+                )}
+
                 {/* Context Drawer / Sidebar Toggle */}
                 <button
                     type="button"

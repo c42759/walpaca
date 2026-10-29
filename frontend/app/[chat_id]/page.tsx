@@ -17,6 +17,7 @@ import { ChatHeader } from "@/components/chat/ChatHeader";
 import { ChatEmptyState } from "@/components/chat/ChatEmptyState";
 import { ChatMessageList } from "@/components/chat/ChatMessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { OneOnOnePanel, OneOnOneAgentStatus } from "@/components/chat/OneOnOnePanel";
 import { PersonaDetailsModal, PersonaDetailsData } from "@/components/chat/PersonaDetailsModal";
 import { CustomPromptsModal } from "@/components/chat/CustomPromptsModal";
 import { BrainIcon, MetadataIcon, ServerIcon, CloseIcon, CollapseRightIcon } from "@/components/icons/Icons";
@@ -2422,6 +2423,45 @@ export default function ChatPage() {
         lineIndex: number;
     }>({ msgId: null, status: "stopped", lineIndex: -1 });
 
+    // --- 1on1 Real-Time Voice Mode State & Refs ---
+    const [isOneOnOneActive, setIsOneOnOneActive] = useState<boolean>(false);
+    const [isOneOnOneMuted, setIsOneOnOneMuted] = useState<boolean>(false);
+    const [oneOnOneStatus, setOneOnOneStatus] = useState<OneOnOneAgentStatus>("hearing");
+    const [isUserSpeakingInOneOnOne, setIsUserSpeakingInOneOnOne] = useState<boolean>(false);
+    const [micAudioLevel, setMicAudioLevel] = useState<number>(0);
+    const [oneOnOneStatusDetail, setOneOnOneStatusDetail] = useState<string>("");
+    const [oneOnOneError, setOneOnOneError] = useState<string | null>(null);
+
+    const isOneOnOneActiveRef = useRef<boolean>(false);
+    const isOneOnOneMutedRef = useRef<boolean>(false);
+    const oneOnOneStatusRef = useRef<OneOnOneAgentStatus>("hearing");
+    const oneOnOneStreamRef = useRef<MediaStream | null>(null);
+    const oneOnOneAudioCtxRef = useRef<AudioContext | null>(null);
+    const oneOnOneRecorderRef = useRef<MediaRecorder | null>(null);
+    const oneOnOneVadRafRef = useRef<number | null>(null);
+    const oneOnOneDiscardRef = useRef<boolean>(false);
+
+    const updateOneOnOneStatus = useCallback((nextStatus: OneOnOneAgentStatus) => {
+        oneOnOneStatusRef.current = nextStatus;
+        setOneOnOneStatus(nextStatus);
+    }, []);
+
+    const cleanLineForTTS = (lineText: string): string => {
+        const trimmed = lineText.trim();
+        if (!trimmed || trimmed.startsWith("```")) return "";
+        return trimmed
+            .replace(/```[\s\S]*?```/g, "")
+            .replace(/`([^`]+)`/g, "$1")
+            .replace(/\*\*([^*]+)\*\*/g, "$1")
+            .replace(/\*([^*]+)\*/g, "$1")
+            .replace(/^#+\s*/gm, "")
+            .replace(/^>\s*/gm, "")
+            .replace(/^[-*+]\s+/gm, "")
+            .replace(/^\d+\.\s+/gm, "")
+            .replace(/\|/g, " ")
+            .trim();
+    };
+
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const ttsStateRef = useRef(ttsState);
@@ -3503,6 +3543,130 @@ export default function ChatPage() {
         let currentAssistantMsgId = assistantMsgId;
         const genUrl = activeChatId ? `${API_URL}/chats/${activeChatId}/generate` : `${API_URL}/generate`;
 
+        // Setup 1on1 real-time line-by-line TTS streaming queue if 1on1 mode is active
+        const isStreamingOneOnOne = isOneOnOneActiveRef.current;
+        const currentVoice = selectedPref?.voice || "af_heart";
+        const activeChatObj = chatItems.find((c) => c.id === activeChatId) || activeChat;
+        const chatTitle = activeChatObj?.name || "Walpaca Chat";
+
+        let streamingTtsController: AbortController | null = null;
+        let enqueuedLineCount = 0;
+        let inCodeBlockFence = false;
+        let isLlmStreamFinished = false;
+        const streamingTtsQueue: Array<{
+            origIndex: number;
+            cleanText: string;
+            blobPromise: Promise<Blob | null>;
+        }> = [];
+        let streamingTtsConsumerPromise: Promise<void> | null = null;
+
+        const enqueueCompletedLineForTTS = (lineText: string, lineIndex: number) => {
+            if (!streamingTtsController || streamingTtsController.signal.aborted) return;
+            const trimmedLine = lineText.trim();
+            if (trimmedLine.startsWith("```")) {
+                inCodeBlockFence = !inCodeBlockFence;
+                return;
+            }
+            if (inCodeBlockFence) return;
+
+            const cleanText = cleanLineForTTS(trimmedLine);
+            if (!cleanText) return;
+
+            const blobPromise = fetchTTSBlob(cleanText, currentVoice, streamingTtsController.signal);
+            streamingTtsQueue.push({
+                origIndex: lineIndex,
+                cleanText,
+                blobPromise,
+            });
+        };
+
+        const flushCompletedLines = (text: string, includeTrailingLine: boolean) => {
+            if (!isStreamingOneOnOne || !streamingTtsController) return;
+            const rawLines = text.split("\n");
+            const limit = includeTrailingLine ? rawLines.length : Math.max(0, rawLines.length - 1);
+            while (enqueuedLineCount < limit) {
+                enqueueCompletedLineForTTS(rawLines[enqueuedLineCount], enqueuedLineCount);
+                enqueuedLineCount += 1;
+            }
+        };
+
+        if (isStreamingOneOnOne) {
+            handleStopTTS();
+            updateOneOnOneStatus("processing");
+            setOneOnOneStatusDetail("Thinking...");
+
+            streamingTtsController = new AbortController();
+            abortControllerRef.current = streamingTtsController;
+            const signal = streamingTtsController.signal;
+
+            streamingTtsConsumerPromise = (async () => {
+                while (!signal.aborted) {
+                    if (streamingTtsQueue.length === 0) {
+                        if (isLlmStreamFinished) break;
+                        await new Promise((r) => setTimeout(r, 40));
+                        continue;
+                    }
+
+                    const nextItem = streamingTtsQueue.shift();
+                    if (!nextItem) continue;
+
+                    const blob = await nextItem.blobPromise;
+                    if (!blob || signal.aborted || !isOneOnOneActiveRef.current) {
+                        continue;
+                    }
+
+                    updateOneOnOneStatus("talking");
+                    setOneOnOneStatusDetail(
+                        nextItem.cleanText.length > 68 ? `${nextItem.cleanText.slice(0, 65)}...` : nextItem.cleanText,
+                    );
+                    updateTTSState({
+                        msgId: currentAssistantMsgId,
+                        status: "playing",
+                        lineIndex: nextItem.origIndex,
+                    });
+
+                    const audioUrl = URL.createObjectURL(blob);
+                    const audio = new Audio(audioUrl);
+                    audioRef.current = audio;
+                    const defaultOutput = useAppStore.getState().appPreferences?.default_audio_output;
+                    await applyAudioOutputDevice(audio, defaultOutput);
+
+                    updateMediaSessionMetadata({
+                        title: nextItem.cleanText.length > 80 ? `${nextItem.cleanText.slice(0, 77)}...` : nextItem.cleanText,
+                        artist: assistantName,
+                        album: chatTitle,
+                        artworkSrc: assistantAvatar,
+                    });
+                    setMediaSessionPlaybackState("playing");
+
+                    await new Promise<void>((resolve) => {
+                        const onAbort = () => {
+                            audio.pause();
+                            URL.revokeObjectURL(audioUrl);
+                            resolve();
+                        };
+                        signal.addEventListener("abort", onAbort, { once: true });
+
+                        audio.onended = () => {
+                            signal.removeEventListener("abort", onAbort);
+                            URL.revokeObjectURL(audioUrl);
+                            resolve();
+                        };
+                        audio.onerror = () => {
+                            signal.removeEventListener("abort", onAbort);
+                            URL.revokeObjectURL(audioUrl);
+                            resolve();
+                        };
+                        audio.play().catch(() => {
+                            signal.removeEventListener("abort", onAbort);
+                            URL.revokeObjectURL(audioUrl);
+                            resolve();
+                        });
+                    });
+                }
+            })();
+        }
+
         isGeneratingRef.current = true;
         try {
             const genRes = await fetch(genUrl, {
@@ -3603,18 +3767,31 @@ export default function ChatPage() {
                             if (parsed.content) {
                                 fullResponseText += parsed.content;
                                 setMessages((prev) => prev.map((m) => (m.id === assistantMsgId || m.id === parsed.id ? { ...m, content: m.content + parsed.content } : m)));
+                                if (isStreamingOneOnOne) {
+                                    flushCompletedLines(fullResponseText, false);
+                                }
                             }
                         } catch {
                             if (dataStr && !dataStr.startsWith("{")) {
                                 fullResponseText += dataStr;
                                 setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: m.content + dataStr } : m)));
+                                if (isStreamingOneOnOne) {
+                                    flushCompletedLines(fullResponseText, false);
+                                }
                             }
                         }
                     }
                 }
+
+                // Flush any remaining trailing line once LLM stream completes
+                if (isStreamingOneOnOne) {
+                    flushCompletedLines(fullResponseText, true);
+                    isLlmStreamFinished = true;
+                }
+
                 const currentPrefs = useAppStore.getState().appPreferences;
 
-                if (currentPrefs?.play_sound_notification !== false) {
+                if (currentPrefs?.play_sound_notification !== false && !isStreamingOneOnOne) {
                     playNotificationSound();
                 }
 
@@ -3663,20 +3840,343 @@ export default function ChatPage() {
                     }, 100);
                 }
 
-                if (currentPrefs?.auto_play_voice && fullResponseText.trim()) {
+                if (isStreamingOneOnOne && streamingTtsConsumerPromise) {
+                    await streamingTtsConsumerPromise;
+                    if (ttsStateRef.current.msgId === currentAssistantMsgId) {
+                        updateTTSState({ msgId: null, status: "stopped", lineIndex: -1 });
+                        clearMediaSession();
+                    }
+                    if (isOneOnOneActiveRef.current) {
+                        updateOneOnOneStatus("hearing");
+                        setOneOnOneStatusDetail("");
+                    }
+                } else if (currentPrefs?.auto_play_voice && fullResponseText.trim()) {
                     const prefKey = (selectedChatModelId || "").toLowerCase();
                     const modelPref =
                         modelPreferences[selectedChatModelId || ""] || modelPreferences[prefKey] || Object.values(modelPreferences).find((p) => p.id?.toLowerCase() === prefKey);
-                    const currentVoice = modelPref?.voice || "af_heart";
-                    handlePlayTTS(currentAssistantMsgId, fullResponseText, currentVoice);
+                    const voiceToUse = modelPref?.voice || "af_heart";
+                    handlePlayTTS(currentAssistantMsgId, fullResponseText, voiceToUse);
                 }
+            } else if (isStreamingOneOnOne) {
+                isLlmStreamFinished = true;
+                updateOneOnOneStatus("hearing");
+                setOneOnOneStatusDetail("");
             }
         } catch (err) {
             console.warn("Error during LLM response generation:", err);
+            isLlmStreamFinished = true;
+            if (isOneOnOneActiveRef.current) {
+                updateOneOnOneStatus("hearing");
+                setOneOnOneStatusDetail("");
+            }
         } finally {
             isGeneratingRef.current = false;
         }
     };
+
+    const cleanupOneOnOneAudio = useCallback((stopStream = true) => {
+        if (oneOnOneVadRafRef.current !== null) {
+            cancelAnimationFrame(oneOnOneVadRafRef.current);
+            oneOnOneVadRafRef.current = null;
+        }
+        oneOnOneDiscardRef.current = true;
+        if (oneOnOneRecorderRef.current && oneOnOneRecorderRef.current.state !== "inactive") {
+            try {
+                oneOnOneRecorderRef.current.stop();
+            } catch {
+                // ignore stop error
+            }
+        }
+        oneOnOneRecorderRef.current = null;
+
+        if (oneOnOneAudioCtxRef.current) {
+            oneOnOneAudioCtxRef.current.close().catch(() => {});
+            oneOnOneAudioCtxRef.current = null;
+        }
+
+        if (stopStream && oneOnOneStreamRef.current) {
+            oneOnOneStreamRef.current.getTracks().forEach((t) => t.stop());
+            oneOnOneStreamRef.current = null;
+        }
+
+        setIsUserSpeakingInOneOnOne(false);
+        setMicAudioLevel(0);
+    }, []);
+
+    const sendTranscribedOneOnOneMessage = async (transcribedText: string) => {
+        const content = transcribedText.trim();
+        if (!content || !isOneOnOneActiveRef.current) {
+            if (isOneOnOneActiveRef.current) {
+                updateOneOnOneStatus("hearing");
+                setOneOnOneStatusDetail("");
+            }
+            return;
+        }
+
+        const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+        const userMsg: Message = {
+            id: `msg-${Date.now()}`,
+            senderName: "You",
+            senderAvatar: "",
+            isSelf: true,
+            content,
+            time: nowStr,
+        };
+
+        setMessages((prev) => [...prev, userMsg]);
+
+        if (activeChatId) {
+            try {
+                await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        role: "user",
+                        content,
+                        model: selectedChatModelId,
+                        instance_id: selectedChatInstanceId,
+                        attachments: [],
+                    }),
+                });
+            } catch (err) {
+                console.warn("Could not post 1on1 user message to backend API:", err);
+            }
+        }
+
+        await handleCallForAnswer();
+    };
+
+    const handleToggleOneOnOne = useCallback(() => {
+        const nextActive = !isOneOnOneActiveRef.current;
+        isOneOnOneActiveRef.current = nextActive;
+        setIsOneOnOneActive(nextActive);
+        setOneOnOneError(null);
+
+        if (!nextActive) {
+            cleanupOneOnOneAudio(true);
+            handleStopTTS();
+            updateOneOnOneStatus("hearing");
+            setOneOnOneStatusDetail("");
+        } else {
+            updateOneOnOneStatus("hearing");
+            setOneOnOneStatusDetail("");
+        }
+    }, [cleanupOneOnOneAudio, updateOneOnOneStatus]);
+
+    const handleToggleOneOnOneMute = useCallback(() => {
+        const nextMuted = !isOneOnOneMutedRef.current;
+        isOneOnOneMutedRef.current = nextMuted;
+        setIsOneOnOneMuted(nextMuted);
+        if (nextMuted) {
+            cleanupOneOnOneAudio(true);
+        }
+    }, [cleanupOneOnOneAudio]);
+
+    const handleInterruptOneOnOne = useCallback(() => {
+        handleStopTTS();
+        updateOneOnOneStatus("hearing");
+        setOneOnOneStatusDetail("");
+    }, [updateOneOnOneStatus]);
+
+    // 1on1 Voice Activity Detection (VAD) + Auto-STT Loop
+    useEffect(() => {
+        if (!isOneOnOneActive || isOneOnOneMuted || oneOnOneStatus !== "hearing") {
+            cleanupOneOnOneAudio(isOneOnOneMuted || !isOneOnOneActive);
+            return;
+        }
+
+        let isCancelled = false;
+
+        const startListeningLoop = async () => {
+            try {
+                if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    setOneOnOneError("Microphone access is not supported in this browser.");
+                    return;
+                }
+
+                let stream = oneOnOneStreamRef.current;
+                if (!stream || !stream.active || stream.getAudioTracks().every((t) => t.readyState === "ended")) {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                        },
+                    });
+                    if (isCancelled) {
+                        stream.getTracks().forEach((t) => t.stop());
+                        return;
+                    }
+                    oneOnOneStreamRef.current = stream;
+                }
+
+                const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+                const audioCtx = new AudioContextClass();
+                oneOnOneAudioCtxRef.current = audioCtx;
+                if (audioCtx.state === "suspended") {
+                    await audioCtx.resume().catch(() => {});
+                }
+
+                const source = audioCtx.createMediaStreamSource(stream);
+                const analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 512;
+                analyser.smoothingTimeConstant = 0.4;
+                source.connect(analyser);
+
+                let mimeType = "audio/webm;codecs=opus";
+                if (typeof MediaRecorder !== "undefined" && !MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = MediaRecorder.isTypeSupported("audio/webm")
+                        ? "audio/webm"
+                        : MediaRecorder.isTypeSupported("audio/mp4")
+                        ? "audio/mp4"
+                        : "";
+                }
+
+                const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+                oneOnOneRecorderRef.current = recorder;
+                oneOnOneDiscardRef.current = false;
+                const audioChunks: Blob[] = [];
+
+                recorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) {
+                        audioChunks.push(e.data);
+                    }
+                };
+
+                recorder.onstop = async () => {
+                    if (isCancelled || oneOnOneDiscardRef.current || !isOneOnOneActiveRef.current || isOneOnOneMutedRef.current) {
+                        return;
+                    }
+                    if (audioChunks.length === 0) {
+                        if (isOneOnOneActiveRef.current) {
+                            updateOneOnOneStatus("hearing");
+                        }
+                        return;
+                    }
+
+                    const recMime = recorder.mimeType || "audio/webm";
+                    const ext = recMime.includes("mp4") ? "mp4" : recMime.includes("wav") ? "wav" : "webm";
+                    const audioBlob = new Blob(audioChunks, { type: recMime });
+
+                    updateOneOnOneStatus("processing");
+                    setOneOnOneStatusDetail("Transcribing audio...");
+
+                    try {
+                        const formData = new FormData();
+                        formData.append("file", audioBlob, `1on1-voice.${ext}`);
+
+                        const sttRes = await fetch(`${API_URL}/stt`, {
+                            method: "POST",
+                            body: formData,
+                        });
+
+                        if (!sttRes.ok) {
+                            const errPayload = await sttRes.json().catch(() => ({}));
+                            throw new Error(errPayload.detail || errPayload.error || `STT failed (HTTP ${sttRes.status})`);
+                        }
+
+                        const sttData = await sttRes.json();
+                        const text = String(sttData.text || "").trim();
+
+                        if (!text) {
+                            if (isOneOnOneActiveRef.current) {
+                                updateOneOnOneStatus("hearing");
+                                setOneOnOneStatusDetail("");
+                            }
+                            return;
+                        }
+
+                        await sendTranscribedOneOnOneMessage(text);
+                    } catch (err: unknown) {
+                        const msg = err instanceof Error ? err.message : "Failed to transcribe speech";
+                        setOneOnOneError(msg);
+                        if (isOneOnOneActiveRef.current) {
+                            updateOneOnOneStatus("hearing");
+                            setOneOnOneStatusDetail("");
+                        }
+                    }
+                };
+
+                const dataArray = new Uint8Array(analyser.fftSize);
+                const SPEECH_START_THRESHOLD = 0.022;
+                const SPEECH_KEEP_THRESHOLD = 0.015;
+                const SILENCE_DURATION_MS = 1350;
+
+                let hasSpoken = false;
+                let silenceStartTime: number | null = null;
+                let lastUiUpdate = 0;
+
+                const checkAudioLevel = (now: number) => {
+                    if (isCancelled || !isOneOnOneActiveRef.current || isOneOnOneMutedRef.current || oneOnOneStatusRef.current !== "hearing") {
+                        return;
+                    }
+
+                    analyser.getByteTimeDomainData(dataArray);
+                    let sumSquares = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        const normalized = (dataArray[i] - 128) / 128;
+                        sumSquares += normalized * normalized;
+                    }
+                    const rms = Math.sqrt(sumSquares / dataArray.length);
+
+                    if (now - lastUiUpdate > 50) {
+                        lastUiUpdate = now;
+                        setMicAudioLevel(Math.min(1, rms * 6));
+                    }
+
+                    if (!hasSpoken) {
+                        if (rms >= SPEECH_START_THRESHOLD) {
+                            hasSpoken = true;
+                            silenceStartTime = null;
+                            setIsUserSpeakingInOneOnOne(true);
+                            if (recorder.state === "inactive") {
+                                audioChunks.length = 0;
+                                recorder.start(100);
+                            }
+                        }
+                    } else {
+                        if (rms >= SPEECH_KEEP_THRESHOLD) {
+                            silenceStartTime = null;
+                        } else {
+                            if (silenceStartTime === null) {
+                                silenceStartTime = now;
+                            } else if (now - silenceStartTime >= SILENCE_DURATION_MS) {
+                                setIsUserSpeakingInOneOnOne(false);
+                                setMicAudioLevel(0);
+                                if (recorder.state !== "inactive") {
+                                    recorder.stop();
+                                }
+                                return;
+                            }
+                        }
+                    }
+
+                    oneOnOneVadRafRef.current = requestAnimationFrame(checkAudioLevel);
+                };
+
+                oneOnOneVadRafRef.current = requestAnimationFrame(checkAudioLevel);
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : "Could not access microphone";
+                setOneOnOneError(msg);
+            }
+        };
+
+        startListeningLoop();
+
+        return () => {
+            isCancelled = true;
+            if (oneOnOneVadRafRef.current !== null) {
+                cancelAnimationFrame(oneOnOneVadRafRef.current);
+                oneOnOneVadRafRef.current = null;
+            }
+        };
+    }, [isOneOnOneActive, isOneOnOneMuted, oneOnOneStatus, activeChatId]);
+
+    useEffect(() => {
+        return () => {
+            cleanupOneOnOneAudio(true);
+        };
+    }, [cleanupOneOnOneAudio]);
 
     const handleUseCharacterFirstMes = async () => {
         if (!activeChatId || !selectedChatModelId) return;
@@ -3971,81 +4471,106 @@ export default function ChatPage() {
                                 const headerSubtitle = `${modelDisplayName} @ ${instanceDisplayName}`;
 
                                 return (
-                                    <ChatHeader
-                                        title={activeChatObj.name}
-                                        subtitle={headerSubtitle}
-                                        avatar={currentModelAvatar}
-                                        onBack={handleBackToList}
-                                        onAvatarClick={() => handleOpenPersonaDetails(selectedChatModelId)}
-                                        onOpenRename={handleOpenRenameModal}
-                                        onOpenDuplicate={handleOpenDuplicateModal}
-                                        onOpenExport={handleOpenExportModal}
-                                        onOpenDelete={handleOpenDeleteModal}
-                                        onSearchClick={handleToggleSearch}
-                                        isSearchOpen={isSearchOpen}
-                                        searchQuery={chatSearchQuery}
-                                        onSearchQueryChange={setChatSearchQuery}
-                                        matchCount={matchingMessageIds.length}
-                                        activeMatchIndex={activeMatchIndex}
-                                        onNextMatch={handleNextMatch}
-                                        onPrevMatch={handlePrevMatch}
-                                    />
+                                    <>
+                                        <ChatHeader
+                                            title={activeChatObj.name}
+                                            subtitle={headerSubtitle}
+                                            avatar={currentModelAvatar}
+                                            onBack={handleBackToList}
+                                            onAvatarClick={() => handleOpenPersonaDetails(selectedChatModelId)}
+                                            onOpenRename={handleOpenRenameModal}
+                                            onOpenDuplicate={handleOpenDuplicateModal}
+                                            onOpenExport={handleOpenExportModal}
+                                            onOpenDelete={handleOpenDeleteModal}
+                                            onSearchClick={handleToggleSearch}
+                                            isSearchOpen={isSearchOpen}
+                                            searchQuery={chatSearchQuery}
+                                            onSearchQueryChange={setChatSearchQuery}
+                                            matchCount={matchingMessageIds.length}
+                                            activeMatchIndex={activeMatchIndex}
+                                            onNextMatch={handleNextMatch}
+                                            onPrevMatch={handlePrevMatch}
+                                            isOneOnOneActive={isOneOnOneActive}
+                                            onToggleOneOnOne={handleToggleOneOnOne}
+                                        />
+
+                                        {/* 1on1 Top Half Stage (Horizontal Split at Middle) */}
+                                        {isOneOnOneActive && (
+                                            <OneOnOnePanel
+                                                status={oneOnOneStatus}
+                                                isMuted={isOneOnOneMuted}
+                                                onToggleMute={handleToggleOneOnOneMute}
+                                                onClose={handleToggleOneOnOne}
+                                                onInterrupt={handleInterruptOneOnOne}
+                                                isUserSpeaking={isUserSpeakingInOneOnOne}
+                                                audioLevel={micAudioLevel}
+                                                assistantName={modelDisplayName}
+                                                assistantAvatar={currentModelAvatar}
+                                                statusDetail={oneOnOneStatusDetail}
+                                                errorText={oneOnOneError}
+                                                onClearError={() => setOneOnOneError(null)}
+                                            />
+                                        )}
+                                    </>
                                 );
                             })()}
 
-                            {/* Conversation Messages */}
-                            <ChatMessageList
-                                messages={messages}
-                                activeSearchMsgId={isSearchOpen && matchingMessageIds.length > 0 ? matchingMessageIds[activeMatchIndex] : null}
-                                selectedChatModelId={selectedChatModelId}
-                                modelPreferences={modelPreferences}
-                                handleUseCharacterFirstMes={handleUseCharacterFirstMes}
-                                onAvatarClick={handleOpenPersonaDetails}
-                                editingMsgId={editingMsgId}
-                                editingMsgContent={editingMsgContent}
-                                setEditingMsgContent={setEditingMsgContent}
-                                setEditingMsgId={setEditingMsgId}
-                                autoResizeTextarea={autoResizeTextarea}
-                                handleSaveInlineEdit={handleSaveInlineEdit}
-                                handleStartInlineEdit={handleStartInlineEdit}
-                                handleOpenForkModal={handleOpenForkModal}
-                                handleOpenDeleteMessageModal={handleOpenDeleteMessageModal}
-                                setActiveImageModal={setActiveImageModal}
-                                setActiveAttachmentModal={setActiveAttachmentModal}
-                                setLineContextMenu={setLineContextMenu}
-                                ttsState={ttsState}
-                                handlePlayTTS={handlePlayTTS}
-                                handlePauseTTS={handlePauseTTS}
-                                handleResumeTTS={handleResumeTTS}
-                                handleStopTTS={handleStopTTS}
-                                renderMarkdownText={renderMarkdownText}
-                                highlightCodeTokens={highlightCodeTokens}
-                                handleCallForAnswer={handleCallForAnswer}
-                                messagesEndRef={messagesEndRef}
-                            />
+                            {/* Bottom Half (or Full Height when 1on1 is off): Chat History + Input Composer */}
+                            <div className={`${isOneOnOneActive ? "h-1/2" : "flex-1"} flex flex-col overflow-hidden w-full min-h-0`}>
+                                {/* Conversation Messages */}
+                                <ChatMessageList
+                                    messages={messages}
+                                    activeSearchMsgId={isSearchOpen && matchingMessageIds.length > 0 ? matchingMessageIds[activeMatchIndex] : null}
+                                    selectedChatModelId={selectedChatModelId}
+                                    modelPreferences={modelPreferences}
+                                    handleUseCharacterFirstMes={handleUseCharacterFirstMes}
+                                    onAvatarClick={handleOpenPersonaDetails}
+                                    editingMsgId={editingMsgId}
+                                    editingMsgContent={editingMsgContent}
+                                    setEditingMsgContent={setEditingMsgContent}
+                                    setEditingMsgId={setEditingMsgId}
+                                    autoResizeTextarea={autoResizeTextarea}
+                                    handleSaveInlineEdit={handleSaveInlineEdit}
+                                    handleStartInlineEdit={handleStartInlineEdit}
+                                    handleOpenForkModal={handleOpenForkModal}
+                                    handleOpenDeleteMessageModal={handleOpenDeleteMessageModal}
+                                    setActiveImageModal={setActiveImageModal}
+                                    setActiveAttachmentModal={setActiveAttachmentModal}
+                                    setLineContextMenu={setLineContextMenu}
+                                    ttsState={ttsState}
+                                    handlePlayTTS={handlePlayTTS}
+                                    handlePauseTTS={handlePauseTTS}
+                                    handleResumeTTS={handleResumeTTS}
+                                    handleStopTTS={handleStopTTS}
+                                    renderMarkdownText={renderMarkdownText}
+                                    highlightCodeTokens={highlightCodeTokens}
+                                    handleCallForAnswer={handleCallForAnswer}
+                                    messagesEndRef={messagesEndRef}
+                                />
 
-                            {/* Input Composer */}
-                            <ChatInput
-                                inputText={inputText}
-                                setInputText={setInputText}
-                                handleSendMessage={handleSendMessage}
-                                selectedAttachments={selectedAttachments}
-                                handleAttachmentSelect={handleAttachmentSelect}
-                                onFilesAdded={handleFilesAdded}
-                                handleRemoveSelectedAttachment={handleRemoveSelectedAttachment}
-                                isThinkingEnabled={isThinkingEnabled}
-                                setIsThinkingEnabled={setIsThinkingEnabled}
-                                setIsSelectModelModalOpen={setIsSelectModelModalOpen}
-                                onOpenCustomPromptsModal={() => setIsCustomPromptsModalOpen(true)}
-                                selectedChatInstanceId={selectedChatInstanceId}
-                                selectedChatModelId={selectedChatModelId}
-                                instances={instances}
-                                modelPreferences={modelPreferences}
-                                instanceModelsList={instanceModelsList}
-                                getCharacterName={getCharacterName}
-                                promptTextareaRef={promptTextareaRef}
-                                autoResizeTextarea={autoResizeTextarea}
-                            />
+                                {/* Input Composer */}
+                                <ChatInput
+                                    inputText={inputText}
+                                    setInputText={setInputText}
+                                    handleSendMessage={handleSendMessage}
+                                    selectedAttachments={selectedAttachments}
+                                    handleAttachmentSelect={handleAttachmentSelect}
+                                    onFilesAdded={handleFilesAdded}
+                                    handleRemoveSelectedAttachment={handleRemoveSelectedAttachment}
+                                    isThinkingEnabled={isThinkingEnabled}
+                                    setIsThinkingEnabled={setIsThinkingEnabled}
+                                    setIsSelectModelModalOpen={setIsSelectModelModalOpen}
+                                    onOpenCustomPromptsModal={() => setIsCustomPromptsModalOpen(true)}
+                                    selectedChatInstanceId={selectedChatInstanceId}
+                                    selectedChatModelId={selectedChatModelId}
+                                    instances={instances}
+                                    modelPreferences={modelPreferences}
+                                    instanceModelsList={instanceModelsList}
+                                    getCharacterName={getCharacterName}
+                                    promptTextareaRef={promptTextareaRef}
+                                    autoResizeTextarea={autoResizeTextarea}
+                                />
+                            </div>
                         </section>
                     );
                 })()}
