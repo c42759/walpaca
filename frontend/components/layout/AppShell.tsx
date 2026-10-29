@@ -119,7 +119,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     return (
         <main className="topo-bg h-dvh w-screen flex justify-center font-sans antialiased text-[#202022] box-border overflow-hidden">
             {/* Outer Application Window (Full bleed on mobile, floating framed window on desktop) */}
-            <div className="w-full h-full md:w-[96vw] md:h-[calc(100dvh-24px)] md:my-auto md:rounded-3xl bg-[#202022] flex overflow-hidden border-0 md:border-8 border-[#202022] shadow-2xl relative">
+            <div className="w-full h-full md:my-auto bg-[#202022] flex overflow-hidden border-0 md:border-8 border-[#202022] shadow-2xl relative">
                 {/* 1. SLIM LEFT NAVIGATION RAIL - Desktop/Tablet permanent column */}
                 <div className="hidden md:flex h-full shrink-0">
                     <NavigationRail
