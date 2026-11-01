@@ -77,7 +77,7 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
     return (
         <section className="w-full md:w-[280px] lg:w-[350px] h-full md:border-r border-[#e8ebf3] flex flex-col bg-[#f9fafc] shrink-0">
             {/* Search Bar Header */}
-            <div className="p-3 sm:p-4 pb-3 flex items-center gap-2">
+            <div className="p-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] sm:p-4 pb-3 flex items-center gap-2 shrink-0">
                 {/* Mobile Drawer Hamburger Trigger (< md) */}
                 <button
                     type="button"

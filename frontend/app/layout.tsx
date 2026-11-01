@@ -39,6 +39,7 @@ export const viewport: Viewport = {
     initialScale: 1,
     maximumScale: 5,
     viewportFit: "cover",
+    interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
@@ -63,7 +64,7 @@ export default function RootLayout({
                     }}
                 />
             </head>
-            <body className="h-dvh min-h-dvh flex flex-col antialiased overflow-hidden">
+            <body className="h-[var(--app-height,100dvh)] max-h-[var(--app-height,100dvh)] w-full flex flex-col antialiased overflow-hidden">
                 <AppShell>{children}</AppShell>
                 <PWAInstallPrompt />
             </body>
