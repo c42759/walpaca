@@ -101,6 +101,7 @@ export default function EditPersonaPage() {
                 ? {
                       name: currentPersona.character_book.name || `${currentPersona.name} Lorebook`,
                       entries: (currentPersona.character_book.entries || []).map((e: any) => ({
+                          filename: e.filename || "",
                           name: e.name || e.comment || "Entry",
                           keys: Array.isArray(e.keys) ? e.keys : String(e.keys || "").split(",").map((k) => k.trim()).filter(Boolean),
                           content: e.content || e.description || "",

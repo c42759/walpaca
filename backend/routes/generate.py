@@ -372,12 +372,25 @@ def evaluate_lorebook_entries(
 
     # 3. Lorebook processing
     lorebook = char_data.get("character_book")
+    if isinstance(lorebook, dict):
+        try:
+            from routes.lorebook import resolve_character_book_entries
+
+            lorebook = resolve_character_book_entries(lorebook)
+        except Exception:
+            pass
     entries = []
 
     if isinstance(lorebook, dict) and isinstance(lorebook.get("entries"), list):
         entries = lorebook["entries"]
     elif isinstance(lorebook, list):
-        entries = lorebook
+        try:
+            from routes.lorebook import resolve_character_book_entries
+
+            lorebook_resolved = resolve_character_book_entries({"entries": lorebook})
+            entries = lorebook_resolved.get("entries", lorebook)
+        except Exception:
+            entries = lorebook
 
     if entries:
         recent_text = ""

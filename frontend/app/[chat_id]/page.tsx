@@ -1046,7 +1046,7 @@ export default function ChatPage() {
     const [personaFormRepeatPenalty, setPersonaFormRepeatPenalty] = useState<number>(1.1);
     const [personaFormPresencePenalty, setPersonaFormPresencePenalty] = useState<number>(0.0);
     const [personaFormFrequencyPenalty, setPersonaFormFrequencyPenalty] = useState<number>(0.0);
-    const [personaFormLorebookEntries, setPersonaFormLorebookEntries] = useState<Array<{ name: string; keys: string; content: string; enabled: boolean }>>([]);
+    const [personaFormLorebookEntries, setPersonaFormLorebookEntries] = useState<Array<{ filename: string; enabled: boolean }>>([]);
     const [personaAvatarPreview, setPersonaAvatarPreview] = useState<string>("");
     const [isUploadingPersonaAvatar, setIsUploadingPersonaAvatar] = useState<boolean>(false);
 
@@ -1123,12 +1123,12 @@ export default function ChatPage() {
         setPersonaFormFrequencyPenalty(template.generation_settings?.frequency_penalty ?? template.frequency_penalty ?? 0.0);
 
         const rawEntries = template.character_book?.entries || [];
-        const parsedEntries = rawEntries.map((e) => ({
-            name: e.name || "Entry",
-            keys: Array.isArray(e.keys) ? e.keys.join(", ") : e.keys || "",
-            content: e.content || "",
-            enabled: e.enabled !== false,
-        }));
+        const parsedEntries = rawEntries
+            .map((e: any) => ({
+                filename: e.filename || "",
+                enabled: e.enabled !== false,
+            }))
+            .filter((e) => Boolean(e.filename));
         setPersonaFormLorebookEntries(parsedEntries);
         setPersonaViewMode("editor");
     };
@@ -1185,31 +1185,11 @@ export default function ChatPage() {
         setPersonaFormAlternateGreetings((prev) => prev.filter((_, i) => i !== idx));
     };
 
-    const handleAddPersonaLorebookEntry = () => {
-        setPersonaFormLorebookEntries((prev) => [...prev, { name: "New Entry", keys: "name, keyword", content: "", enabled: true }]);
-    };
-
     const handleCopyLorebookTemplateToPersona = (filename: string) => {
         if (!filename) return;
-        const tmpl = lorebookTemplates.find((l) => l.filename === filename);
-        if (!tmpl) return;
-
-        setPersonaFormLorebookEntries((prev) => [
-            ...prev,
-            {
-                name: tmpl.name || tmpl.filename.replace(".json", ""),
-                keys: Array.isArray(tmpl.keys) ? tmpl.keys.join(", ") : tmpl.keys || "",
-                content: tmpl.content || "",
-                enabled: true,
-            },
-        ]);
-    };
-
-    const handleUpdatePersonaLorebookEntry = (idx: number, field: "name" | "keys" | "content" | "enabled", value: any) => {
         setPersonaFormLorebookEntries((prev) => {
-            const next = [...prev];
-            next[idx] = { ...next[idx], [field]: value };
-            return next;
+            if (prev.some((e) => e.filename === filename)) return prev;
+            return [...prev, { filename, enabled: true }];
         });
     };
 
@@ -1246,12 +1226,7 @@ export default function ChatPage() {
                 character_book: {
                     name: `${personaFormName.trim()} Lorebook`,
                     entries: personaFormLorebookEntries.map((e) => ({
-                        name: e.name.trim(),
-                        keys: e.keys
-                            .split(",")
-                            .map((k) => k.trim())
-                            .filter(Boolean),
-                        content: e.content,
+                        filename: e.filename,
                         enabled: e.enabled !== false,
                     })),
                 },

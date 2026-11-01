@@ -27,6 +27,7 @@ export interface PersonaDetailsData {
     characterBook?: {
         name?: string;
         entries?: Array<{
+            filename?: string;
             name?: string;
             keys?: string[] | string;
             content?: string;
@@ -439,8 +440,13 @@ export const PersonaDetailsModal: React.FC<PersonaDetailsModalProps> = ({ isOpen
                                     return (
                                         <div key={idx} className="p-4 rounded-2xl border border-[#e8ebf3] bg-[#f9fafc] space-y-2">
                                             <div className="flex items-center justify-between gap-2 flex-wrap">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-bold text-[#202022]">{entry.name || `Entry #${idx + 1}`}</span>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-sm font-bold text-[#202022]">{entry.name || entry.filename || `Entry #${idx + 1}`}</span>
+                                                    {entry.filename && (
+                                                        <span className="text-[10px] font-mono bg-[#f0f2f9] text-[#5d6075] border border-[#e0e3f5] px-2 py-0.5 rounded-full">
+                                                            🔗 {entry.filename}
+                                                        </span>
+                                                    )}
                                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                                                         isEnabled
                                                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"

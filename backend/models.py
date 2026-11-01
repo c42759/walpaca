@@ -248,11 +248,46 @@ class ModelPreferences(db.Model):
 
     def get_character(self) -> dict:
         raw = self._get_raw_character_dict()
-        return {k: v for k, v in raw.items() if k != "_num_ctx"}
+        res = {k: v for k, v in raw.items() if k != "_num_ctx"}
+        try:
+            from routes.lorebook import resolve_character_book_entries
+
+            if isinstance(res.get("character_book"), dict):
+                res["character_book"] = resolve_character_book_entries(
+                    res["character_book"]
+                )
+            if isinstance(res.get("data"), dict) and isinstance(
+                res["data"].get("character_book"), dict
+            ):
+                res["data"] = dict(res["data"])
+                res["data"]["character_book"] = resolve_character_book_entries(
+                    res["data"]["character_book"]
+                )
+        except Exception:
+            pass
+        return res
 
     def set_character(self, char_dict: dict):
         current_ctx = self.num_ctx
         new_dict = dict(char_dict) if isinstance(char_dict, dict) else {}
+        try:
+            from routes.lorebook import normalize_character_book_links
+
+            if isinstance(new_dict.get("character_book"), dict):
+                new_dict["character_book"] = normalize_character_book_links(
+                    new_dict["character_book"]
+                )
+            if isinstance(new_dict.get("data"), dict) and isinstance(
+                new_dict["data"].get("character_book"), dict
+            ):
+                new_dict["data"] = dict(new_dict["data"])
+                new_dict["data"]["character_book"] = (
+                    normalize_character_book_links(
+                        new_dict["data"]["character_book"]
+                    )
+                )
+        except Exception:
+            pass
         if current_ctx is not None:
             new_dict["_num_ctx"] = current_ctx
         self.character = json.dumps(new_dict)

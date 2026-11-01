@@ -229,6 +229,7 @@ export default function EditModelPreferencePage() {
                 ? {
                       name: charData.character_book.name || `${charName} Lorebook`,
                       entries: (charData.character_book.entries || []).map((e: any) => ({
+                          filename: e.filename || "",
                           name: e.name || e.comment || "Entry",
                           keys: Array.isArray(e.keys)
                               ? e.keys

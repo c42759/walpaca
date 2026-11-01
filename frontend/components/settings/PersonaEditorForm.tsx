@@ -42,6 +42,7 @@ export interface PersonaTemplateItem {
     character_book?: {
         name?: string;
         entries?: Array<{
+            filename?: string;
             name?: string;
             keys?: string[] | string;
             content?: string;
@@ -73,9 +74,7 @@ export interface PersonaFormData {
     character_book?: {
         name: string;
         entries: Array<{
-            name: string;
-            keys: string[];
-            content: string;
+            filename: string;
             enabled: boolean;
         }>;
     };
@@ -130,10 +129,27 @@ export function PersonaEditorForm({
     const [presencePenalty, setPresencePenalty] = useState<number>(0.0);
     const [frequencyPenalty, setFrequencyPenalty] = useState<number>(0.0);
 
-    // Embedded Lorebook entries
+    // Linked Lorebook entries (reference by filename)
     const [lorebookEntries, setLorebookEntries] = useState<
-        Array<{ name: string; keys: string; content: string; enabled: boolean }>
+        Array<{ filename: string; enabled: boolean }>
     >([]);
+
+    const resolveFilenameFromEntry = useCallback(
+        (e: any): string | null => {
+            if (!e) return null;
+            if (typeof e === "string") return e;
+            if (e.filename) return String(e.filename);
+            const ename = (e.name || e.comment || "").trim().toLowerCase();
+            if (ename && availableLorebookTemplates.length > 0) {
+                const match = availableLorebookTemplates.find(
+                    (l) => l.name.trim().toLowerCase() === ename || l.filename.toLowerCase() === `${ename}.json`
+                );
+                if (match) return match.filename;
+            }
+            return null;
+        },
+        [availableLorebookTemplates]
+    );
 
     const populateForm = useCallback((data: Partial<PersonaFormData>) => {
         if (!data) return;
@@ -174,18 +190,23 @@ export function PersonaEditorForm({
 
         const rawEntries = data.character_book?.entries || [];
         if (Array.isArray(rawEntries)) {
-            setLorebookEntries(
-                rawEntries.map((e: any) => ({
-                    name: e.name || e.comment || "Entry",
-                    keys: Array.isArray(e.keys) ? e.keys.join(", ") : String(e.keys || ""),
-                    content: e.content || e.description || "",
-                    enabled: e.enabled !== false,
-                }))
-            );
+            const seen = new Set<string>();
+            const linked: Array<{ filename: string; enabled: boolean }> = [];
+            for (const e of rawEntries) {
+                const fname = resolveFilenameFromEntry(e);
+                if (fname && !seen.has(fname)) {
+                    seen.add(fname);
+                    linked.push({
+                        filename: fname,
+                        enabled: (e as any).enabled !== false,
+                    });
+                }
+            }
+            setLorebookEntries(linked);
         } else {
             setLorebookEntries([]);
         }
-    }, []);
+    }, [resolveFilenameFromEntry]);
 
     useEffect(() => {
         if (initialData) {
@@ -256,22 +277,11 @@ export function PersonaEditorForm({
         setAlternateGreetings((prev) => prev.filter((_, i) => i !== idx));
     };
 
-    // Lorebook
-    const handleAddLorebookEntry = () => {
-        setLorebookEntries((prev) => [
-            ...prev,
-            { name: "New Entry", keys: "name, keyword", content: "", enabled: true },
-        ]);
-    };
-
-    const handleUpdateLorebookEntry = (
-        idx: number,
-        field: "name" | "keys" | "content" | "enabled",
-        value: any
-    ) => {
+    // Lorebook Linking
+    const handleToggleLorebookEntry = (idx: number, enabled: boolean) => {
         setLorebookEntries((prev) => {
             const next = [...prev];
-            next[idx] = { ...next[idx], [field]: value };
+            next[idx] = { ...next[idx], enabled };
             return next;
         });
     };
@@ -280,20 +290,12 @@ export function PersonaEditorForm({
         setLorebookEntries((prev) => prev.filter((_, i) => i !== idx));
     };
 
-    const handleCopyLorebookTemplate = (filename: string) => {
+    const handleLinkLorebookTemplate = (filename: string) => {
         if (!filename) return;
-        const tmpl = availableLorebookTemplates.find((l) => l.filename === filename);
-        if (!tmpl) return;
-
-        setLorebookEntries((prev) => [
-            ...prev,
-            {
-                name: tmpl.name || tmpl.filename.replace(".json", ""),
-                keys: Array.isArray(tmpl.keys) ? tmpl.keys.join(", ") : tmpl.keys || "",
-                content: tmpl.content || "",
-                enabled: true,
-            },
-        ]);
+        setLorebookEntries((prev) => {
+            if (prev.some((e) => e.filename === filename)) return prev;
+            return [...prev, { filename, enabled: true }];
+        });
     };
 
     const handleCopyFromPersonaTemplate = (filename: string) => {
@@ -314,15 +316,21 @@ export function PersonaEditorForm({
 
         const rawEntries = tmpl.character_book?.entries || [];
         if (Array.isArray(rawEntries) && rawEntries.length > 0) {
-            setLorebookEntries((prev) => [
-                ...prev,
-                ...rawEntries.map((e: any) => ({
-                    name: e.name || e.comment || "Entry",
-                    keys: Array.isArray(e.keys) ? e.keys.join(", ") : String(e.keys || ""),
-                    content: e.content || e.description || "",
-                    enabled: e.enabled !== false,
-                })),
-            ]);
+            setLorebookEntries((prev) => {
+                const seen = new Set(prev.map((p) => p.filename));
+                const added: Array<{ filename: string; enabled: boolean }> = [];
+                for (const e of rawEntries) {
+                    const fname = resolveFilenameFromEntry(e);
+                    if (fname && !seen.has(fname)) {
+                        seen.add(fname);
+                        added.push({
+                            filename: fname,
+                            enabled: (e as any).enabled !== false,
+                        });
+                    }
+                }
+                return [...prev, ...added];
+            });
         }
     };
 
@@ -353,12 +361,7 @@ export function PersonaEditorForm({
             character_book: {
                 name: `${name.trim()} Lorebook`,
                 entries: lorebookEntries.map((e) => ({
-                    name: e.name.trim(),
-                    keys: e.keys
-                        .split(",")
-                        .map((k) => k.trim())
-                        .filter(Boolean),
-                    content: e.content,
+                    filename: e.filename,
                     enabled: e.enabled !== false,
                 })),
             },
@@ -623,105 +626,120 @@ export function PersonaEditorForm({
                     </div>
                 </div>
 
-                {/* 5. Embedded Lorebook Card */}
+                {/* 5. Linked Lorebook Card */}
                 <div className="p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#e8ebf3] pb-3">
                         <div>
                             <h4 className="text-sm font-bold text-[#7678ed] uppercase tracking-wider">
-                                5. Embedded Character Lorebook ({lorebookEntries.length})
+                                5. Linked Character Lorebook ({lorebookEntries.length})
                             </h4>
                             <p className="text-xs text-[#7a7d90] mt-0.5">
-                                Keyword-triggered world information automatically injected into chat context.
+                                Link Lorebook entries by reference. Updating a Lorebook entry automatically updates all linked Personas and Model Preferences.
                             </p>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={handleAddLorebookEntry}>
-                            <PlusIcon className="w-3.5 h-3.5 mr-1" />
-                            Add Lore Entry
-                        </Button>
                     </div>
 
                     {availableLorebookTemplates.length > 0 && (
                         <div className="p-3 bg-[#eaecf9]/30 rounded-xl border border-[#7678ed]/20 flex flex-col sm:flex-row items-center justify-between gap-3">
-                            <span className="text-xs font-semibold text-[#202022]">Import entries from standalone Lorebook template:</span>
+                            <span className="text-xs font-semibold text-[#202022]">Link entry from Lorebook:</span>
                             <select
                                 onChange={(e) => {
-                                    handleCopyLorebookTemplate(e.target.value);
+                                    handleLinkLorebookTemplate(e.target.value);
                                     e.target.value = "";
                                 }}
                                 defaultValue=""
                                 className="bg-white border border-[#e8ebf3] rounded-xl px-3 py-1.5 text-xs text-[#202022] outline-none focus:border-[#7678ed] cursor-pointer"
                             >
                                 <option value="" disabled>
-                                    Select template to insert...
+                                    Select Lorebook entry to link...
                                 </option>
-                                {availableLorebookTemplates.map((l) => (
-                                    <option key={l.filename} value={l.filename}>
-                                        {l.name} ({l.filename})
-                                    </option>
-                                ))}
+                                {availableLorebookTemplates.map((l) => {
+                                    const alreadyLinked = lorebookEntries.some((e) => e.filename === l.filename);
+                                    return (
+                                        <option key={l.filename} value={l.filename} disabled={alreadyLinked}>
+                                            {l.name} ({l.filename}){alreadyLinked ? " — Linked" : ""}
+                                        </option>
+                                    );
+                                })}
                             </select>
                         </div>
                     )}
 
                     {lorebookEntries.length === 0 ? (
                         <p className="text-xs text-[#8e90a6] italic p-4 text-center bg-[#f9fafc] rounded-xl border border-[#e8ebf3]">
-                            No embedded lorebook entries. Click Add Lore Entry to configure triggered lore.
+                            No linked lorebook entries. Select an entry from the dropdown above to link it.
                         </p>
                     ) : (
-                        <div className="space-y-4">
-                            {lorebookEntries.map((entry, idx) => (
-                                <div key={idx} className="p-4 bg-[#f9fafc] rounded-2xl border border-[#e8ebf3] space-y-3">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-2 flex-1">
-                                            <span className="text-xs font-bold text-[#7678ed]">#{idx + 1}</span>
-                                            <input
-                                                type="text"
-                                                value={entry.name}
-                                                onChange={(e) => handleUpdateLorebookEntry(idx, "name", e.target.value)}
-                                                placeholder="Entry Name (e.g. Magic Sword)"
-                                                className="font-bold text-xs bg-white border border-[#e8ebf3] rounded-lg px-2.5 py-1 text-[#202022] outline-none focus:border-[#7678ed] flex-1 max-w-xs"
-                                            />
+                        <div className="space-y-3">
+                            {lorebookEntries.map((entry, idx) => {
+                                const tmpl = availableLorebookTemplates.find((l) => l.filename === entry.filename);
+                                const displayName = tmpl?.name || entry.filename.replace(/\.json$/i, "");
+                                const keysList = Array.isArray(tmpl?.keys)
+                                    ? tmpl.keys
+                                    : typeof tmpl?.keys === "string"
+                                    ? tmpl.keys.split(",").map((k) => k.trim()).filter(Boolean)
+                                    : [];
+                                const contentText = tmpl?.content || "";
+
+                                return (
+                                    <div key={entry.filename || idx} className="p-4 bg-[#f9fafc] rounded-2xl border border-[#e8ebf3] space-y-2.5">
+                                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-xs font-bold text-[#7678ed]">#{idx + 1}</span>
+                                                <span className="font-bold text-sm text-[#202022]">{displayName}</span>
+                                                <Badge variant="secondary" className="font-mono text-[10px]">
+                                                    🔗 {entry.filename}
+                                                </Badge>
+                                                {!tmpl && (
+                                                    <Badge variant="danger" className="text-[10px]">
+                                                        Missing File
+                                                    </Badge>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <label className="flex items-center gap-1.5 text-xs text-[#5d6075] cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={entry.enabled}
+                                                        onChange={(e) => handleToggleLorebookEntry(idx, e.target.checked)}
+                                                        className="rounded border-[#e8ebf3] text-[#7678ed] focus:ring-[#7678ed] cursor-pointer"
+                                                    />
+                                                    <span>Enabled</span>
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveLorebookEntry(idx)}
+                                                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                                    title="Unlink entry"
+                                                >
+                                                    <TrashIcon className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         </div>
 
-                                        <div className="flex items-center gap-2">
-                                            <label className="flex items-center gap-1.5 text-xs text-[#5d6075] cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={entry.enabled}
-                                                    onChange={(e) => handleUpdateLorebookEntry(idx, "enabled", e.target.checked)}
-                                                    className="rounded border-[#e8ebf3] text-[#7678ed] focus:ring-[#7678ed] cursor-pointer"
-                                                />
-                                                <span>Enabled</span>
-                                            </label>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRemoveLorebookEntry(idx)}
-                                                className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                                title="Remove entry"
-                                            >
-                                                <TrashIcon className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                                        {keysList.length > 0 && (
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mr-1">Triggers:</span>
+                                                {keysList.map((k, kIdx) => (
+                                                    <span
+                                                        key={kIdx}
+                                                        className="text-[11px] font-mono bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-lg"
+                                                    >
+                                                        {k}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {contentText && (
+                                            <div className="text-xs text-[#5d6075] bg-white border border-[#e8ebf3] rounded-xl p-3 max-h-36 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
+                                                {contentText}
+                                            </div>
+                                        )}
                                     </div>
-
-                                    <Input
-                                        label="Trigger Keywords (comma-separated)"
-                                        value={entry.keys}
-                                        onChange={(e) => handleUpdateLorebookEntry(idx, "keys", e.target.value)}
-                                        placeholder="sword, excalibur, blade, weapon"
-                                        className="bg-white"
-                                    />
-
-                                    <Textarea
-                                        label="Lore Entry Content"
-                                        rows={7}
-                                        value={entry.content}
-                                        onChange={(e) => handleUpdateLorebookEntry(idx, "content", e.target.value)}
-                                        placeholder="Information automatically passed to the model when trigger keywords appear in conversation..."
-                                        className="bg-white"
-                                    />
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
