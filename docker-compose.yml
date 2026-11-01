@@ -5,9 +5,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:3100:3000"
-      - "${NETWORK_ADDRESS}:3100:3000"
-      - "${VPN_ADDRESS}:3100:3000"
+      - "127.0.0.1:${FRONTEND_PORT}:3000"
+      - "${NETWORK_ADDRESS}:${FRONTEND_PORT}:3000"
+      - "${VPN_ADDRESS}:${FRONTEND_PORT}:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -30,9 +30,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "127.0.0.1:5100:5000"
-      - "${NETWORK_ADDRESS}:5100:5000"
-      - "${VPN_ADDRESS}:5100:5000"
+      - "127.0.0.1:${BACKEND_PORT}:5000"
+      - "${NETWORK_ADDRESS}:${BACKEND_PORT}:5000"
+      - "${VPN_ADDRESS}:${BACKEND_PORT}:5000"
     volumes:
       - ./backend:/app
       - ./alpaca.db:/app/alpaca.db
@@ -73,10 +73,6 @@ services:
   whisper:
     container_name: walpaca_whisper
     image: hwdsl2/whisper-server:latest # Use `hwdsl2/whisper-server:cuda` if you have an NVIDIA GPU
-    ports:
-      - "127.0.0.1:9000:9000"
-      - "${NETWORK_ADDRESS}:9000:9000"
-      - "${VPN_ADDRESS}:9000:9000"
     volumes:
       - whisper-data:/var/lib/whisper
     environment:
