@@ -26,3 +26,12 @@ services:
         ports:
             - "8084:8080"
         restart: always
+
+    memory:
+        container_name: walpaca_mcp_memory
+        build: ./memory
+        ports:
+            - "8085:8080"
+        volumes:
+            - ./memory/data:/app/data
+        restart: always
