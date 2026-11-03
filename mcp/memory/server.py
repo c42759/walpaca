@@ -1,11 +1,14 @@
-from datetime import datetime, timezone
-from difflib import SequenceMatcher
-import json
 import os
-from pathlib import Path
 import re
+import stat
+import json
 import tempfile
 import threading
+
+from pathlib import Path
+from datetime import datetime
+from datetime import timezone
+from difflib import SequenceMatcher
 from mcp.server.fastmcp import FastMCP
 
 # Initialize FastMCP server (container-internal SSE port 8080)
@@ -88,18 +91,99 @@ def load_knowledge_graph(file_path: Path, folder_uuid: str) -> dict:
         }
 
 
+def load_merged_entities(folder_uuid: str) -> dict:
+    """
+    Load entities for `folder_uuid`, inheriting global/root facts from 'default'
+    (chats without a folder) while keeping folder-specific facts isolated and higher priority.
+    """
+    clean_uuid = sanitize_folder_uuid(folder_uuid)
+    merged_entities: dict = {}
+
+    # 1. Load root/unfoldered ('default') memory first as base knowledge
+    default_path = get_memory_file_path("default")
+    if default_path.exists():
+        default_graph = load_knowledge_graph(default_path, "default")
+        for ent_key, ent_data in (default_graph.get("entities") or {}).items():
+            if isinstance(ent_data, dict):
+                merged_entities[ent_key] = {
+                    "display_name": ent_data.get("display_name") or ent_key,
+                    "relations": dict(ent_data.get("relations") or {}),
+                }
+
+    # 2. Overlay folder-specific memory if operating inside a specific folder
+    if clean_uuid != "default":
+        folder_path = get_memory_file_path(clean_uuid)
+        if folder_path.exists():
+            folder_graph = load_knowledge_graph(folder_path, clean_uuid)
+            for ent_key, ent_data in (folder_graph.get("entities") or {}).items():
+                if not isinstance(ent_data, dict):
+                    continue
+                if ent_key not in merged_entities:
+                    merged_entities[ent_key] = {
+                        "display_name": ent_data.get("display_name") or ent_key,
+                        "relations": dict(ent_data.get("relations") or {}),
+                    }
+                else:
+                    if ent_data.get("display_name"):
+                        merged_entities[ent_key]["display_name"] = ent_data["display_name"]
+                    merged_entities[ent_key]["relations"].update(
+                        ent_data.get("relations") or {}
+                    )
+
+    return merged_entities
+
+
 def save_knowledge_graph(file_path: Path, graph: dict) -> None:
-    """Atomically write the updated knowledge graph JSON to the isolated folder directory."""
+    """Atomically write the updated knowledge graph JSON while preserving file ownership and permissions."""
+    parent_existed = file_path.parent.exists()
     file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_stat = None
+    if file_path.exists():
+        try:
+            existing_stat = file_path.stat()
+        except OSError:
+            existing_stat = None
+
+    ref_stat = existing_stat
+    if ref_stat is None:
+        for candidate_dir in (file_path.parent, MEMORY_BASE_DIR):
+            try:
+                ref_stat = candidate_dir.stat()
+                break
+            except OSError:
+                continue
+
+    if not parent_existed and ref_stat is not None:
+        try:
+            os.chown(file_path.parent, ref_stat.st_uid, ref_stat.st_gid)
+        except OSError:
+            pass
+
     graph["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    fd, tmp_path = tempfile.mkstemp(
-        dir=str(file_path.parent), prefix=".memory_", suffix=".tmp"
-    )
+    fd, tmp_path = tempfile.mkstemp(dir=str(file_path.parent),
+                                    prefix=".memory_",
+                                    suffix=".tmp")
+
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
             json.dump(graph, tmp_file, indent=2, ensure_ascii=False)
             tmp_file.write("\n")
+
+        target_mode = (
+            stat.S_IMODE(existing_stat.st_mode)
+            if existing_stat is not None
+            else 0o644
+        )
+        os.chmod(tmp_path, target_mode)
+
+        if ref_stat is not None:
+            try:
+                os.chown(tmp_path, ref_stat.st_uid, ref_stat.st_gid)
+            except OSError:
+                pass
+
         os.replace(tmp_path, file_path)
     except Exception:
         if os.path.exists(tmp_path):
@@ -108,6 +192,69 @@ def save_knowledge_graph(file_path: Path, graph: dict) -> None:
             except OSError:
                 pass
         raise
+
+
+def archive_to_trash(
+    folder_dir: Path,
+    folder_uuid: str,
+    entity_key: str,
+    display_name: str,
+    removed_relations: dict,
+    deleted_entire_entity: bool = False,
+) -> Path:
+    """
+    Move removed entity/relations into `trash.json` alongside `memory.json`.
+    If `trash.json` already contains a conflicting entry with the same entity/relation name,
+    writes to a new versioned `trash_[timestamp].json` file instead.
+    """
+    trash_path = folder_dir / "trash.json"
+    has_conflict = False
+
+    if trash_path.exists():
+        trash_graph = load_knowledge_graph(trash_path, folder_uuid)
+        trash_entities = trash_graph.get("entities") or {}
+        if entity_key in trash_entities and isinstance(trash_entities[entity_key], dict):
+            existing_rels = trash_entities[entity_key].get("relations") or {}
+            if deleted_entire_entity or any(rel in existing_rels for rel in removed_relations):
+                has_conflict = True
+    else:
+        trash_graph = load_knowledge_graph(trash_path, folder_uuid)
+
+    if has_conflict:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        versioned_path = folder_dir / f"trash_{ts}.json"
+        counter = 1
+        while versioned_path.exists():
+            versioned_path = folder_dir / f"trash_{ts}_{counter}.json"
+            counter += 1
+        target_trash_path = versioned_path
+        target_graph = {
+            "folder_uuid": sanitize_folder_uuid(folder_uuid),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "entities": {
+                entity_key: {
+                    "display_name": display_name,
+                    "relations": dict(removed_relations),
+                }
+            },
+        }
+    else:
+        target_trash_path = trash_path
+        target_graph = trash_graph
+        entities = target_graph.setdefault("entities", {})
+        if entity_key not in entities or not isinstance(entities[entity_key], dict):
+            entities[entity_key] = {
+                "display_name": display_name,
+                "relations": dict(removed_relations),
+            }
+        else:
+            entities[entity_key]["display_name"] = display_name
+            if not isinstance(entities[entity_key].get("relations"), dict):
+                entities[entity_key]["relations"] = {}
+            entities[entity_key]["relations"].update(removed_relations)
+
+    save_knowledge_graph(target_trash_path, target_graph)
+    return target_trash_path
 
 
 def score_fact_relevance(
@@ -209,14 +356,16 @@ async def store_fact(
     folder_uuid: str = "default",
 ) -> str:
     """
-    Store or update a persistent fact in the workspace's isolated Local Knowledge Graph.
-    Invoke this tool when the user shares persistent constraints, system preferences,
-    personal facts, or project details meant to outlive the current chat context.
+    ALWAYS invoke this tool IMMEDIATELY whenever the user shares ANY personal information
+    (name, birthday, age, family, spouse, kids, routines, opinions), professional details
+    (job, company, side hustle, projects, SaaS products), hardware/software specs, or preferences.
+    You can call `store_fact` multiple times in a single turn to store multiple facts.
+    NEVER tell the user you stored, saved, registered, or updated your memory without calling this tool.
 
     Args:
-        entity: The central subject or noun (e.g., "PostgreSQL", "Sister", "Project Alpha").
-        relation: The logical bridge connecting the entity to its details (e.g., "is_used_as_database", "likes_to_read", "project_deadline").
-        value: The concrete fact or target value assigned to that relation (e.g., "v16 Production Server", "Sci-Fi Novels", "December 1st").
+        entity: The central subject or noun (e.g., "User", "Carlos", "One:Shift", "PC Build").
+        relation: The attribute or relationship (e.g., "full_name", "birthday", "profession", "wife", "kids", "current_saas_project").
+        value: The concrete fact or value to store (e.g., "Carlos Miguel Pereira dos Santos", "28/10/1991", "OneStack").
         folder_uuid: Automatically injected workspace Folder UUID isolating memory scope.
     """
     try:
@@ -266,27 +415,22 @@ async def store_fact(
 
 @mcp.tool()
 async def recall_facts(
-    query: str = "",
+    query: str,
     folder_uuid: str = "default",
 ) -> str:
     """
-    Retrieve relevant facts from the workspace's isolated Local Knowledge Graph.
-    Invoke this tool when the user asks a contextual question that relies on long-term
-    memory, preferences, or background knowledge established in past interactions.
+    ALWAYS invoke this tool FIRST when the user asks about their personal facts, hardware/PC specs,
+    preferences, project details, or any information from previous conversations that is not present
+    in the current chat history. Do NOT say you don't know or lack access without calling this tool first.
 
     Args:
-        query: Keyword, entity name, relation, or question topic to search across stored facts. Leave empty to list all facts in the current workspace scope.
+        query: Keyword, entity name, topic, or question to search in memory (e.g., "PC Specs", "database", "all"). Pass "all" to retrieve all stored facts in this workspace.
         folder_uuid: Automatically injected workspace Folder UUID isolating memory scope.
     """
     try:
-        file_path = get_memory_file_path(folder_uuid)
-
         with _FILE_LOCK:
-            if not file_path.exists():
-                return "No stored facts found in this workspace memory."
-            graph = load_knowledge_graph(file_path, folder_uuid)
+            entities = load_merged_entities(folder_uuid)
 
-        entities = graph.get("entities") or {}
         if not entities:
             return "No stored facts found in this workspace memory."
 
@@ -340,6 +484,82 @@ async def recall_facts(
         )
     except Exception as e:
         return f"Error recalling facts: {str(e)}"
+
+
+@mcp.tool()
+async def delete_fact(
+    entity: str,
+    relation: str = "",
+    folder_uuid: str = "default",
+) -> str:
+    """
+    Curate workspace memory by removing an outdated, duplicate, or incorrect fact (or entire entity)
+    from `memory.json` and archiving it to `trash.json` (or `trash_[timestamp].json` on conflict).
+
+    Args:
+        entity: The entity name to curate or remove (e.g., "PC Build", "User").
+        relation: Specific relation key to remove (e.g., "gpu", "birthday"). Leave empty or pass "*" / "all" to remove the entire entity and all its relations.
+        folder_uuid: Automatically injected workspace Folder UUID isolating memory scope.
+    """
+    try:
+        entity_key = normalize_entity_key(entity)
+        raw_rel = (relation or "").strip()
+        delete_all_relations = not raw_rel or raw_rel.lower() in ("*", "all")
+        relation_key = "" if delete_all_relations else normalize_relation_key(raw_rel)
+
+        if not entity_key:
+            return "Error deleting fact: 'entity' cannot be empty."
+
+        file_path = get_memory_file_path(folder_uuid)
+
+        with _FILE_LOCK:
+            if not file_path.exists():
+                return f"No memory file found for this workspace; nothing to delete for '{entity}'."
+
+            graph = load_knowledge_graph(file_path, folder_uuid)
+            entities = graph.get("entities") or {}
+
+            if entity_key not in entities or not isinstance(entities[entity_key], dict):
+                return f"Entity '{entity}' (key: '{entity_key}') not found in workspace memory."
+
+            ent_obj = entities[entity_key]
+            display_name = ent_obj.get("display_name") or entity.strip()
+            relations = ent_obj.get("relations") or {}
+
+            if delete_all_relations:
+                removed_relations = dict(relations)
+                del entities[entity_key]
+                deleted_entire_entity = True
+            else:
+                if relation_key not in relations:
+                    return (
+                        f"Relation '{relation_key}' not found under entity '{display_name}'. "
+                        f"Available relations: {', '.join(relations.keys()) or 'none'}."
+                    )
+                removed_relations = {relation_key: relations.pop(relation_key)}
+                deleted_entire_entity = False
+                if not relations:
+                    del entities[entity_key]
+
+            save_knowledge_graph(file_path, graph)
+            trash_file = archive_to_trash(
+                folder_dir=file_path.parent,
+                folder_uuid=folder_uuid,
+                entity_key=entity_key,
+                display_name=display_name,
+                removed_relations=removed_relations,
+                deleted_entire_entity=deleted_entire_entity,
+            )
+
+        removed_summary = "\n".join(
+            f"- {display_name} -> [{k}]: {v}" for k, v in removed_relations.items()
+        )
+        return (
+            f"Moved {len(removed_relations)} fact(s) from memory.json to {trash_file.name}:\n"
+            f"{removed_summary}"
+        )
+    except Exception as e:
+        return f"Error deleting fact: {str(e)}"
 
 
 if __name__ == "__main__":

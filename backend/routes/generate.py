@@ -12,6 +12,7 @@ from flask import has_app_context
 
 from models import db
 from models import Chat
+from models import ChatFolder
 from models import Message
 from models import Attachment
 from models import Instance
@@ -469,6 +470,75 @@ def evaluate_lorebook_entries(
     return "\n\n".join(system_sections)
 
 
+def _resolve_chat_folder_uuid(chat_id: str = None, data: dict = None) -> str:
+    """Resolves the active Folder UUID for a chat, defaulting to 'default' for root chats."""
+    data = data or {}
+    effective_chat_id = chat_id or data.get("chat_id")
+    folder_id = data.get("folder_id") or data.get("folder")
+
+    if effective_chat_id and has_app_context():
+        try:
+            chat_obj = db.session.get(Chat, effective_chat_id)
+            if chat_obj and chat_obj.folder:
+                folder_id = chat_obj.folder
+        except Exception:
+            pass
+
+    return str(folder_id).strip() if folder_id and str(folder_id).strip() else "default"
+
+
+def _build_chat_context_prompt(chat_id: str = None, data: dict = None) -> str:
+    """
+    Builds a system prompt section containing the active Folder Name & ID and Chat Name & ID.
+    """
+    data = data or {}
+    effective_chat_id = chat_id or data.get("chat_id")
+    chat_name = data.get("chat_name")
+    folder_id = data.get("folder_id") or data.get("folder")
+    folder_name = data.get("folder_name")
+
+    if effective_chat_id and has_app_context():
+        try:
+            chat_obj = db.session.get(Chat, effective_chat_id)
+            if chat_obj:
+                chat_name = chat_obj.name or chat_name
+                if chat_obj.folder:
+                    folder_id = chat_obj.folder
+                    folder_obj = db.session.get(ChatFolder, chat_obj.folder)
+                    if folder_obj and folder_obj.name:
+                        folder_name = folder_obj.name
+        except Exception:
+            pass
+
+    if folder_id and not folder_name and has_app_context():
+        try:
+            folder_obj = db.session.get(ChatFolder, folder_id)
+            if folder_obj and folder_obj.name:
+                folder_name = folder_obj.name
+        except Exception:
+            pass
+
+    if not effective_chat_id and not folder_id and not chat_name and not folder_name:
+        return ""
+
+    resolved_folder_name = folder_name or "Root"
+    resolved_folder_id = folder_id or "default"
+    resolved_chat_name = chat_name or "Untitled Chat"
+    resolved_chat_id = effective_chat_id or "unknown"
+
+    return (
+        "Workspace Context:\n"
+        f"- Folder Name: {resolved_folder_name}\n"
+        f"- Folder ID: {resolved_folder_id}\n"
+        f"- Chat Name: {resolved_chat_name}\n"
+        f"- Chat ID: {resolved_chat_id}\n"
+        "- Memory Protocol:\n"
+        "  1. RECALL: Whenever the user asks about their personal details, devices/specs, preferences, or project facts not shown in the current chat messages, you MUST call `recall_facts` first before answering.\n"
+        "  2. STORE: Whenever the user shares new personal facts (name, birthday, family, routines), work/company/project details, or preferences, you MUST call `store_fact` (multiple times if needed) to persist them. NEVER claim you stored, updated, or registered facts in memory unless you actually invoked `store_fact` in this turn.\n"
+        "  3. CURATE: Use `delete_fact` to remove outdated, duplicate, or incorrect facts/entities from memory (moved safely to trash)."
+    )
+
+
 def clean_base64_image(content: str) -> str:
     """Extract a raw base64 string from content or Data URL."""
     if not content:
@@ -498,7 +568,7 @@ def _format_message_attachments(content: str, attachments: list) -> tuple:
             if clean_b64:
                 images.append(clean_b64)
         elif (
-            a_type not in ("thought", "metadata")
+            a_type not in ("thought", "metadata", "tool")
             and not (isinstance(a_content, str) and a_content.startswith("data:image"))
         ):
             if a_content:
@@ -555,7 +625,54 @@ def _build_messages_payload(data: dict, chat_id: str = None) -> list:
                 msg_obj = {"role": m.role, "content": c}
                 if imgs:
                     msg_obj["images"] = imgs
-                built.append(msg_obj)
+
+                tool_atts = [
+                    a for a in (m.attachments or []) if getattr(a, "type", "") == "tool"
+                ]
+                if m.role == "assistant" and tool_atts:
+                    reconstructed_calls = []
+                    reconstructed_results = []
+                    for ta in tool_atts:
+                        try:
+                            parsed_tool = (
+                                json.loads(ta.content)
+                                if isinstance(ta.content, str)
+                                else ta.content
+                            )
+                            call_info = parsed_tool.get("call") or {}
+                            res_info = parsed_tool.get("result")
+                            t_name = call_info.get("name")
+                            t_args = call_info.get("arguments") or {}
+                            if t_name:
+                                reconstructed_calls.append(
+                                    {"function": {"name": t_name, "arguments": t_args}}
+                                )
+                                reconstructed_results.append(
+                                    {
+                                        "role": "tool",
+                                        "content": (
+                                            json.dumps(res_info)
+                                            if not isinstance(res_info, str)
+                                            else res_info
+                                        ),
+                                        "name": t_name,
+                                        "tool_name": t_name,
+                                    }
+                                )
+                        except Exception:
+                            pass
+                    if reconstructed_calls:
+                        built.append(
+                            {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": reconstructed_calls,
+                            }
+                        )
+                        built.extend(reconstructed_results)
+                    built.append(msg_obj)
+                else:
+                    built.append(msg_obj)
             return built
 
     if not messages and prompt:
@@ -720,7 +837,9 @@ def _create_processing_message(chat_id: str, model: str) -> str:
     return db_msg.id
 
 
-def _handle_ollama_tool_call(tc, tool_map: dict, message_id: str):
+def _handle_ollama_tool_call(
+    tc, tool_map: dict, message_id: str, folder_uuid: str = "default"
+):
     """
     Executes a single Ollama tool call via McpManager, stores tool attachment,
     and returns (call_event_dict, result_event_dict, asst_tc_dict, tool_msg_dict).
@@ -733,6 +852,16 @@ def _handle_ollama_tool_call(tc, tool_map: dict, message_id: str):
             t_args = json.loads(t_args)
         except Exception:
             pass
+    if not isinstance(t_args, dict):
+        t_args = {}
+    else:
+        t_args = dict(t_args)
+
+    if t_name in tool_map and folder_uuid:
+        _, tool_cfg = tool_map[t_name]
+        schema_props = (tool_cfg.get_schema() or {}).get("properties", {})
+        if "folder_uuid" in schema_props or t_name in ("store_fact", "recall_facts", "delete_fact"):
+            t_args["folder_uuid"] = folder_uuid
 
     call_event = {
         "id": message_id,
@@ -794,6 +923,7 @@ def generate_response(chat_id=None):
     resolved_model_name, pref_match = _resolve_physical_model_name(model, instance_id)
     message_id = _create_processing_message(chat_id, model)
     messages_payload = _build_messages_payload(data, chat_id)
+    active_folder_uuid = _resolve_chat_folder_uuid(chat_id, data)
 
     effective_system = evaluate_lorebook_entries(
         model,
@@ -802,6 +932,13 @@ def generate_response(chat_id=None):
         instance_id=instance_id,
         pref=pref_match,
     )
+    chat_context_prompt = _build_chat_context_prompt(chat_id, data)
+    if chat_context_prompt:
+        effective_system = (
+            f"{effective_system}\n\n{chat_context_prompt}"
+            if effective_system
+            else chat_context_prompt
+        )
     if effective_system:
         messages_payload.insert(0, {"role": "system", "content": effective_system})
 
@@ -873,7 +1010,7 @@ def generate_response(chat_id=None):
 
                             for tc in raw_tool_calls:
                                 call_event, result_event, asst_tc, tool_msg = _handle_ollama_tool_call(
-                                    tc, tool_map, message_id
+                                    tc, tool_map, message_id, folder_uuid=active_folder_uuid
                                 )
                                 yield f"data: {json.dumps(call_event, ensure_ascii=False)}\n\n"
                                 yield f"data: {json.dumps(result_event, ensure_ascii=False)}\n\n"

@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import patch, MagicMock
 from main import create_app
-from models import db, Instance, InstanceModel, ModelPreferences, Chat, Preference
+from models import db, Instance, InstanceModel, ModelPreferences, Chat, ChatFolder, Preference
 
 
 class GeneratePrefResolutionTestCase(unittest.TestCase):
@@ -248,6 +248,52 @@ class GeneratePrefResolutionTestCase(unittest.TestCase):
                         pref=mp_obj,
                     )
                     self.assertIn("Excalibur Reforged: Updated lore: Forged in Avalon with magical steel.", sys_after)
+
+    @patch("ollama.Client")
+    def test_generate_appends_folder_and_chat_info_to_system_prompt(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        chunk = MagicMock()
+        chunk.message.content = "Folder context received."
+        chunk.message.thinking = ""
+        chunk.done = True
+        chunk.total_duration = 1000000
+        mock_client.chat.return_value = iter([chunk])
+
+        with self.app.app_context():
+            folder = db.session.get(ChatFolder, "folder-uuid-123")
+            if not folder:
+                folder = ChatFolder(id="folder-uuid-123", name="Project Alpha Workspace")
+                db.session.add(folder)
+
+            chat = db.session.get(Chat, "chat-uuid-456")
+            if not chat:
+                chat = Chat(id="chat-uuid-456", name="Architecture Discussion", folder="folder-uuid-123")
+                db.session.add(chat)
+            else:
+                chat.name = "Architecture Discussion"
+                chat.folder = "folder-uuid-123"
+            db.session.commit()
+
+        response = self.client.post(
+            "/api/chats/chat-uuid-456/generate",
+            json={
+                "model": "test-mp-1",
+                "instance_id": "test-inst-1",
+                "prompt": "What workspace are we in?",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(mock_client.chat.called)
+        messages = mock_client.chat.call_args[1].get("messages", [])
+        system_msgs = [m for m in messages if m.get("role") == "system"]
+        self.assertTrue(len(system_msgs) > 0)
+        sys_content = system_msgs[0].get("content", "")
+        self.assertIn("Folder Name: Project Alpha Workspace", sys_content)
+        self.assertIn("Folder ID: folder-uuid-123", sys_content)
+        self.assertIn("Chat Name: Architecture Discussion", sys_content)
+        self.assertIn("Chat ID: chat-uuid-456", sys_content)
 
 
 if __name__ == "__main__":
