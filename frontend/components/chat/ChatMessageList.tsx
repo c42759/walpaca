@@ -463,7 +463,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                       return (
                           <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center p-4 sm:p-8 select-none my-auto">
                               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-[#f0f2f9] flex items-center justify-center mb-4 sm:mb-6 text-[#7678ed] shadow-inner">
-                                  <img src="/icon-black.svg" alt="Alpaca Logo" className="w-12 h-12 sm:w-14 sm:h-14 opacity-70" />
+                                  <img src="/icon-black.svg" alt="Alpaca Logo" className="w-12 h-12 sm:w-14 sm:h-14 opacity-70 dark:invert" />
                               </div>
                               <h3 className="text-xl sm:text-2xl font-bold text-[#202022] mb-2">No messages yet</h3>
                               <p className="text-sm sm:text-base text-[#8e90a6] max-w-sm mb-6">Start a conversation by typing a message below or using a character template.</p>

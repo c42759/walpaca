@@ -98,7 +98,7 @@ export const PersonaDetailsModal: React.FC<PersonaDetailsModalProps> = ({ isOpen
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none animate-in fade-in duration-200">
             <div className="w-full max-w-3xl bg-white rounded-3xl border border-[#e8ebf3] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
                 {/* Header Banner */}
-                <div className="p-6 border-b border-[#eef0f6] bg-gradient-to-b from-[#f9fafc] to-white shrink-0">
+                <div className="p-6 border-b border-[#eef0f6] bg-gradient-to-b from-[#f9fafc] to-white dark:from-[#16171d] dark:to-[#1b1c22] shrink-0">
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-4 min-w-0">
                             <div className="relative shrink-0">

@@ -8,6 +8,7 @@ from flask import jsonify
 preferences_bp = Blueprint("preferences", __name__)
 
 DEFAULT_PREFERENCES = {
+    "theme_mode": "system",
     "auto_play_voice": False,
     "desktop_notifications": True,
     "play_sound_notification": True,

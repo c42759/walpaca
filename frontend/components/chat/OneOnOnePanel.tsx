@@ -104,7 +104,7 @@ export const OneOnOnePanel: React.FC<OneOnOnePanelProps> = ({
         : "bg-slate-400";
 
     return (
-        <div className="h-1/3 min-h-[210px] w-full shrink-0 border-b border-[#eef0f6] bg-gradient-to-b from-[#f4f6fc] via-white to-[#f9fafc] relative flex flex-col items-center justify-between px-4 py-3 sm:py-5 select-none overflow-hidden">
+        <div className="h-1/3 min-h-[210px] w-full shrink-0 border-b border-[#eef0f6] bg-gradient-to-b from-[#f4f6fc] via-white to-[#f9fafc] dark:from-[#16171d] dark:via-[#18191e] dark:to-[#131418] relative flex flex-col items-center justify-between px-4 py-3 sm:py-5 select-none overflow-hidden">
             {/* Top Bar: Mode Badge + Error Toast + Close */}
             <div className="w-full flex items-center justify-between gap-2 z-10">
                 <div className="flex items-center gap-2">

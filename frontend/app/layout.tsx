@@ -48,11 +48,24 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en" className={`${poppins.variable} ${robotoMono.variable} font-sans h-full`}>
+        <html lang="en" suppressHydrationWarning className={`${poppins.variable} ${robotoMono.variable} font-sans h-full`}>
             <head>
                 <script
                     dangerouslySetInnerHTML={{
                         __html: `
+              (function() {
+                try {
+                  var mode = localStorage.getItem('walpaca_theme_mode') || 'system';
+                  var isDark = mode === 'dark' || (mode === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                  if (isDark) {
+                    document.documentElement.classList.add('dark');
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.setAttribute('data-theme', 'light');
+                  }
+                } catch (e) {}
+              })();
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js').catch(function(err) {

@@ -31,6 +31,44 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         checkAuthStatus();
     }, [checkAuthStatus]);
 
+    // Sync active theme mode (System, Light, Dark) onto <html> element
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        let mode = appPreferences.theme_mode;
+        if (!mode) {
+            try {
+                const stored = localStorage.getItem("walpaca_theme_mode") as "system" | "light" | "dark" | null;
+                if (stored === "system" || stored === "light" || stored === "dark") {
+                    mode = stored;
+                }
+            } catch {
+                // ignore storage errors
+            }
+        }
+        const effectiveMode = mode || "system";
+
+        const mediaQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+        const applyTheme = () => {
+            const isDark =
+                effectiveMode === "dark" ||
+                (effectiveMode === "system" && Boolean(mediaQuery?.matches));
+            document.documentElement.classList.toggle("dark", isDark);
+            document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+        };
+
+        applyTheme();
+
+        if (effectiveMode === "system" && mediaQuery) {
+            const handleMediaChange = () => applyTheme();
+            if (typeof mediaQuery.addEventListener === "function") {
+                mediaQuery.addEventListener("change", handleMediaChange);
+                return () => mediaQuery.removeEventListener("change", handleMediaChange);
+            }
+        }
+    }, [appPreferences.theme_mode]);
+
     // Sync visible viewport height on mobile browsers (Chrome for Android address bar & keyboard)
     useEffect(() => {
         if (typeof window === "undefined") return;
