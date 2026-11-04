@@ -510,13 +510,42 @@ async def delete_fact(
         if not entity_key:
             return "Error deleting fact: 'entity' cannot be empty."
 
-        file_path = get_memory_file_path(folder_uuid)
+        clean_uuid = sanitize_folder_uuid(folder_uuid)
+        file_path = get_memory_file_path(clean_uuid)
 
         with _FILE_LOCK:
-            if not file_path.exists():
-                return f"No memory file found for this workspace; nothing to delete for '{entity}'."
+            # Check if entity/relation exists locally in this folder
+            folder_entities = {}
+            if file_path.exists():
+                folder_graph = load_knowledge_graph(file_path, clean_uuid)
+                folder_entities = folder_graph.get("entities") or {}
 
-            graph = load_knowledge_graph(file_path, folder_uuid)
+            has_local_entity = entity_key in folder_entities and isinstance(folder_entities[entity_key], dict)
+            local_relations = folder_entities[entity_key].get("relations") or {} if has_local_entity else {}
+            has_local_target = has_local_entity and (delete_all_relations or relation_key in local_relations)
+
+            # If not in local folder, check if it exists in root default memory
+            if not has_local_target and clean_uuid != "default":
+                default_path = get_memory_file_path("default")
+                if default_path.exists():
+                    default_graph = load_knowledge_graph(default_path, "default")
+                    default_entities = default_graph.get("entities") or {}
+                    if entity_key in default_entities and isinstance(default_entities[entity_key], dict):
+                        default_rels = default_entities[entity_key].get("relations") or {}
+                        if delete_all_relations or relation_key in default_rels:
+                            target_desc = f"entity '{entity}'" if delete_all_relations else f"relation '{relation_key}' under entity '{entity}'"
+                            return (
+                                f"Cannot delete {target_desc} from workspace folder '{clean_uuid}': "
+                                f"this fact is inherited from global root memory ('default') which is read-only "
+                                f"in folder chats. Global facts can only be modified or deleted from a root (unfoldered) chat."
+                            )
+
+            if not has_local_entity:
+                if not file_path.exists():
+                    return f"No memory file found for this workspace; nothing to delete for '{entity}'."
+                return f"Entity '{entity}' (key: '{entity_key}') not found in workspace memory."
+
+            graph = load_knowledge_graph(file_path, clean_uuid)
             entities = graph.get("entities") or {}
 
             if entity_key not in entities or not isinstance(entities[entity_key], dict):
@@ -544,7 +573,7 @@ async def delete_fact(
             save_knowledge_graph(file_path, graph)
             trash_file = archive_to_trash(
                 folder_dir=file_path.parent,
-                folder_uuid=folder_uuid,
+                folder_uuid=clean_uuid,
                 entity_key=entity_key,
                 display_name=display_name,
                 removed_relations=removed_relations,

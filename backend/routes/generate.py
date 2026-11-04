@@ -534,8 +534,8 @@ def _build_chat_context_prompt(chat_id: str = None, data: dict = None) -> str:
         f"- Chat ID: {resolved_chat_id}\n"
         "- Memory Protocol:\n"
         "  1. RECALL: Whenever the user asks about their personal details, devices/specs, preferences, or project facts not shown in the current chat messages, you MUST call `recall_facts` first before answering.\n"
-        "  2. STORE: Whenever the user shares new personal facts (name, birthday, family, routines), work/company/project details, or preferences, you MUST call `store_fact` (multiple times if needed) to persist them. NEVER claim you stored, updated, or registered facts in memory unless you actually invoked `store_fact` in this turn.\n"
-        "  3. CURATE: Use `delete_fact` to remove outdated, duplicate, or incorrect facts/entities from memory (moved safely to trash)."
+        "  2. STORE: Whenever the user shares new personal facts, work/project details, or preferences, you MUST call `store_fact` (multiple times if needed) to persist them. In folder chats, all facts are stored in that folder's workspace. NEVER claim you stored facts unless you called `store_fact` in this turn.\n"
+        "  3. CURATE: Use `delete_fact` to remove outdated, duplicate, or incorrect facts from memory. Note: Global facts inherited from root memory are read-only in folder chats and cannot be deleted or updated from a folder."
     )
 
 
@@ -861,7 +861,9 @@ def _handle_ollama_tool_call(
         _, tool_cfg = tool_map[t_name]
         schema_props = (tool_cfg.get_schema() or {}).get("properties", {})
         if "folder_uuid" in schema_props or t_name in ("store_fact", "recall_facts", "delete_fact"):
-            t_args["folder_uuid"] = folder_uuid
+            incoming_folder = str(t_args.get("folder_uuid") or "").strip().lower()
+            if folder_uuid != "default" or not incoming_folder:
+                t_args["folder_uuid"] = folder_uuid
 
     call_event = {
         "id": message_id,
