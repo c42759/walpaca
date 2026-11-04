@@ -13,5 +13,6 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV PRODUCTION=1
 
-CMD ["npm", "run", "start"]
+CMD ["sh", "run_server.sh"]

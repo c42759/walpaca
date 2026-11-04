@@ -27,6 +27,7 @@ export interface PersonaDetailsData {
     characterBook?: {
         name?: string;
         entries?: Array<{
+            filename?: string;
             name?: string;
             keys?: string[] | string;
             content?: string;
@@ -97,7 +98,7 @@ export const PersonaDetailsModal: React.FC<PersonaDetailsModalProps> = ({ isOpen
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 select-none animate-in fade-in duration-200">
             <div className="w-full max-w-3xl bg-white rounded-3xl border border-[#e8ebf3] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
                 {/* Header Banner */}
-                <div className="p-6 border-b border-[#eef0f6] bg-gradient-to-b from-[#f9fafc] to-white shrink-0">
+                <div className="p-6 border-b border-[#eef0f6] bg-gradient-to-b from-[#f9fafc] to-white dark:from-[#16171d] dark:to-[#1b1c22] shrink-0">
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-4 min-w-0">
                             <div className="relative shrink-0">
@@ -439,8 +440,13 @@ export const PersonaDetailsModal: React.FC<PersonaDetailsModalProps> = ({ isOpen
                                     return (
                                         <div key={idx} className="p-4 rounded-2xl border border-[#e8ebf3] bg-[#f9fafc] space-y-2">
                                             <div className="flex items-center justify-between gap-2 flex-wrap">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-bold text-[#202022]">{entry.name || `Entry #${idx + 1}`}</span>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-sm font-bold text-[#202022]">{entry.name || entry.filename || `Entry #${idx + 1}`}</span>
+                                                    {entry.filename && (
+                                                        <span className="text-[10px] font-mono bg-[#f0f2f9] text-[#5d6075] border border-[#e0e3f5] px-2 py-0.5 rounded-full">
+                                                            🔗 {entry.filename}
+                                                        </span>
+                                                    )}
                                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                                                         isEnabled
                                                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"

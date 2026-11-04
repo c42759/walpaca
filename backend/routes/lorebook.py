@@ -39,6 +39,169 @@ def format_keys(keys_raw):
     return []
 
 
+def load_lorebook_catalog() -> dict:
+    """Return dict mapping filename -> {filename, name, keys, content}."""
+    target_dir = get_lorebook_dir()
+    catalog = {}
+    if not os.path.exists(target_dir):
+        return catalog
+
+    for fname in sorted(os.listdir(target_dir)):
+        if not fname.endswith(".json"):
+            continue
+        file_path = os.path.join(target_dir, fname)
+        if not os.path.isfile(file_path):
+            continue
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                name = (
+                    data.get("name")
+                    or os.path.splitext(fname)[0].replace("_", " ").title()
+                )
+                keys = format_keys(data.get("keys"))
+                content = data.get("content") or ""
+                catalog[fname] = {
+                    "filename": fname,
+                    "name": name,
+                    "keys": keys,
+                    "content": content,
+                }
+        except Exception:
+            pass
+    return catalog
+
+
+def normalize_character_book_links(character_book):
+    """Strip copied content and keep only lorebook filename links."""
+    if not isinstance(character_book, dict):
+        return character_book
+    raw_entries = character_book.get("entries")
+    if not isinstance(raw_entries, list):
+        return character_book
+
+    catalog = load_lorebook_catalog()
+    by_name = {
+        v["name"].strip().lower(): k
+        for k, v in catalog.items()
+        if v.get("name")
+    }
+
+    normalized = []
+    seen = set()
+    for entry in raw_entries:
+        if isinstance(entry, str):
+            fname = sanitize_filename(entry)
+            enabled = True
+        elif isinstance(entry, dict):
+            enabled = entry.get("enabled", True) is not False
+            fname = entry.get("filename")
+            if fname:
+                fname = sanitize_filename(fname)
+            else:
+                ename = (
+                    entry.get("name")
+                    or entry.get("comment")
+                    or entry.get("title")
+                    or ""
+                ).strip().lower()
+                fname = by_name.get(ename)
+        else:
+            continue
+
+        if fname:
+            if fname in seen:
+                continue
+            seen.add(fname)
+            normalized.append(
+                {
+                    "filename": fname,
+                    "enabled": enabled,
+                }
+            )
+        elif isinstance(entry, dict) and (
+            entry.get("content") or entry.get("description")
+        ):
+            normalized.append(entry)
+
+    return {
+        "name": character_book.get("name") or "Lorebook",
+        "entries": normalized,
+    }
+
+
+def resolve_character_book_entries(character_book):
+    """Hydrate linked lorebook entries from lorebook JSON files on disk."""
+    if not isinstance(character_book, dict):
+        return character_book
+    raw_entries = character_book.get("entries")
+    if not isinstance(raw_entries, list):
+        return character_book
+
+    catalog = load_lorebook_catalog()
+    by_name = {
+        v["name"].strip().lower(): v
+        for v in catalog.values()
+        if v.get("name")
+    }
+    resolved = []
+
+    for entry in raw_entries:
+        if isinstance(entry, str):
+            fname = sanitize_filename(entry)
+            enabled = True
+            tmpl = catalog.get(fname)
+            if tmpl:
+                resolved.append(
+                    {
+                        "filename": tmpl["filename"],
+                        "name": tmpl["name"],
+                        "keys": tmpl["keys"],
+                        "content": tmpl["content"],
+                        "enabled": enabled,
+                    }
+                )
+            continue
+
+        if not isinstance(entry, dict):
+            continue
+
+        enabled = entry.get("enabled", True) is not False
+        fname = entry.get("filename")
+        tmpl = None
+        if fname:
+            fname_clean = sanitize_filename(fname)
+            tmpl = catalog.get(fname_clean) or catalog.get(fname)
+        if not tmpl:
+            ename = (
+                entry.get("name")
+                or entry.get("comment")
+                or entry.get("title")
+                or ""
+            ).strip().lower()
+            if ename:
+                tmpl = by_name.get(ename)
+
+        if tmpl:
+            resolved.append(
+                {
+                    "filename": tmpl["filename"],
+                    "name": tmpl["name"],
+                    "keys": tmpl["keys"],
+                    "content": tmpl["content"],
+                    "enabled": enabled,
+                }
+            )
+        elif not fname and (entry.get("content") or entry.get("description")):
+            resolved.append(entry)
+
+    return {
+        **character_book,
+        "entries": resolved,
+    }
+
+
 @lorebook_bp.route("/lorebook", methods=["GET"])
 def list_lorebook_templates():
     target_dir = get_lorebook_dir()

@@ -31,6 +31,71 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         checkAuthStatus();
     }, [checkAuthStatus]);
 
+    // Sync active theme mode (System, Light, Dark) onto <html> element
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        let mode = appPreferences.theme_mode;
+        if (!mode) {
+            try {
+                const stored = localStorage.getItem("walpaca_theme_mode") as "system" | "light" | "dark" | null;
+                if (stored === "system" || stored === "light" || stored === "dark") {
+                    mode = stored;
+                }
+            } catch {
+                // ignore storage errors
+            }
+        }
+        const effectiveMode = mode || "system";
+
+        const mediaQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+        const applyTheme = () => {
+            const isDark =
+                effectiveMode === "dark" ||
+                (effectiveMode === "system" && Boolean(mediaQuery?.matches));
+            document.documentElement.classList.toggle("dark", isDark);
+            document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+        };
+
+        applyTheme();
+
+        if (effectiveMode === "system" && mediaQuery) {
+            const handleMediaChange = () => applyTheme();
+            if (typeof mediaQuery.addEventListener === "function") {
+                mediaQuery.addEventListener("change", handleMediaChange);
+                return () => mediaQuery.removeEventListener("change", handleMediaChange);
+            }
+        }
+    }, [appPreferences.theme_mode]);
+
+    // Sync visible viewport height on mobile browsers (Chrome for Android address bar & keyboard)
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const updateViewportHeight = () => {
+            const vv = window.visualViewport;
+            const height = vv ? vv.height : window.innerHeight;
+            document.documentElement.style.setProperty("--app-height", `${height}px`);
+            if (vv && vv.offsetTop > 0) {
+                window.scrollTo(0, 0);
+            }
+        };
+
+        updateViewportHeight();
+        window.addEventListener("resize", updateViewportHeight);
+        window.addEventListener("orientationchange", updateViewportHeight);
+        window.visualViewport?.addEventListener("resize", updateViewportHeight);
+        window.visualViewport?.addEventListener("scroll", updateViewportHeight);
+
+        return () => {
+            window.removeEventListener("resize", updateViewportHeight);
+            window.removeEventListener("orientationchange", updateViewportHeight);
+            window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+            window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
+        };
+    }, []);
+
     useEffect(() => {
         if (isAuthenticated) {
             fetchFolders();
@@ -117,7 +182,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }, [pinSecurityEnabled, isAuthenticated, appPreferences.pin_auto_lock_timeout, logoutPin]);
 
     return (
-        <main className="topo-bg h-dvh w-screen flex justify-center font-sans antialiased text-[#202022] box-border overflow-hidden">
+        <main className="topo-bg h-[var(--app-height,100dvh)] max-h-[var(--app-height,100dvh)] w-full flex justify-center font-sans antialiased text-[#202022] box-border overflow-hidden">
             {/* Outer Application Window (Full bleed on mobile, floating framed window on desktop) */}
             <div className="w-full h-full md:my-auto bg-[#202022] flex overflow-hidden border-0 md:border-8 border-[#202022] shadow-2xl relative">
                 {/* 1. SLIM LEFT NAVIGATION RAIL - Desktop/Tablet permanent column */}

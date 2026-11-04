@@ -8,6 +8,8 @@ from models import db, McpServer, McpToolConfig
 
 class TestMcpApi(unittest.TestCase):
     def setUp(self):
+        from routes.generate import _MODEL_TOOL_SUPPORT_CACHE
+        _MODEL_TOOL_SUPPORT_CACHE.clear()
         self.app = create_app({
             "TESTING": True,
             "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
@@ -197,6 +199,114 @@ class TestMcpApi(unittest.TestCase):
             tool_att = Attachment.query.filter_by(message_id=msg.id, type="tool").first()
             self.assertIsNotNone(tool_att)
             self.assertIn("web_search", tool_att.name)
+
+    @patch("utils.mcp_manager.McpManager.get_enabled_tools")
+    @patch("ollama.Client")
+    def test_generate_omits_tools_when_model_lacks_capability(self, mock_ollama_client_cls, mock_get_tools):
+        from models import Instance, Chat
+
+        with self.app.app_context():
+            inst = Instance(
+                id="test-ollama-inst-notool",
+                type="ollama",
+                properties=json.dumps({"url": "http://localhost:11434"}),
+                is_enabled=1,
+            )
+            db.session.add(inst)
+            chat = Chat(id="test-notool-chat", name="No Tool Chat")
+            db.session.add(chat)
+            db.session.commit()
+
+        mock_server = MagicMock()
+        mock_tool = MagicMock()
+        mock_tool.name = "web_search"
+        mock_get_tools.return_value = [(mock_server, mock_tool)]
+
+        mock_client = MagicMock()
+        mock_ollama_client_cls.return_value = mock_client
+
+        # Model capabilities lack 'tools'
+        mock_show = MagicMock()
+        mock_show.capabilities = ["completion"]
+        mock_client.show.return_value = mock_show
+
+        chunk_text = MagicMock()
+        chunk_text.message.content = "Plain response without tools."
+        chunk_text.message.thinking = ""
+        chunk_text.message.tool_calls = None
+        chunk_text.done = True
+        mock_client.chat.return_value = iter([chunk_text])
+
+        res = self.client.post("/api/chats/test-notool-chat/generate", json={
+            "model": "llama3:latest",
+            "prompt": "Hello",
+            "instance_id": "test-ollama-inst-notool",
+        })
+        self.assertEqual(res.status_code, 200)
+        body = res.get_data(as_text=True)
+        self.assertIn("Plain response without tools", body)
+
+        # Verify client.chat was called WITHOUT 'tools' in kwargs
+        mock_client.chat.assert_called_once()
+        _, called_kwargs = mock_client.chat.call_args
+        self.assertNotIn("tools", called_kwargs)
+
+    @patch("utils.mcp_manager.McpManager.get_enabled_tools")
+    @patch("ollama.Client")
+    def test_generate_retries_without_tools_on_runtime_rejection(self, mock_ollama_client_cls, mock_get_tools):
+        from models import Instance, Chat
+        from ollama import ResponseError
+
+        with self.app.app_context():
+            inst = Instance(
+                id="test-ollama-inst-retry",
+                type="ollama",
+                properties=json.dumps({"url": "http://localhost:11434"}),
+                is_enabled=1,
+            )
+            db.session.add(inst)
+            chat = Chat(id="test-retry-chat", name="Retry Chat")
+            db.session.add(chat)
+            db.session.commit()
+
+        mock_server = MagicMock()
+        mock_tool = MagicMock()
+        mock_tool.name = "web_search"
+        mock_get_tools.return_value = [(mock_server, mock_tool)]
+
+        mock_client = MagicMock()
+        mock_ollama_client_cls.return_value = mock_client
+        mock_client.show.side_effect = Exception("show not supported on legacy endpoint")
+
+        def failing_stream():
+            raise ResponseError("registry.ollama.ai/library/llama3:latest does not support tools", status_code=400)
+            yield None
+
+        chunk_text = MagicMock()
+        chunk_text.message.content = "Retried response."
+        chunk_text.message.thinking = ""
+        chunk_text.message.tool_calls = None
+        chunk_text.done = True
+
+        mock_client.chat.side_effect = [
+            failing_stream(),
+            iter([chunk_text]),
+        ]
+
+        res = self.client.post("/api/chats/test-retry-chat/generate", json={
+            "model": "llama3:latest",
+            "prompt": "Hello",
+            "instance_id": "test-ollama-inst-retry",
+        })
+        self.assertEqual(res.status_code, 200)
+        body = res.get_data(as_text=True)
+        self.assertIn("Retried response", body)
+        self.assertEqual(mock_client.chat.call_count, 2)
+        # Verify first call had tools, second call did NOT
+        first_call_kwargs = mock_client.chat.call_args_list[0][1]
+        second_call_kwargs = mock_client.chat.call_args_list[1][1]
+        self.assertIn("tools", first_call_kwargs)
+        self.assertNotIn("tools", second_call_kwargs)
 
 
 if __name__ == "__main__":

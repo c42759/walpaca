@@ -74,6 +74,11 @@ export const SettingsHelpSidebar: React.FC<SettingsHelpSidebarProps> = ({ active
             {activeSettingsCategory === "preferences" && (
                 <>
                     <WidgetSimple
+                        title="Appearance & Theme"
+                        content={<p className="text-sm text-[#8e90a6]">Choose between System, Light, or Dark mode. System mode automatically syncs with your OS preference.</p>}
+                    />
+
+                    <WidgetSimple
                         title="TTS Audio Output"
                         content={<p className="text-sm text-[#8e90a6]">Ensure your browser permission allows HTML5 Web Audio auto-play for seamless speech output.</p>}
                     />

@@ -18,6 +18,7 @@ export interface ModelPreference {
 }
 
 export interface AppPreferences {
+    theme_mode?: "system" | "light" | "dark";
     auto_play_voice: boolean;
     desktop_notifications: boolean;
     play_sound_notification?: boolean;
@@ -251,6 +252,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     instanceModelsLoading: {},
 
     appPreferences: {
+        theme_mode: "system",
         auto_play_voice: false,
         desktop_notifications: true,
         play_sound_notification: true,
@@ -652,6 +654,13 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
             if (res.ok) {
                 const data = await res.json();
                 const merged = { ...get().appPreferences, ...data };
+                if (typeof window !== "undefined" && merged.theme_mode) {
+                    try {
+                        localStorage.setItem("walpaca_theme_mode", merged.theme_mode);
+                    } catch {
+                        // ignore storage errors
+                    }
+                }
                 set({ appPreferences: merged, appPreferencesLoaded: true, appPreferencesLoading: false });
                 return merged;
             }
@@ -663,9 +672,17 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     },
 
     setAppPreferences: (prefs) =>
-        set((state) => ({
-            appPreferences: { ...state.appPreferences, ...prefs },
-        })),
+        set((state) => {
+            const next = { ...state.appPreferences, ...prefs };
+            if (typeof window !== "undefined" && next.theme_mode) {
+                try {
+                    localStorage.setItem("walpaca_theme_mode", next.theme_mode);
+                } catch {
+                    // ignore storage errors
+                }
+            }
+            return { appPreferences: next };
+        }),
 }));
 
 if (typeof window !== "undefined") {

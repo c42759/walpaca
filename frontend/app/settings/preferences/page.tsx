@@ -8,6 +8,7 @@ import { SettingsHelpSidebar } from "@/components/settings/SettingsHelpSidebar";
 import { EyeIcon, EyeOffIcon } from "@/components/icons/Icons";
 
 interface PreferencesData {
+    theme_mode?: "system" | "light" | "dark";
     auto_play_voice: boolean;
     desktop_notifications: boolean;
     play_sound_notification?: boolean;
@@ -291,6 +292,87 @@ export default function PreferencesSettingsPage() {
                                     {saveStatus}
                                 </span>
                             )}
+                        </div>
+
+                        {/* APPEARANCE & THEME MODE SECTION */}
+                        <div className="space-y-4 bg-white border border-[#e8ebf3] rounded-2xl p-6 shadow-xs">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="space-y-0.5">
+                                    <h4 className="text-base font-bold text-[#202022]">Appearance Mode</h4>
+                                    <p className="text-xs text-[#8e90a6]">
+                                        Select the interface color theme: follow your operating system setting, or force Light or Dark mode across all views.
+                                    </p>
+                                </div>
+
+                                <div
+                                    role="radiogroup"
+                                    aria-label="Theme Mode"
+                                    className="inline-flex items-center p-1 rounded-2xl bg-[#f0f2f9] border border-[#e8ebf3] shrink-0 self-start sm:self-auto"
+                                >
+                                    {(
+                                        [
+                                            {
+                                                id: "system",
+                                                label: "System",
+                                                icon: (
+                                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                                                        <line x1="8" y1="21" x2="16" y2="21" />
+                                                        <line x1="12" y1="17" x2="12" y2="21" />
+                                                    </svg>
+                                                ),
+                                            },
+                                            {
+                                                id: "light",
+                                                label: "Light",
+                                                icon: (
+                                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <circle cx="12" cy="12" r="5" />
+                                                        <line x1="12" y1="1" x2="12" y2="3" />
+                                                        <line x1="12" y1="21" x2="12" y2="23" />
+                                                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                                                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                                                        <line x1="1" y1="12" x2="3" y2="12" />
+                                                        <line x1="21" y1="12" x2="23" y2="12" />
+                                                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                                                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                                                    </svg>
+                                                ),
+                                            },
+                                            {
+                                                id: "dark",
+                                                label: "Dark",
+                                                icon: (
+                                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                                                    </svg>
+                                                ),
+                                            },
+                                        ] as const
+                                    ).map((opt) => {
+                                        const currentMode = preferences.theme_mode || "system";
+                                        const isActive = currentMode === opt.id;
+                                        return (
+                                            <button
+                                                key={opt.id}
+                                                type="button"
+                                                role="radio"
+                                                aria-checked={isActive}
+                                                disabled={isLoading}
+                                                onClick={() => handleUpdatePreference("theme_mode", opt.id)}
+                                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 ${
+                                                    isActive
+                                                        ? "bg-[#7678ed] text-white shadow-xs"
+                                                        : "text-[#5d6075] hover:text-[#202022]"
+                                                }`}
+                                            >
+                                                {opt.icon}
+                                                <span>{opt.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
 
                         {/* SECURITY & PIN PROTECTION SECTION */}

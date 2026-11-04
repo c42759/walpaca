@@ -58,7 +58,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     }, [isSearchOpen]);
 
     return (
-        <div className="h-16 sm:h-[76px] px-3 sm:px-6 md:px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0 bg-white">
+        <div className="min-h-16 sm:min-h-[76px] pt-[max(0.5rem,env(safe-area-inset-top,0px))] pb-2 sm:py-0 px-3 sm:px-6 md:px-8 border-b border-[#eef0f6] flex items-center justify-between shrink-0 bg-white z-10">
             <div className="flex items-center gap-2 sm:gap-3.5 min-w-0 flex-1 mr-2">
                 {/* Mobile Back to Chat List Button (< md) */}
                 {onBack && (

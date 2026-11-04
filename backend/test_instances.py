@@ -236,6 +236,23 @@ class InstanceTestCase(unittest.TestCase):
         self.assertTrue(del_res.get_json()["success"])
         mock_client.delete.assert_called_once_with(model="qwen2.5:7b")
 
+    def test_preferences_theme_mode(self):
+        # Default theme_mode should be "system"
+        res_get = self.client.get("/api/preferences")
+        self.assertEqual(res_get.status_code, 200)
+        prefs = res_get.get_json()
+        self.assertEqual(prefs.get("theme_mode"), "system")
+
+        # Update to "dark"
+        res_dark = self.client.post("/api/preferences", json={"theme_mode": "dark"})
+        self.assertEqual(res_dark.status_code, 200)
+        self.assertEqual(res_dark.get_json().get("theme_mode"), "dark")
+
+        # Update to "light"
+        res_light = self.client.post("/api/preferences", json={"theme_mode": "light"})
+        self.assertEqual(res_light.status_code, 200)
+        self.assertEqual(res_light.get_json().get("theme_mode"), "light")
+
 
 if __name__ == "__main__":
     unittest.main()

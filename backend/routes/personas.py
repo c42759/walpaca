@@ -6,6 +6,10 @@ import base64
 from flask import Blueprint
 from flask import request
 from flask import jsonify
+from routes.lorebook import (
+    normalize_character_book_links,
+    resolve_character_book_entries,
+)
 
 personas_bp = Blueprint("personas", __name__)
 
@@ -61,6 +65,10 @@ def list_persona_templates():
                 )
                 item["picture"] = data.get("picture") or None
                 item["voice"] = data.get("voice") or None
+                if isinstance(item.get("character_book"), dict):
+                    item["character_book"] = resolve_character_book_entries(
+                        item["character_book"]
+                    )
             else:
                 item = {
                     "filename": fname,
@@ -114,11 +122,19 @@ def create_persona_template():
         payload["description"] = ""
     if "system_prompt" not in payload:
         payload["system_prompt"] = payload.get("personality", "")
+    if isinstance(payload.get("character_book"), dict):
+        payload["character_book"] = normalize_character_book_links(
+            payload["character_book"]
+        )
 
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
     res = dict(payload)
+    if isinstance(res.get("character_book"), dict):
+        res["character_book"] = resolve_character_book_entries(
+            res["character_book"]
+        )
     res["filename"] = fname
     return jsonify(res), 201
 
@@ -139,11 +155,19 @@ def update_persona_template(filename):
 
     payload = dict(data)
     payload["name"] = name
+    if isinstance(payload.get("character_book"), dict):
+        payload["character_book"] = normalize_character_book_links(
+            payload["character_book"]
+        )
 
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
     res = dict(payload)
+    if isinstance(res.get("character_book"), dict):
+        res["character_book"] = resolve_character_book_entries(
+            res["character_book"]
+        )
     res["filename"] = fname
     return jsonify(res), 200
 

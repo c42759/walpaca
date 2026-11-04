@@ -1,3 +1,8 @@
 #!/bin/sh
 
-npm run start
+if [ "$PRODUCTION" = "0" ]; then
+  exec npm run dev
+else
+  exec npm run start
+fi
+

@@ -31,6 +31,7 @@ export interface PersonaTemplate {
         name?: string;
         description?: string;
         entries?: Array<{
+            filename?: string;
             name?: string;
             keys?: string[] | string;
             content?: string;
@@ -101,7 +102,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
     const [personaFormRepeatPenalty, setPersonaFormRepeatPenalty] = useState<number>(1.1);
     const [personaFormPresencePenalty, setPersonaFormPresencePenalty] = useState<number>(0.0);
     const [personaFormFrequencyPenalty, setPersonaFormFrequencyPenalty] = useState<number>(0.0);
-    const [personaFormLorebookEntries, setPersonaFormLorebookEntries] = useState<Array<{ name: string; keys: string; content: string; enabled: boolean }>>([]);
+    const [personaFormLorebookEntries, setPersonaFormLorebookEntries] = useState<Array<{ filename: string; enabled: boolean }>>([]);
     const [personaSaving, setPersonaSaving] = useState<boolean>(false);
 
     const handleOpenCreatePersonaEditor = () => {
@@ -180,35 +181,18 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
         setPersonaFormAlternateGreetings((prev) => prev.filter((_, i) => i !== idx));
     };
 
-    const handleAddPersonaLorebookEntry = () => {
-        setPersonaFormLorebookEntries((prev) => [...prev, { name: "New Entry", keys: "name, keyword", content: "", enabled: true }]);
-    };
-
-    const handleCopyLorebookTemplateToPersona = (filename: string) => {
+    const handleLinkLorebookTemplateToPersona = (filename: string) => {
         if (!filename) return;
-        const tmpl = lorebookTemplates.find((l) => l.filename === filename);
-        if (!tmpl) return;
-
-        setPersonaFormLorebookEntries((prev) => [
-            ...prev,
-            {
-                name: tmpl.name || tmpl.filename.replace(".json", ""),
-                keys: Array.isArray(tmpl.keys) ? tmpl.keys.join(", ") : tmpl.keys || "",
-                content: tmpl.content || "",
-                enabled: true,
-            },
-        ]);
+        setPersonaFormLorebookEntries((prev) => {
+            if (prev.some((e) => e.filename === filename)) return prev;
+            return [...prev, { filename, enabled: true }];
+        });
     };
 
-    const handleUpdatePersonaLorebookEntry = (
-        idx: number,
-        field: "name" | "keys" | "content" | "enabled",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        value: any,
-    ) => {
+    const handleTogglePersonaLorebookEntry = (idx: number, enabled: boolean) => {
         setPersonaFormLorebookEntries((prev) => {
             const next = [...prev];
-            next[idx] = { ...next[idx], [field]: value };
+            next[idx] = { ...next[idx], enabled };
             return next;
         });
     };
@@ -247,12 +231,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
                 character_book: {
                     name: `${personaFormName.trim()} Lorebook`,
                     entries: personaFormLorebookEntries.map((e) => ({
-                        name: e.name.trim(),
-                        keys: e.keys
-                            .split(",")
-                            .map((k) => k.trim())
-                            .filter(Boolean),
-                        content: e.content,
+                        filename: e.filename,
                         enabled: e.enabled !== false,
                     })),
                 },
@@ -500,98 +479,100 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
                         </div>
                     </div>
 
-                    {/* 5. Embedded Character Lorebook */}
+                    {/* 5. Linked Character Lorebook */}
                     <div className="p-6 rounded-2xl bg-white border border-[#e8ebf3] shadow-xs space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#e8ebf3] pb-3">
                             <div>
-                                <h4 className="text-sm font-bold text-[#7678ed] uppercase tracking-wider">5. Embedded Character Lorebook & World Info</h4>
-                                <p className="text-xs text-[#7a7d90] mt-0.5">Manage lorebook entries for this persona or copy entries from your saved Lorebook templates.</p>
+                                <h4 className="text-sm font-bold text-[#7678ed] uppercase tracking-wider">5. Linked Character Lorebook &amp; World Info</h4>
+                                <p className="text-xs text-[#7a7d90] mt-0.5">Link Lorebook entries by reference. Updates to a Lorebook entry automatically propagate to this persona.</p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                                 {lorebookTemplates.length > 0 && (
                                     <select
                                         onChange={(e) => {
                                             if (e.target.value) {
-                                                handleCopyLorebookTemplateToPersona(e.target.value);
+                                                handleLinkLorebookTemplateToPersona(e.target.value);
                                                 e.target.value = "";
                                             }
                                         }}
                                         className="bg-[#eaecf9] text-[#7678ed] border border-[#7678ed]/20 rounded-xl px-3 py-1.5 text-xs font-bold outline-none cursor-pointer"
                                     >
-                                        <option value="">+ Copy from Lorebook...</option>
-                                        {lorebookTemplates.map((l) => (
-                                            <option key={l.filename} value={l.filename}>
-                                                {l.name} ({l.filename})
-                                            </option>
-                                        ))}
+                                        <option value="">+ Link from Lorebook...</option>
+                                        {lorebookTemplates.map((l) => {
+                                            const alreadyLinked = personaFormLorebookEntries.some((e) => e.filename === l.filename);
+                                            return (
+                                                <option key={l.filename} value={l.filename} disabled={alreadyLinked}>
+                                                    {l.name} ({l.filename}){alreadyLinked ? " — Linked" : ""}
+                                                </option>
+                                            );
+                                        })}
                                     </select>
                                 )}
-                                <Button type="button" variant="primary" size="sm" onClick={handleAddPersonaLorebookEntry}>
-                                    + Add Entry
-                                </Button>
                             </div>
                         </div>
 
                         {personaFormLorebookEntries.length === 0 ? (
                             <div className="p-6 text-center text-[#8e90a6] text-xs italic bg-[#f9fafc] rounded-xl border border-dashed border-[#e8ebf3]">
-                                No lorebook entries in this persona. Click &quot;+ Add Entry&quot; or select a Lorebook template above to copy entries.
+                                No lorebook entries linked to this persona. Select a Lorebook entry above to link it.
                             </div>
                         ) : (
-                            <div className="space-y-4">
-                                {personaFormLorebookEntries.map((entry, idx) => (
-                                    <div key={idx} className="p-4 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] space-y-3 relative group">
-                                        <div className="flex items-center justify-between gap-3">
-                                            <div className="flex items-center gap-2 flex-1">
-                                                <input
-                                                    type="text"
-                                                    value={entry.name}
-                                                    onChange={(e) => handleUpdatePersonaLorebookEntry(idx, "name", e.target.value)}
-                                                    placeholder="Entry Title / Character Name..."
-                                                    className="font-bold text-xs text-[#202022] bg-white border border-[#e8ebf3] rounded-lg px-3 py-1.5 outline-none focus:border-[#7678ed]"
-                                                />
-                                                <label className="flex items-center gap-1.5 text-xs text-[#5d6075] cursor-pointer shrink-0">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={entry.enabled}
-                                                        onChange={(e) => handleUpdatePersonaLorebookEntry(idx, "enabled", e.target.checked)}
-                                                        className="accent-[#7678ed]"
-                                                    />
-                                                    <span>Active</span>
-                                                </label>
+                            <div className="space-y-3">
+                                {personaFormLorebookEntries.map((entry, idx) => {
+                                    const tmpl = lorebookTemplates.find((l) => l.filename === entry.filename);
+                                    const displayName = tmpl?.name || entry.filename.replace(/\.json$/i, "");
+                                    const keysList = Array.isArray(tmpl?.keys) ? tmpl.keys : [];
+                                    const contentText = tmpl?.content || "";
+
+                                    return (
+                                        <div key={entry.filename || idx} className="p-4 rounded-xl bg-[#f9fafc] border border-[#e8ebf3] space-y-2.5 relative group">
+                                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="font-bold text-xs text-[#202022]">{displayName}</span>
+                                                    <Badge variant="secondary" className="font-mono text-[10px]">
+                                                        🔗 {entry.filename}
+                                                    </Badge>
+                                                    <label className="flex items-center gap-1.5 text-xs text-[#5d6075] cursor-pointer shrink-0">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={entry.enabled}
+                                                            onChange={(e) => handleTogglePersonaLorebookEntry(idx, e.target.checked)}
+                                                            className="accent-[#7678ed]"
+                                                        />
+                                                        <span>Active</span>
+                                                    </label>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemovePersonaLorebookEntry(idx)}
+                                                    className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg transition-all cursor-pointer"
+                                                    title="Unlink Entry"
+                                                >
+                                                    <TrashIcon className="w-4 h-4" />
+                                                </button>
                                             </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRemovePersonaLorebookEntry(idx)}
-                                                className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg transition-all cursor-pointer"
-                                                title="Delete Entry"
-                                            >
-                                                <TrashIcon className="w-4 h-4" />
-                                            </button>
-                                        </div>
 
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mb-1">Trigger Keywords</label>
-                                            <input
-                                                type="text"
-                                                value={entry.keys}
-                                                onChange={(e) => handleUpdatePersonaLorebookEntry(idx, "keys", e.target.value)}
-                                                placeholder="name, car, city, lore..."
-                                                className="w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-lg px-3 py-1.5 text-xs font-mono outline-none focus:border-[#7678ed]"
-                                            />
-                                        </div>
+                                            {keysList.length > 0 && (
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className="text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mr-1">Triggers:</span>
+                                                    {keysList.map((k, kIdx) => (
+                                                        <span
+                                                            key={kIdx}
+                                                            className="text-[11px] font-mono bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-lg"
+                                                        >
+                                                            {k}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
 
-                                        <div>
-                                            <label className="block text-[10px] font-bold text-[#7a7d90] uppercase tracking-wider mb-1">Content / Lore Information</label>
-                                            <textarea
-                                                rows={2}
-                                                value={entry.content}
-                                                onChange={(e) => handleUpdatePersonaLorebookEntry(idx, "content", e.target.value)}
-                                                placeholder="Detailed lore, background story, or memory entries..."
-                                                className="w-full bg-white border border-[#e8ebf3] text-[#202022] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#7678ed] resize-y"
-                                            />
+                                            {contentText && (
+                                                <div className="text-xs text-[#5d6075] bg-white border border-[#e8ebf3] rounded-xl p-3 max-h-36 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
+                                                    {contentText}
+                                                </div>
+                                            )}
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

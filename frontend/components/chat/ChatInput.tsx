@@ -513,283 +513,296 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 </div>
             )}
 
-            <div className="flex items-center gap-1.5 sm:gap-2.5 w-full">
-                {/* Combined Model & Instance Selector Button */}
-                <button
-                    type="button"
-                    onClick={() => setIsSelectModelModalOpen(true)}
-                    className="group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2 sm:p-2.5 hover:px-3 hover:bg-[#eaecf9] transition-all duration-300 ease-in-out shadow-xs cursor-pointer text-xs font-bold text-[#202022] max-w-[125px] sm:max-w-[160px] md:max-w-[42px] md:hover:max-w-[340px] overflow-hidden"
-                    title={`Model: ${selectedModelName} @ ${selectedInstName}`}
-                >
-                    <div className="flex items-center gap-1.5 sm:gap-2 pl-0.5 sm:pl-1 shrink-0">
-                        <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="text-[#7678ed] shrink-0"
-                        >
-                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                            <line x1="8" y1="21" x2="16" y2="21" />
-                            <line x1="12" y1="17" x2="12" y2="21" />
-                        </svg>
-                        <div className="flex items-center gap-1.5 opacity-100 max-w-[85px] sm:max-w-[120px] md:opacity-0 md:max-w-0 md:group-hover:opacity-100 md:group-hover:max-w-[280px] transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden">
-                            <span className="truncate">{selectedModelName}</span>
-                            <span className="text-[#8e90a6] font-semibold">@</span>
-                            <span className="text-[#7678ed] truncate">{selectedInstName}</span>
-                            <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="#8e90a6"
-                                strokeWidth="2.2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="ml-0.5 shrink-0 group-hover:text-[#202022] transition-colors"
-                            >
-                                <polyline points="6 9 12 15 18 9" />
-                            </svg>
-                        </div>
-                    </div>
-                </button>
-
-                {/* 3. Thinking Mode Brain Toggle Button */}
-                <button
-                    type="button"
-                    onClick={() => setIsThinkingEnabled((prev) => !prev)}
-                    className={`p-2.5 rounded-2xl transition-all cursor-pointer shrink-0 border flex items-center justify-center ${
-                        isThinkingEnabled
-                            ? "bg-[#7678ed]/10 border-[#7678ed] text-[#7678ed] opacity-100 shadow-xs"
-                            : "bg-[#f0f2f9] border-[#e8ebf3] text-[#8e90a6] hover:bg-[#eaecf9] opacity-40 hover:opacity-70"
-                    }`}
-                    title={isThinkingEnabled ? "Thinking Mode Enabled (think=True)" : "Thinking Mode Disabled (click to enable)"}
-                >
-                    <BrainIcon className="w-5 h-5" />
-                </button>
-
-                {/* Unified Actions Menu (Attach, Custom Prompts, Record Audio, Upload Audio File) */}
-                <div className="relative shrink-0">
+            <div className="flex flex-col md:flex-row md:items-center gap-2 sm:gap-2.5 w-full">
+                {/* Line 1 on Mobile: Model Selector, Thinking Enabler, and + Options */}
+                <div className="flex items-center gap-1.5 sm:gap-2.5 w-full md:w-auto shrink-0">
+                    {/* Combined Model & Instance Selector Button */}
                     <button
                         type="button"
-                        onClick={() => {
-                            if (isRecording) {
-                                stopRecording(true);
-                            } else {
-                                setIsActionsMenuOpen((prev) => !prev);
-                            }
-                        }}
-                        disabled={isTranscribing}
-                        className={`p-2.5 rounded-2xl transition-all cursor-pointer ${
-                            isRecording
-                                ? "bg-rose-500 text-white animate-pulse"
-                                : isTranscribing
-                                ? "bg-[#7678ed]/20 text-[#7678ed]"
-                                : isActionsMenuOpen
-                                ? "text-[#7678ed] bg-[#7678ed]/15 shadow-xs"
-                                : "text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc]"
-                        }`}
-                        title={
-                            isRecording
-                                ? "Recording in progress... (Click to transcribe)"
-                                : isTranscribing
-                                ? "Transcribing audio..."
-                                : "Attach, Prompts, Voice & Audio"
-                        }
+                        onClick={() => setIsSelectModelModalOpen(true)}
+                        className="group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2 sm:p-2.5 hover:px-3 hover:bg-[#eaecf9] transition-all duration-300 ease-in-out shadow-xs cursor-pointer text-xs font-bold text-[#202022] max-w-[220px] sm:max-w-[280px] md:max-w-[42px] md:hover:max-w-[340px] overflow-hidden"
+                        title={`Model: ${selectedModelName} @ ${selectedInstName}`}
                     >
-                        {isTranscribing ? (
-                            <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10" />
+                        <div className="flex items-center gap-1.5 sm:gap-2 pl-0.5 sm:pl-1 shrink-0 max-w-full">
+                            <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="text-[#7678ed] shrink-0"
+                            >
+                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                                <line x1="8" y1="21" x2="16" y2="21" />
+                                <line x1="12" y1="17" x2="12" y2="21" />
                             </svg>
-                        ) : (
-                            <PlusIcon className={`w-5 h-5 transition-transform duration-200 ${isActionsMenuOpen ? "rotate-45" : ""}`} />
-                        )}
+                            <div className="flex items-center gap-1.5 opacity-100 max-w-[180px] sm:max-w-[235px] md:opacity-0 md:max-w-0 md:group-hover:opacity-100 md:group-hover:max-w-[280px] transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden">
+                                <span className="truncate">{selectedModelName}</span>
+                                <span className="text-[#8e90a6] font-semibold">@</span>
+                                <span className="text-[#7678ed] truncate">{selectedInstName}</span>
+                                <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#8e90a6"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className="ml-0.5 shrink-0 group-hover:text-[#202022] transition-colors"
+                                >
+                                    <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                            </div>
+                        </div>
                     </button>
 
-                    {/* Actions Popover */}
-                    {isActionsMenuOpen && !isRecording && (
-                        <>
-                            <div className="fixed inset-0 z-30" onClick={() => setIsActionsMenuOpen(false)} />
-                            <div className="absolute left-0 bottom-full mb-2 w-72 bg-white rounded-2xl shadow-xl border border-[#e8ebf3] py-2 z-40 select-none animate-in fade-in zoom-in-95 duration-150 divide-y divide-[#f0f2f9]">
-                                <div className="px-1 py-1 space-y-0.5">
-                                    {/* Attach */}
-                                    <button
-                                        type="button"
-                                        disabled={selectedAttachments.length >= 4}
-                                        onClick={() => {
-                                            setIsActionsMenuOpen(false);
-                                            if (selectedAttachments.length < 4) {
-                                                fileInputRef.current?.click();
-                                            }
-                                        }}
-                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                                    >
-                                        <span className="p-2 rounded-xl bg-[#7678ed]/10 text-[#7678ed] shrink-0">
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                                            </svg>
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-bold text-[#202022]">Attach</span>
-                                                {selectedAttachments.length > 0 && (
-                                                    <span className="text-[11px] font-semibold text-[#8e90a6]">
-                                                        {selectedAttachments.length}/4
-                                                    </span>
-                                                )}
+                    {/* 3. Thinking Mode Brain Toggle Button */}
+                    <button
+                        type="button"
+                        onClick={() => setIsThinkingEnabled((prev) => !prev)}
+                        className={`p-2.5 rounded-2xl transition-all cursor-pointer shrink-0 border flex items-center justify-center ${
+                            isThinkingEnabled
+                                ? "bg-[#7678ed]/10 border-[#7678ed] text-[#7678ed] opacity-100 shadow-xs"
+                                : "bg-[#f0f2f9] border-[#e8ebf3] text-[#8e90a6] hover:bg-[#eaecf9] opacity-40 hover:opacity-70"
+                        }`}
+                        title={isThinkingEnabled ? "Thinking Mode Enabled (think=True)" : "Thinking Mode Disabled (click to enable)"}
+                    >
+                        <BrainIcon className="w-5 h-5" />
+                    </button>
+
+                    {/* Unified Actions Menu (Attach, Custom Prompts, Record Audio, Upload Audio File) */}
+                    <div className="relative shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (isRecording) {
+                                    stopRecording(true);
+                                } else {
+                                    setIsActionsMenuOpen((prev) => !prev);
+                                }
+                            }}
+                            disabled={isTranscribing}
+                            className={`p-2.5 rounded-2xl transition-all cursor-pointer ${
+                                isRecording
+                                    ? "bg-rose-500 text-white animate-pulse"
+                                    : isTranscribing
+                                    ? "bg-[#7678ed]/20 text-[#7678ed]"
+                                    : isActionsMenuOpen
+                                    ? "text-[#7678ed] bg-[#7678ed]/15 shadow-xs"
+                                    : "text-[#8e90a6] hover:text-[#7678ed] hover:bg-[#f4f6fc]"
+                            }`}
+                            title={
+                                isRecording
+                                    ? "Recording in progress... (Click to transcribe)"
+                                    : isTranscribing
+                                    ? "Transcribing audio..."
+                                    : "Attach, Prompts, Voice & Audio"
+                            }
+                        >
+                            {isTranscribing ? (
+                                <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="10" />
+                                </svg>
+                            ) : (
+                                <PlusIcon className={`w-5 h-5 transition-transform duration-200 ${isActionsMenuOpen ? "rotate-45" : ""}`} />
+                            )}
+                        </button>
+
+                        {/* Actions Popover */}
+                        {isActionsMenuOpen && !isRecording && (
+                            <>
+                                <div className="fixed inset-0 z-30" onClick={() => setIsActionsMenuOpen(false)} />
+                                <div className="absolute left-0 bottom-full mb-2 w-72 bg-white rounded-2xl shadow-xl border border-[#e8ebf3] py-2 z-40 select-none animate-in fade-in zoom-in-95 duration-150 divide-y divide-[#f0f2f9]">
+                                    <div className="px-1 py-1 space-y-0.5">
+                                        {/* Attach */}
+                                        <button
+                                            type="button"
+                                            disabled={selectedAttachments.length >= 4}
+                                            onClick={() => {
+                                                setIsActionsMenuOpen(false);
+                                                if (selectedAttachments.length < 4) {
+                                                    fileInputRef.current?.click();
+                                                }
+                                            }}
+                                            className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                                        >
+                                            <span className="p-2 rounded-xl bg-[#7678ed]/10 text-[#7678ed] shrink-0">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                                                </svg>
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-bold text-[#202022]">Attach</span>
+                                                    {selectedAttachments.length > 0 && (
+                                                        <span className="text-[11px] font-semibold text-[#8e90a6]">
+                                                            {selectedAttachments.length}/4
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-[#8e90a6] truncate font-normal">Files, images, documents</p>
                                             </div>
-                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Files, images, documents</p>
-                                        </div>
-                                    </button>
+                                        </button>
 
-                                    {/* Custom Prompts */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setIsActionsMenuOpen(false);
-                                            onOpenCustomPromptsModal?.();
-                                        }}
-                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
-                                    >
-                                        <span className="p-2 rounded-xl bg-amber-50 text-amber-600 shrink-0">
-                                            <PromptIcon className="w-[18px] h-[18px]" />
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                            <span className="font-bold text-[#202022] block">Custom prompts</span>
-                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Prompt templates & snippets</p>
-                                        </div>
-                                    </button>
+                                        {/* Custom Prompts */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsActionsMenuOpen(false);
+                                                onOpenCustomPromptsModal?.();
+                                            }}
+                                            className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
+                                        >
+                                            <span className="p-2 rounded-xl bg-amber-50 text-amber-600 shrink-0">
+                                                <PromptIcon className="w-[18px] h-[18px]" />
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <span className="font-bold text-[#202022] block">Custom prompts</span>
+                                                <p className="text-xs text-[#8e90a6] truncate font-normal">Prompt templates & snippets</p>
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                    <div className="px-1 py-1 space-y-0.5">
+                                        {/* Record Audio (Record and Transcribe) */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsActionsMenuOpen(false);
+                                                startRecording();
+                                            }}
+                                            className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
+                                        >
+                                            <span className="p-2 rounded-xl bg-rose-50 text-rose-500 shrink-0">
+                                                <MicIcon className="w-[18px] h-[18px]" />
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <span className="font-bold text-[#202022] block">Record Audio</span>
+                                                <p className="text-xs text-[#8e90a6] truncate font-normal">Record and transcribe voice</p>
+                                            </div>
+                                        </button>
+
+                                        {/* Upload Audio File (Transcribe audio file) */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsActionsMenuOpen(false);
+                                                audioFileInputRef.current?.click();
+                                            }}
+                                            className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
+                                        >
+                                            <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
+                                                <UploadIcon className="w-[18px] h-[18px]" />
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <span className="font-bold text-[#202022] block">Upload Audio File</span>
+                                                <p className="text-xs text-[#8e90a6] truncate font-normal">Transcribe audio file</p>
+                                            </div>
+                                        </button>
+                                    </div>
                                 </div>
-
-                                <div className="px-1 py-1 space-y-0.5">
-                                    {/* Record Audio (Record and Transcribe) */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setIsActionsMenuOpen(false);
-                                            startRecording();
-                                        }}
-                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
-                                    >
-                                        <span className="p-2 rounded-xl bg-rose-50 text-rose-500 shrink-0">
-                                            <MicIcon className="w-[18px] h-[18px]" />
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                            <span className="font-bold text-[#202022] block">Record Audio</span>
-                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Record and transcribe voice</p>
-                                        </div>
-                                    </button>
-
-                                    {/* Upload Audio File (Transcribe audio file) */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setIsActionsMenuOpen(false);
-                                            audioFileInputRef.current?.click();
-                                        }}
-                                        className="w-full text-left px-3 py-2 rounded-xl text-sm font-semibold text-[#202022] hover:bg-[#f4f6fc] transition-colors flex items-center gap-3 cursor-pointer"
-                                    >
-                                        <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
-                                            <UploadIcon className="w-[18px] h-[18px]" />
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                            <span className="font-bold text-[#202022] block">Upload Audio File</span>
-                                            <p className="text-xs text-[#8e90a6] truncate font-normal">Transcribe audio file</p>
-                                        </div>
-                                    </button>
-                                </div>
-                            </div>
-                        </>
-                    )}
+                            </>
+                        )}
+                    </div>
                 </div>
 
-                {isRecording ? (
-                    <div className="flex-1 bg-[#f0f2f9] text-[#202022] rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3.5 flex items-center justify-between gap-3 animate-in fade-in duration-200 min-h-[44px] sm:min-h-[52px]">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse shrink-0" />
-                            <span className="font-semibold text-sm sm:text-base text-rose-600 shrink-0">
-                                Recording
-                            </span>
-                            <span className="text-xs sm:text-sm font-mono text-[#5d6075] bg-white/80 px-2 py-0.5 rounded-md border border-[#e2e5f1] shrink-0">
-                                {formatRecordingTime(recordingSeconds)}
-                            </span>
-                            <span className="text-xs text-[#8e90a6] hidden sm:inline truncate">
-                                Speak into your microphone...
-                            </span>
+                {/* Line 2 on Mobile: Input Text and Submit Button */}
+                <div className="flex items-end sm:items-center gap-1.5 sm:gap-2.5 w-full flex-1">
+                    {isRecording ? (
+                        <div className="flex-1 bg-[#f0f2f9] text-[#202022] rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3.5 flex items-center justify-between gap-3 animate-in fade-in duration-200 min-h-[44px] sm:min-h-[52px]">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                                <span className="font-semibold text-sm sm:text-base text-rose-600 shrink-0">
+                                    Recording
+                                </span>
+                                <span className="text-xs sm:text-sm font-mono text-[#5d6075] bg-white/80 px-2 py-0.5 rounded-md border border-[#e2e5f1] shrink-0">
+                                    {formatRecordingTime(recordingSeconds)}
+                                </span>
+                                <span className="text-xs text-[#8e90a6] hidden sm:inline truncate">
+                                    Speak into your microphone...
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={cancelRecording}
+                                    className="px-2.5 py-1 text-xs font-semibold text-[#8e90a6] hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                    title="Cancel recording"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => stopRecording(true)}
+                                    className="px-3 py-1 bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1"
+                                    title="Done and transcribe"
+                                >
+                                    Transcribe
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                            <button
-                                type="button"
-                                onClick={cancelRecording}
-                                className="px-2.5 py-1 text-xs font-semibold text-[#8e90a6] hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                                title="Cancel recording"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => stopRecording(true)}
-                                className="px-3 py-1 bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1"
-                                title="Done and transcribe"
-                            >
-                                Transcribe
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <textarea
-                        ref={(el) => {
-                            internalTextareaRef.current = el;
-                            if (autoResizeTextarea) {
-                                autoResizeTextarea(el);
-                            }
-                            if (promptTextareaRef) {
-                                (promptTextareaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
-                            }
-                        }}
-                        rows={1}
-                        placeholder={isTranscribing ? "Transcribing audio..." : "Write a message..."}
-                        value={inputText}
-                        onChange={(e) => {
-                            setInputText(e.target.value);
-                            if (autoResizeTextarea) {
-                                autoResizeTextarea(e.currentTarget);
-                            }
-                        }}
-                        onInput={(e) => {
-                            if (autoResizeTextarea) {
-                                autoResizeTextarea(e.currentTarget);
-                            }
-                        }}
-                        onPaste={handlePaste}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                if (inputText.trim() || selectedAttachments.length > 0) {
-                                    handleSendMessage(e);
+                    ) : (
+                        <textarea
+                            ref={(el) => {
+                                internalTextareaRef.current = el;
+                                if (autoResizeTextarea) {
+                                    autoResizeTextarea(el);
                                 }
-                            }
-                        }}
-                        disabled={isTranscribing}
-                        className="flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-3.5 py-2.5 sm:px-5 sm:py-3.5 text-base sm:text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]"
-                    />
-                )}
+                                if (promptTextareaRef) {
+                                    (promptTextareaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
+                                }
+                            }}
+                            rows={1}
+                            placeholder={isTranscribing ? "Transcribing audio..." : "Write a message..."}
+                            value={inputText}
+                            onChange={(e) => {
+                                setInputText(e.target.value);
+                                if (autoResizeTextarea) {
+                                    autoResizeTextarea(e.currentTarget);
+                                }
+                            }}
+                            onInput={(e) => {
+                                if (autoResizeTextarea) {
+                                    autoResizeTextarea(e.currentTarget);
+                                }
+                            }}
+                            onPaste={handlePaste}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                    const isMobileOrTablet =
+                                        typeof window !== "undefined" &&
+                                        (window.innerWidth < 1024 ||
+                                            window.matchMedia?.("(pointer: coarse)").matches ||
+                                            /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+                                    if (isMobileOrTablet) {
+                                        return;
+                                    }
+                                    e.preventDefault();
+                                    if (inputText.trim() || selectedAttachments.length > 0) {
+                                        handleSendMessage(e);
+                                    }
+                                }
+                            }}
+                            disabled={isTranscribing}
+                            className="flex-1 bg-[#f0f2f9] text-[#202022] placeholder-[#8e90a6] rounded-2xl px-3.5 py-2.5 sm:px-5 sm:py-3.5 text-base sm:text-lg outline-none focus:ring-2 focus:ring-[#7678ed]/30 transition-all font-medium resize-none overflow-hidden max-h-[30vh]"
+                        />
+                    )}
 
-
-                <button
-                    type="submit"
-                    className="w-10 h-10 sm:w-11 sm:h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0 cursor-pointer"
-                    title="Send"
-                >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="22" y1="2" x2="11" y2="13" />
-                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                    </svg>
-                </button>
+                    <button
+                        type="submit"
+                        className="w-10 h-10 sm:w-11 sm:h-11 bg-[#7678ed] hover:bg-[#6869d9] text-white rounded-2xl flex items-center justify-center transition-all shadow-md shadow-[#7678ed]/30 shrink-0 cursor-pointer"
+                        title="Send"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                        </svg>
+                    </button>
+                </div>
             </div>
         </form>
     );
