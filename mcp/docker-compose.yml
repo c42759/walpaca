@@ -35,3 +35,11 @@ services:
         volumes:
             - ./memory/data:/app/data
         restart: always
+
+    weather:
+        container_name: walpaca_mcp_weather
+        build: ./weather
+        ports:
+            - "8086:8080"
+        restart: always
+
