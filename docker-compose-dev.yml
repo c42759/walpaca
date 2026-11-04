@@ -15,13 +15,14 @@ services:
       - backend
     environment:
       CORS_DOMAINS: "${CORS_DOMAINS}"
+      PRODUCTION: "${PRODUCTION:-0}"
     logging:
       driver: "json-file"
       options:
         max-size: "1g"
         max-file: "3"
     restart: always
-    command: npm run dev
+    command: sh run_server.sh
 
   backend:
     container_name: walpaca_backend

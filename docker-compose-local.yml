@@ -13,6 +13,7 @@ services:
       - backend
     environment:
       CORS_DOMAINS: "${CORS_DOMAINS}"
+      PRODUCTION: "${PRODUCTION:-1}"
     restart: always
     logging:
       driver: "json-file"
