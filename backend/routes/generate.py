@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import threading
 import ollama
@@ -22,6 +23,45 @@ from models import Preference
 from models import generate_uuid
 from models import current_alpaca_timestamp
 from utils.mcp_manager import McpManager
+
+logger = logging.getLogger("walpaca.generate")
+
+_MODEL_TOOL_SUPPORT_CACHE: dict[tuple[str, str], bool] = {}
+
+
+def _is_tools_unsupported_error(error: Exception) -> bool:
+    """Checks whether the exception indicates that the target model does not support tool calling."""
+    err_str = f"{getattr(error, 'error', '')} {error}".lower()
+    return (
+        "does not support tools" in err_str
+        or "tools are not supported" in err_str
+        or ("tools" in err_str and "not support" in err_str)
+    )
+
+
+def _model_supports_tools(client, model_name: str, host: str = None) -> bool:
+    """
+    Checks if the model supports tool calling using cached status or client.show() capabilities.
+    Defaults to True if capabilities cannot be determined.
+    """
+    cache_key = (host or "", model_name)
+    if cache_key in _MODEL_TOOL_SUPPORT_CACHE:
+        return _MODEL_TOOL_SUPPORT_CACHE[cache_key]
+
+    try:
+        info = client.show(model_name)
+        caps = getattr(info, "capabilities", None)
+        if caps is None and isinstance(info, dict):
+            caps = info.get("capabilities")
+        if caps is not None and isinstance(caps, (list, tuple, set)):
+            supports = "tools" in caps
+            _MODEL_TOOL_SUPPORT_CACHE[cache_key] = supports
+            return supports
+    except Exception as e:
+        logger.debug(f"Unable to inspect capabilities for model {model_name}: {e}")
+
+    return True
+
 
 generate_bp = Blueprint("generate", __name__)
 
@@ -978,6 +1018,10 @@ def generate_response(chat_id=None):
                 client_kwargs["headers"] = headers
             client = ollama.Client(**client_kwargs)
 
+            chat_tools = ollama_tools
+            if chat_tools and not _model_supports_tools(client, resolved_model_name, host=host):
+                chat_tools = None
+
             chat_kwargs = {
                 "model": resolved_model_name,
                 "messages": messages_payload,
@@ -987,14 +1031,14 @@ def generate_response(chat_id=None):
                 chat_kwargs["options"] = options
             if think is not None:
                 chat_kwargs["think"] = bool(think)
-            if ollama_tools:
-                chat_kwargs["tools"] = ollama_tools
+            if chat_tools:
+                chat_kwargs["tools"] = chat_tools
 
             while True:
-                stream = client.chat(**chat_kwargs)
-                has_tool_call = False
-
                 try:
+                    stream = client.chat(**chat_kwargs)
+                    has_tool_call = False
+
                     for chunk in stream:
                         msg_chunk = getattr(chunk, "message", None) or (
                             chunk.get("message", {}) if isinstance(chunk, dict) else {}
@@ -1141,6 +1185,17 @@ def generate_response(chat_id=None):
                         daemon=True,
                     ).start()
                     return
+                except Exception as e:
+                    if chat_kwargs.get("tools") and _is_tools_unsupported_error(e) and chunk_count == 0:
+                        logger.warning(
+                            "Model '%s' does not support tools. Retrying request without tools. Error: %s",
+                            resolved_model_name,
+                            e,
+                        )
+                        _MODEL_TOOL_SUPPORT_CACHE[(host or "", resolved_model_name)] = False
+                        chat_kwargs.pop("tools", None)
+                        continue
+                    raise
         except Exception as e:
             err_msg = str(e)
             if hasattr(e, "error"):
@@ -1158,4 +1213,3 @@ def generate_response(chat_id=None):
     response.headers["X-Accel-Buffering"] = "no"
 
     return response
-
