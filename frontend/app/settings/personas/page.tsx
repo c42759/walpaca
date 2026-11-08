@@ -9,6 +9,8 @@ import { SettingsSidebar, SettingsCategory } from "@/components/settings/Setting
 import { SettingsHelpSidebar } from "@/components/settings/SettingsHelpSidebar";
 import { ManagePersonasPanel, PersonaTemplate, LorebookTemplate } from "@/components/settings/ManagePersonasPanel";
 import { CloseIcon } from "@/components/icons/Icons";
+import { AvatarMedia } from "@/components/ui/AvatarMedia";
+import { formatAvatarPicture } from "@/lib/characterUtils";
 
 export default function PersonasSettingsPage() {
     const { setCurrentView, instances, fetchInstances, fetchInstanceModels, fetchModelPreferences, setModelPreference } = useAppStore();
@@ -222,7 +224,7 @@ export default function PersonasSettingsPage() {
                             <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-[#eaecf9] text-[#7678ed] overflow-hidden flex items-center justify-center shrink-0">
                                     {applyPersonaModalTemplate.picture ? (
-                                        <img src={applyPersonaModalTemplate.picture} alt={applyPersonaModalTemplate.name} className="w-full h-full object-cover" />
+                                        <AvatarMedia src={formatAvatarPicture(applyPersonaModalTemplate.picture)} alt={applyPersonaModalTemplate.name} className="w-full h-full object-cover" />
                                     ) : (
                                         <span>🎭</span>
                                     )}

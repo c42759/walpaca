@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { formatAvatarPicture, DEFAULT_MODEL_AVATAR } from "@/lib/characterUtils";
 import { TTS_VOICE_GROUPS } from "@/lib/voiceConstants";
+import { AvatarMedia } from "../ui/AvatarMedia";
 
 export interface PersonaDetailsData {
     name: string;
@@ -102,7 +103,7 @@ export const PersonaDetailsModal: React.FC<PersonaDetailsModalProps> = ({ isOpen
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-4 min-w-0">
                             <div className="relative shrink-0">
-                                <img
+                                <AvatarMedia
                                     src={avatarSrc}
                                     alt={data.name}
                                     className="w-18 h-18 rounded-2xl object-cover border-2 border-white shadow-md bg-white"

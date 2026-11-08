@@ -22,6 +22,8 @@ import { PersonaDetailsModal, PersonaDetailsData } from "@/components/chat/Perso
 import { CustomPromptsModal } from "@/components/chat/CustomPromptsModal";
 import { BrainIcon, MetadataIcon, ServerIcon, CloseIcon, CollapseRightIcon } from "@/components/icons/Icons";
 import { WidgetSimple, WidgetToggle, WidgetWithCustomHeader } from "@/components/ui/Widget";
+import { AvatarMedia } from "@/components/ui/AvatarMedia";
+import { isVideoAvatar, registerVideoBlobUrl } from "@/lib/characterUtils";
 
 // --- Types ---
 interface ChatFolder {
@@ -239,6 +241,9 @@ const formatAvatarPicture = (picture?: string | null): string | undefined => {
     if (!picture) return undefined;
     if (picture.startsWith("data:") || picture.startsWith("http://") || picture.startsWith("https://") || picture.startsWith("/")) {
         return picture;
+    }
+    if (picture.startsWith("AAAA") && picture.slice(4, 16).includes("ZnR5c")) {
+        return `data:video/mp4;base64,${picture}`;
     }
     return `data:image/png;base64,${picture}`;
 };
@@ -1139,6 +1144,9 @@ export default function ChatPage() {
 
         // Show avatar preview immediately as soon as selected
         const localBlobUrl = URL.createObjectURL(file);
+        if (file.type === "video/mp4" || file.name.toLowerCase().endsWith(".mp4")) {
+            registerVideoBlobUrl(localBlobUrl);
+        }
         setPersonaAvatarPreview(localBlobUrl);
         setIsUploadingPersonaAvatar(true);
 
@@ -3809,7 +3817,8 @@ export default function ChatPage() {
                                     Object.values(modelPreferences).find((p) => p.id?.toLowerCase() === prefKey);
                                 const assistantTitle = modelPref?.name || selectedChatModelId || "Walpaca Assistant";
                                 const snippet = fullResponseText.trim().replace(/\s+/g, " ").slice(0, 140);
-                                const avatarIcon = getModelAvatarPicture(modelPref);
+                                const rawAvatarIcon = getModelAvatarPicture(modelPref);
+                                const avatarIcon = isVideoAvatar(rawAvatarIcon) ? DEFAULT_MODEL_AVATAR : rawAvatarIcon;
                                 const n = new Notification(assistantTitle, {
                                     body: snippet || "Finished delivering response.",
                                     icon: avatarIcon,
@@ -4707,7 +4716,7 @@ export default function ChatPage() {
                                                                 </svg>
                                                             </div>
                                                         ) : (
-                                                            <img
+                                                            <AvatarMedia
                                                                 src={p.avatar}
                                                                 alt={p.name}
                                                                 onClick={() => handleOpenPersonaDetails(p.id)}
@@ -5532,7 +5541,7 @@ export default function ChatPage() {
                                                                 }`}
                                                             >
                                                                 {hasCustomAvatar ? (
-                                                                    <img
+                                                                    <AvatarMedia
                                                                         src={avatarSrc}
                                                                         alt={prefName}
                                                                         className="w-full h-full object-cover"

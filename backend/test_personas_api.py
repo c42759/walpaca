@@ -94,6 +94,18 @@ class PersonasAPITestCase(unittest.TestCase):
         self.assertIn("picture", json_data)
         self.assertTrue(json_data["picture"].startswith("data:image/png;base64,"))
 
+    def test_upload_persona_avatar_mp4(self):
+        import io
+        fake_mp4 = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
+        data = {
+            "file": (io.BytesIO(fake_mp4), "avatar.mp4", "video/mp4")
+        }
+        res = self.client.post("/api/personas/avatar", data=data, content_type="multipart/form-data")
+        self.assertEqual(res.status_code, 200)
+        json_data = res.get_json()
+        self.assertIn("picture", json_data)
+        self.assertTrue(json_data["picture"].startswith("data:video/mp4;base64,"))
+
 
 if __name__ == "__main__":
     unittest.main()

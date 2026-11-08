@@ -19,12 +19,34 @@ export const isCharEnabled = (char?: any): boolean => {
     return Boolean(getCharacterName(char));
 };
 
+const videoBlobUrls = new Set<string>();
+
+export const registerVideoBlobUrl = (url: string): void => {
+    if (url) videoBlobUrls.add(url);
+};
+
 export const formatAvatarPicture = (picture?: string | null): string | undefined => {
     if (!picture) return undefined;
-    if (picture.startsWith("data:") || picture.startsWith("http://") || picture.startsWith("https://") || picture.startsWith("/")) {
+    if (picture.startsWith("data:") || picture.startsWith("http://") || picture.startsWith("https://") || picture.startsWith("/") || picture.startsWith("blob:")) {
         return picture;
     }
+    if (picture.startsWith("AAAA") && picture.slice(4, 16).includes("ZnR5c")) {
+        return `data:video/mp4;base64,${picture}`;
+    }
     return `data:image/png;base64,${picture}`;
+};
+
+export const isVideoAvatar = (src?: string | null): boolean => {
+    if (!src || typeof src !== "string") return false;
+    const raw = src.trim();
+    if (!raw) return false;
+    if (videoBlobUrls.has(raw)) return true;
+    const lower = raw.toLowerCase();
+    if (lower.startsWith("data:video/")) return true;
+    if (raw.startsWith("AAAA") && raw.slice(4, 16).includes("ZnR5c")) return true;
+    const cleanUrl = lower.split("?")[0].split("#")[0];
+    if (cleanUrl.endsWith(".mp4")) return true;
+    return false;
 };
 
 export const DEFAULT_MODEL_AVATAR = "/icon-app.svg";

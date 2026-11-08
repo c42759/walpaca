@@ -9,6 +9,7 @@ import { getCharacterName, formatAvatarPicture, isInternalId, isUuid } from "@/l
 import { getVoiceDisplayName } from "@/lib/voiceConstants";
 import { EditIcon, TrashIcon, SearchIcon } from "@/components/icons/Icons";
 import { Badge } from "../ui/Badge";
+import { AvatarMedia } from "../ui/AvatarMedia";
 
 export const ManageModelPreferencesPanel: React.FC = () => {
     const {
@@ -486,7 +487,7 @@ export const ManageModelPreferencesPanel: React.FC = () => {
                                         className="w-30 h-30 mr-4 rounded-2xl border border-[#e8ebf3] overflow-hidden flex items-center justify-center shrink-0 shadow-xs relative bg-[#eaecf9]"
                                     >
                                         {avatarSrc ? (
-                                            <img
+                                            <AvatarMedia
                                                 src={avatarSrc}
                                                 alt={charDisplayName}
                                                 className="w-full h-full object-cover"

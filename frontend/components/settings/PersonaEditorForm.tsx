@@ -7,6 +7,8 @@ import { getApiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Textarea } from "@/components/ui/Input";
+import { AvatarMedia } from "@/components/ui/AvatarMedia";
+import { registerVideoBlobUrl } from "@/lib/characterUtils";
 import { TTS_VOICE_GROUPS } from "@/lib/voiceConstants";
 import { ChevronIcon, TrashIcon, PlusIcon } from "@/components/icons/Icons";
 
@@ -220,6 +222,9 @@ export function PersonaEditorForm({
         if (!file) return;
 
         const localBlobUrl = URL.createObjectURL(file);
+        if (file.type === "video/mp4" || file.name.toLowerCase().endsWith(".mp4")) {
+            registerVideoBlobUrl(localBlobUrl);
+        }
         setAvatarPreview(localBlobUrl);
         setIsUploadingAvatar(true);
 
@@ -442,7 +447,7 @@ export function PersonaEditorForm({
                             <div className="flex items-center gap-4 bg-[#f9fafc] p-4 rounded-xl border border-[#e8ebf3]">
                                 <div className="w-42 h-42 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/30 overflow-hidden flex items-center justify-center shrink-0 shadow-sm relative group">
                                     {avatarPreview || picture ? (
-                                        <img src={avatarPreview || picture || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
+                                        <AvatarMedia src={avatarPreview || picture || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-2xl">🎭</span>
                                     )}
@@ -455,11 +460,11 @@ export function PersonaEditorForm({
 
                                 <div className="flex-1 space-y-1.5">
                                     <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold cursor-pointer transition-all shadow-xs">
-                                        <span>{isUploadingAvatar ? "Uploading & Converting..." : "Choose Image File..."}</span>
-                                        <input type="file" accept="image/*" onChange={handleAvatarFileChange} className="hidden" />
+                                        <span>{isUploadingAvatar ? "Uploading & Converting..." : "Choose Image or MP4..."}</span>
+                                        <input type="file" accept="image/*,video/mp4,.mp4" onChange={handleAvatarFileChange} className="hidden" />
                                     </label>
                                     <p className="text-[11px] text-[#7a7d90]">
-                                        Select an image file (.png, .jpg, .webp). Uploaded image automatically saves to avatar storage.
+                                        Select an image or MP4 file (.png, .jpg, .webp, .mp4). Uploaded file automatically saves to avatar storage.
                                     </p>
                                 </div>
                             </div>

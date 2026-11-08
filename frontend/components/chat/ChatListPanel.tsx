@@ -1,5 +1,6 @@
 import React from "react";
 import { useAppStore } from "@/store/useAppStore";
+import { AvatarMedia } from "../ui/AvatarMedia";
 
 export interface ChatItem {
     id: string;
@@ -169,8 +170,7 @@ export const ChatListPanel: React.FC<ChatListPanelProps> = ({
                                     {chat.avatarText}
                                 </div>
                             ) : (
-                                /* eslint-disable-next-line @next/next/no-img-element */
-                                <img src={chat.avatarImg} alt={chat.name} className="w-12 h-12 rounded-2xl object-cover shrink-0 shadow-sm" />
+                                <AvatarMedia src={chat.avatarImg} alt={chat.name} className="w-12 h-12 rounded-2xl object-cover shrink-0 shadow-sm" />
                             )}
 
                             {/* Info */}

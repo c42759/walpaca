@@ -191,8 +191,11 @@ def upload_persona_avatar():
     if not file or not file.filename:
         return jsonify({"error": "No image file provided"}), 400
 
+    filename_lower = file.filename.lower()
     content_type = file.content_type or "image/png"
-    if not content_type.startswith("image/"):
+    if content_type == "video/mp4" or filename_lower.endswith(".mp4"):
+        content_type = "video/mp4"
+    elif not content_type.startswith("image/"):
         content_type = "image/png"
 
     raw_bytes = file.read()

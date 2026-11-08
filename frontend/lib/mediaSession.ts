@@ -3,6 +3,8 @@
  * Supports hardware media keys and OS/system tray playback widgets (MPRIS, macOS Control Center, Windows Flyout).
  */
 
+import { isVideoAvatar } from "./characterUtils";
+
 export interface MediaSessionConfig {
     title?: string;
     artist?: string;
@@ -32,7 +34,7 @@ export function updateMediaSessionMetadata(config: MediaSessionConfig): void {
 
     try {
         const artwork: MediaImage[] = [];
-        if (config.artworkSrc) {
+        if (config.artworkSrc && !isVideoAvatar(config.artworkSrc)) {
             artwork.push({
                 src: config.artworkSrc,
                 sizes: "512x512",

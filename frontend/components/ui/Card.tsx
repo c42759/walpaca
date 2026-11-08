@@ -1,8 +1,29 @@
-export const CardStacked: React.FC<{ image: String, image_alt: String, title: String; content: React.ReactNode; footer: React.ReactNode }> = ({ image, image_alt, title, content, footer }) => {
+import React from "react";
+import { formatAvatarPicture, isVideoAvatar } from "@/lib/characterUtils";
+
+export const CardStacked: React.FC<{ image: string; image_alt: string; title: string; content: React.ReactNode; footer: React.ReactNode }> = ({ image, image_alt, title, content, footer }) => {
+    const formattedSrc = formatAvatarPicture(String(image || ""));
+    const isVideo = isVideoAvatar(formattedSrc);
+
     return (
         // {"flex items-center justify-between pt-3 border-t border-[#e8ebf3] gap-2 justify-end"}
         <div className="bg-white rounded-2xl border border-[#e8ebf3] shadow-xs flex flex-col justify-between hover:border-[#7678ed]/40 transition-all overflow-hidden">
-            <div className="aspect-square" style={{ backgroundImage: `url(${image})`, backgroundPosition: `center`, backgroundSize: `cover` }}></div>
+            <div
+                className="aspect-square overflow-hidden relative bg-[#eaecf9]"
+                style={!isVideo && formattedSrc ? { backgroundImage: `url(${formattedSrc})`, backgroundPosition: `center`, backgroundSize: `cover` } : undefined}
+            >
+                {isVideo && formattedSrc ? (
+                    <video
+                        src={formattedSrc}
+                        aria-label={String(image_alt || title)}
+                        className="w-full h-full object-cover"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                    />
+                ) : null}
+            </div>
             <div className="p-5 px-6 py-4">
                 <div className="font-bold text-xl mb-2">{title}</div>
                 {content}

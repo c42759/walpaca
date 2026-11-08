@@ -6,6 +6,8 @@ import { Badge } from "../ui/Badge";
 import { Input, Textarea } from "../ui/Input";
 import { PlusIcon, EditIcon, TrashIcon, CheckIcon, SearchIcon, ChevronIcon } from "../icons/Icons";
 import { TTS_VOICE_GROUPS, getVoiceDisplayName } from "@/lib/voiceConstants";
+import { registerVideoBlobUrl } from "@/lib/characterUtils";
+import { AvatarMedia } from "../ui/AvatarMedia";
 import { CardStacked } from "../ui/Card";
 
 export interface PersonaTemplate {
@@ -134,6 +136,9 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
         if (!file) return;
 
         const localBlobUrl = URL.createObjectURL(file);
+        if (file.type === "video/mp4" || file.name.toLowerCase().endsWith(".mp4")) {
+            registerVideoBlobUrl(localBlobUrl);
+        }
         setPersonaAvatarPreview(localBlobUrl);
         setIsUploadingPersonaAvatar(true);
 
@@ -336,7 +341,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
                             <div className="flex items-center gap-4 bg-[#f9fafc] p-4 rounded-xl border border-[#e8ebf3]">
                                 <div className="w-16 h-16 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/30 overflow-hidden flex items-center justify-center shrink-0 shadow-sm relative group">
                                     {personaAvatarPreview || personaFormPicture ? (
-                                        <img src={personaAvatarPreview || personaFormPicture || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
+                                        <AvatarMedia src={personaAvatarPreview || personaFormPicture || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-2xl">🎭</span>
                                     )}
@@ -347,11 +352,11 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
 
                                 <div className="flex-1 space-y-1.5">
                                     <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#7678ed] hover:bg-[#6869d9] text-white text-xs font-semibold cursor-pointer transition-all shadow-xs">
-                                        <span>{isUploadingPersonaAvatar ? "Uploading & Converting..." : "Choose Image File..."}</span>
-                                        <input type="file" accept="image/*" onChange={handlePersonaAvatarFileChange} className="hidden" />
+                                        <span>{isUploadingPersonaAvatar ? "Uploading & Converting..." : "Choose Image or MP4..."}</span>
+                                        <input type="file" accept="image/*,video/mp4,.mp4" onChange={handlePersonaAvatarFileChange} className="hidden" />
                                     </label>
                                     <p className="text-[11px] text-[#7a7d90]">
-                                        Select an image file (.png, .jpg, .webp). Backend converts to base64 automatically and displays immediately.
+                                        Select an image or MP4 file (.png, .jpg, .webp, .mp4). Backend converts to base64 automatically and displays immediately.
                                     </p>
                                 </div>
                             </div>

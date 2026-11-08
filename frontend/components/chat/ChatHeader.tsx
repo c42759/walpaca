@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import { ArrowLeftIcon, ServerIcon, OneOnOneIcon } from "../icons/Icons";
+import { AvatarMedia } from "../ui/AvatarMedia";
 
 export interface ChatHeaderProps {
     title: string;
@@ -79,7 +80,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                         className="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl overflow-hidden shrink-0 shadow-sm border border-[#eef0f6] hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                         title="View persona details"
                     >
-                        <img src={avatar} alt={title} className="w-full h-full object-cover" />
+                        <AvatarMedia src={avatar} alt={title} className="w-full h-full object-cover" />
                     </button>
                 )}
                 <div className="min-w-0 flex-1">

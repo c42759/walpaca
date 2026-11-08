@@ -1,6 +1,7 @@
 import React from "react";
 import { BrainIcon, MetadataIcon, CheckIcon } from "../icons/Icons";
 import { Button } from "../ui/Button";
+import { AvatarMedia } from "../ui/AvatarMedia";
 
 export interface MessageAttachment {
     type: string;
@@ -36,7 +37,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, setAc
         <div className={`flex items-start gap-4 mb-6 animate-in fade-in duration-200 ${isUser ? "flex-row-reverse" : ""}`}>
             {/* Avatar */}
             <div className="w-10 h-10 rounded-2xl bg-[#eaecf9] text-[#7678ed] flex items-center justify-center font-bold text-sm shrink-0 border border-[#7678ed]/20 shadow-xs overflow-hidden">
-                {message.avatarImg ? <img src={message.avatarImg} alt={message.role} className="w-full h-full object-cover" /> : message.avatarText || (isUser ? "U" : "AI")}
+                {message.avatarImg ? <AvatarMedia src={message.avatarImg} alt={message.role} className="w-full h-full object-cover" /> : message.avatarText || (isUser ? "U" : "AI")}
             </div>
 
             {/* Message Content Container */}

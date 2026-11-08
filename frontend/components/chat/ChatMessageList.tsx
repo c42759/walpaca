@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import { BrainIcon, MetadataIcon, DownloadIcon, AudioIcon, ToolIcon } from "../icons/Icons";
 import { isCharEnabled, getCharacterName, formatAvatarPicture, DEFAULT_MODEL_AVATAR } from "@/lib/characterUtils";
+import { AvatarMedia } from "../ui/AvatarMedia";
 
 export interface MessageAttachment {
     id?: string;
@@ -720,7 +721,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                                       isSearchActive ? "ring-4 ring-[#7678ed] ring-offset-2 scale-[1.005]" : ""
                                   }`}
                               >
-                                  <img
+                                  <AvatarMedia
                                       src={avatarSrc}
                                       alt={displayName}
                                       onClick={() => onAvatarClick?.(msg, pref)}

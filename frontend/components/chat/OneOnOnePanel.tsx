@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import { MicIcon, MicOffIcon, CloseIcon, CheckIcon } from "../icons/Icons";
+import { AvatarMedia } from "../ui/AvatarMedia";
 
 export type OneOnOneAgentStatus = "hearing" | "processing" | "talking";
 
@@ -208,7 +209,7 @@ export const OneOnOnePanel: React.FC<OneOnOnePanelProps> = ({
                         }}
                     >
                         {assistantAvatar && (isTalking || isProcessing) ? (
-                            <img
+                            <AvatarMedia
                                 src={assistantAvatar}
                                 alt={assistantName}
                                 className={`w-full h-full object-cover ${isProcessing ? "opacity-75 scale-105 transition-transform" : "opacity-95"}`}

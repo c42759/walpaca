@@ -1,6 +1,7 @@
 import React from "react";
 import { PlusIcon, SearchIcon, FolderIcon, SettingsIcon, ChatIcon, TrashIcon, EditIcon } from "../icons/Icons";
 import { Button } from "../ui/Button";
+import { AvatarMedia } from "../ui/AvatarMedia";
 
 export interface ChatFolder {
     id: string;
@@ -172,7 +173,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 >
                                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                         <div className="w-8 h-8 rounded-lg bg-[#26272b] border border-white/10 flex items-center justify-center shrink-0 overflow-hidden text-xs font-bold text-[#7678ed]">
-                                            {chat.avatarImg ? <img src={chat.avatarImg} alt={chat.name} className="w-full h-full object-cover" /> : chat.avatarText || "💬"}
+                                            {chat.avatarImg ? <AvatarMedia src={chat.avatarImg} alt={chat.name} className="w-full h-full object-cover" /> : chat.avatarText || "💬"}
                                         </div>
                                         <div className="min-w-0 flex-1">
                                             <p className="font-semibold text-xs truncate leading-tight text-white">{chat.name}</p>
