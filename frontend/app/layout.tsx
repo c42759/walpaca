@@ -66,6 +66,26 @@ export default function RootLayout({
                         __html: `
               (function() {
                 try {
+                  var cachedRaw = localStorage.getItem('walpaca_active_theme_cache');
+                  if (cachedRaw) {
+                    var cached = JSON.parse(cachedRaw);
+                    if (cached && cached.vars) {
+                      for (var k in cached.vars) {
+                        if (Object.prototype.hasOwnProperty.call(cached.vars, k)) {
+                          document.documentElement.style.setProperty(k, cached.vars[k]);
+                        }
+                      }
+                      document.documentElement.classList.toggle('dark', Boolean(cached.isDark));
+                      document.documentElement.setAttribute('data-theme', cached.isDark ? 'dark' : 'light');
+                      if (cached.name) document.documentElement.setAttribute('data-theme-preset', cached.name);
+                      if (cached.name && cached.name !== 'Default Light') {
+                        document.documentElement.setAttribute('data-custom-theme', 'true');
+                      } else {
+                        document.documentElement.removeAttribute('data-custom-theme');
+                      }
+                      return;
+                    }
+                  }
                   var mode = localStorage.getItem('walpaca_theme_mode') || 'system';
                   var isDark = mode === 'dark' || (mode === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
                   if (isDark) {

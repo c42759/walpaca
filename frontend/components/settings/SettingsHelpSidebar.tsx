@@ -75,7 +75,7 @@ export const SettingsHelpSidebar: React.FC<SettingsHelpSidebarProps> = ({ active
                 <>
                     <WidgetSimple
                         title="Appearance & Theme"
-                        content={<p className="text-sm text-[#8e90a6]">Choose between System, Light, or Dark mode. System mode automatically syncs with your OS preference.</p>}
+                        content={<p className="text-sm text-[#8e90a6]">Choose between System, Light, or Dark mode, and customize which theme template represents Light Mode (default: Default Light) and Dark Mode (default: Default Dark).</p>}
                     />
 
                     <WidgetSimple

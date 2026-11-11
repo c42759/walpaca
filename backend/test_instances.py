@@ -237,16 +237,24 @@ class InstanceTestCase(unittest.TestCase):
         mock_client.delete.assert_called_once_with(model="qwen2.5:7b")
 
     def test_preferences_theme_mode(self):
-        # Default theme_mode should be "system"
+        # Default theme_mode should be "system", light_theme "Default Light", dark_theme "Default Dark"
         res_get = self.client.get("/api/preferences")
         self.assertEqual(res_get.status_code, 200)
         prefs = res_get.get_json()
         self.assertEqual(prefs.get("theme_mode"), "system")
+        self.assertEqual(prefs.get("light_theme"), "Default Light")
+        self.assertEqual(prefs.get("dark_theme"), "Default Dark")
 
-        # Update to "dark"
-        res_dark = self.client.post("/api/preferences", json={"theme_mode": "dark"})
+        # Update to "dark" and custom themes
+        res_dark = self.client.post(
+            "/api/preferences",
+            json={"theme_mode": "dark", "light_theme": "GitHub Light", "dark_theme": "Tokyo Night"},
+        )
         self.assertEqual(res_dark.status_code, 200)
-        self.assertEqual(res_dark.get_json().get("theme_mode"), "dark")
+        dark_json = res_dark.get_json()
+        self.assertEqual(dark_json.get("theme_mode"), "dark")
+        self.assertEqual(dark_json.get("light_theme"), "GitHub Light")
+        self.assertEqual(dark_json.get("dark_theme"), "Tokyo Night")
 
         # Update to "light"
         res_light = self.client.post("/api/preferences", json={"theme_mode": "light"})

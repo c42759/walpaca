@@ -9,6 +9,8 @@ preferences_bp = Blueprint("preferences", __name__)
 
 DEFAULT_PREFERENCES = {
     "theme_mode": "system",
+    "light_theme": "Default Light",
+    "dark_theme": "Default Dark",
     "auto_play_voice": False,
     "desktop_notifications": True,
     "play_sound_notification": True,

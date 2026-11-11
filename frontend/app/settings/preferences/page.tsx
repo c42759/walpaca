@@ -6,9 +6,12 @@ import { getApiUrl, apiFetch } from "@/lib/api";
 import { SettingsSidebar, SettingsCategory } from "@/components/settings/SettingsSidebar";
 import { SettingsHelpSidebar } from "@/components/settings/SettingsHelpSidebar";
 import { EyeIcon, EyeOffIcon } from "@/components/icons/Icons";
+import { THEME_LIST, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME, getThemeByName } from "@/lib/themes";
 
 interface PreferencesData {
     theme_mode?: "system" | "light" | "dark";
+    light_theme?: string;
+    dark_theme?: string;
     auto_play_voice: boolean;
     desktop_notifications: boolean;
     play_sound_notification?: boolean;
@@ -295,12 +298,12 @@ export default function PreferencesSettingsPage() {
                         </div>
 
                         {/* APPEARANCE & THEME MODE SECTION */}
-                        <div className="space-y-4 bg-white border border-[#e8ebf3] rounded-2xl p-6 shadow-xs">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-5 bg-white border border-[#e8ebf3] rounded-2xl p-6 shadow-xs">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#e8ebf3]">
                                 <div className="space-y-0.5">
                                     <h4 className="text-base font-bold text-[#202022]">Appearance Mode</h4>
                                     <p className="text-xs text-[#8e90a6]">
-                                        Select the interface color theme: follow your operating system setting, or force Light or Dark mode across all views.
+                                        Select the interface color mode: follow your operating system setting, or force Light or Dark mode across all views.
                                     </p>
                                 </div>
 
@@ -372,6 +375,106 @@ export default function PreferencesSettingsPage() {
                                         );
                                     })}
                                 </div>
+                            </div>
+
+                            {/* LIGHT & DARK MODE THEME TEMPLATE SELECTORS */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 pt-1">
+                                {(
+                                    [
+                                        {
+                                            slotKey: "light_theme" as const,
+                                            title: "Light Mode Theme",
+                                            subtitle: "Template applied when Light Mode is active.",
+                                            selectedName: preferences.light_theme || DEFAULT_LIGHT_THEME,
+                                            fallback: DEFAULT_LIGHT_THEME,
+                                        },
+                                        {
+                                            slotKey: "dark_theme" as const,
+                                            title: "Dark Mode Theme",
+                                            subtitle: "Template applied when Dark Mode is active.",
+                                            selectedName: preferences.dark_theme || DEFAULT_DARK_THEME,
+                                            fallback: DEFAULT_DARK_THEME,
+                                        },
+                                    ]
+                                ).map((slot) => {
+                                    const activePalette = getThemeByName(slot.selectedName, slot.fallback);
+                                    return (
+                                        <div
+                                            key={slot.slotKey}
+                                            className="p-4 rounded-2xl bg-[#f9fafc] border border-[#e8ebf3] space-y-3.5"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <h5 className="text-sm font-bold text-[#202022]">{slot.title}</h5>
+                                                    <p className="text-xs text-[#8e90a6] mt-0.5">{slot.subtitle}</p>
+                                                </div>
+                                                <div
+                                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-bold shrink-0"
+                                                    style={{
+                                                        backgroundColor: activePalette.surfacePrimary,
+                                                        borderColor: activePalette.border,
+                                                        color: activePalette.textPrimary,
+                                                    }}
+                                                >
+                                                    <span
+                                                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                                                        style={{ backgroundColor: activePalette.accent }}
+                                                    />
+                                                    <span>{activePalette.name}</span>
+                                                </div>
+                                            </div>
+
+                                            <select
+                                                aria-label={slot.title}
+                                                disabled={isLoading}
+                                                value={activePalette.name}
+                                                onChange={(e) => handleUpdatePreference(slot.slotKey, e.target.value)}
+                                                className="w-full bg-white border border-[#e8ebf3] rounded-xl px-3.5 py-2.5 text-xs text-[#202022] font-bold outline-none focus:border-[#7678ed] transition-all cursor-pointer disabled:opacity-50"
+                                            >
+                                                {THEME_LIST.map((theme) => (
+                                                    <option key={theme.name} value={theme.name}>
+                                                        {theme.name} ({theme.isDark ? "Dark" : "Light"})
+                                                    </option>
+                                                ))}
+                                            </select>
+
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
+                                                {THEME_LIST.map((theme) => {
+                                                    const isSelected = activePalette.name === theme.name;
+                                                    return (
+                                                        <button
+                                                            key={theme.name}
+                                                            type="button"
+                                                            disabled={isLoading}
+                                                            onClick={() => handleUpdatePreference(slot.slotKey, theme.name)}
+                                                            className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all cursor-pointer disabled:opacity-50 ${
+                                                                isSelected
+                                                                    ? "border-[#7678ed] bg-[#eaecf9] shadow-xs"
+                                                                    : "border-[#e8ebf3] bg-white hover:bg-[#f4f6fc]"
+                                                            }`}
+                                                        >
+                                                            <span
+                                                                className="w-5 h-5 rounded-lg border shrink-0 flex items-center justify-center shadow-2xs"
+                                                                style={{
+                                                                    backgroundColor: theme.surfacePrimary,
+                                                                    borderColor: theme.border,
+                                                                }}
+                                                            >
+                                                                <span
+                                                                    className="w-2.5 h-2.5 rounded-full"
+                                                                    style={{ backgroundColor: theme.accent }}
+                                                                />
+                                                            </span>
+                                                            <span className="text-[11px] font-semibold text-[#202022] truncate">
+                                                                {theme.name}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 

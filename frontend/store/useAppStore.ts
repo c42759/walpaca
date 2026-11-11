@@ -19,6 +19,8 @@ export interface ModelPreference {
 
 export interface AppPreferences {
     theme_mode?: "system" | "light" | "dark";
+    light_theme?: string;
+    dark_theme?: string;
     auto_play_voice: boolean;
     desktop_notifications: boolean;
     play_sound_notification?: boolean;
@@ -253,6 +255,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
 
     appPreferences: {
         theme_mode: "system",
+        light_theme: "Default Light",
+        dark_theme: "Default Dark",
         auto_play_voice: false,
         desktop_notifications: true,
         play_sound_notification: true,
@@ -654,9 +658,11 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
             if (res.ok) {
                 const data = await res.json();
                 const merged = { ...get().appPreferences, ...data };
-                if (typeof window !== "undefined" && merged.theme_mode) {
+                if (typeof window !== "undefined") {
                     try {
-                        localStorage.setItem("walpaca_theme_mode", merged.theme_mode);
+                        if (merged.theme_mode) localStorage.setItem("walpaca_theme_mode", merged.theme_mode);
+                        if (merged.light_theme) localStorage.setItem("walpaca_light_theme", merged.light_theme);
+                        if (merged.dark_theme) localStorage.setItem("walpaca_dark_theme", merged.dark_theme);
                     } catch {
                         // ignore storage errors
                     }
@@ -674,9 +680,11 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
     setAppPreferences: (prefs) =>
         set((state) => {
             const next = { ...state.appPreferences, ...prefs };
-            if (typeof window !== "undefined" && next.theme_mode) {
+            if (typeof window !== "undefined") {
                 try {
-                    localStorage.setItem("walpaca_theme_mode", next.theme_mode);
+                    if (next.theme_mode) localStorage.setItem("walpaca_theme_mode", next.theme_mode);
+                    if (next.light_theme) localStorage.setItem("walpaca_light_theme", next.light_theme);
+                    if (next.dark_theme) localStorage.setItem("walpaca_dark_theme", next.dark_theme);
                 } catch {
                     // ignore storage errors
                 }

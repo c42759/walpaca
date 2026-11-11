@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { NavigationRail } from "./NavigationRail";
 import { PinUnlockModal } from "../auth/PinUnlockModal";
 import { useAppStore, triggerGoToRoot, triggerDropChatToFolder } from "../../store/useAppStore";
+import { getThemeByName, applyThemeToDocument, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from "../../lib/themes";
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const {
@@ -31,31 +32,45 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         checkAuthStatus();
     }, [checkAuthStatus]);
 
-    // Sync active theme mode (System, Light, Dark) onto <html> element
+    // Sync active theme mode (System, Light, Dark) and selected Light/Dark theme templates onto <html> element
     useEffect(() => {
         if (typeof window === "undefined") return;
 
         let mode = appPreferences.theme_mode;
-        if (!mode) {
-            try {
-                const stored = localStorage.getItem("walpaca_theme_mode") as "system" | "light" | "dark" | null;
-                if (stored === "system" || stored === "light" || stored === "dark") {
-                    mode = stored;
+        let lightThemeName = appPreferences.light_theme;
+        let darkThemeName = appPreferences.dark_theme;
+
+        try {
+            if (!mode) {
+                const storedMode = localStorage.getItem("walpaca_theme_mode") as "system" | "light" | "dark" | null;
+                if (storedMode === "system" || storedMode === "light" || storedMode === "dark") {
+                    mode = storedMode;
                 }
-            } catch {
-                // ignore storage errors
             }
+            if (!lightThemeName) {
+                const storedLight = localStorage.getItem("walpaca_light_theme");
+                if (storedLight) lightThemeName = storedLight;
+            }
+            if (!darkThemeName) {
+                const storedDark = localStorage.getItem("walpaca_dark_theme");
+                if (storedDark) darkThemeName = storedDark;
+            }
+        } catch {
+            // ignore storage errors
         }
+
         const effectiveMode = mode || "system";
+        const effectiveLightTheme = getThemeByName(lightThemeName, DEFAULT_LIGHT_THEME);
+        const effectiveDarkTheme = getThemeByName(darkThemeName, DEFAULT_DARK_THEME);
 
         const mediaQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 
         const applyTheme = () => {
-            const isDark =
+            const isDarkSlot =
                 effectiveMode === "dark" ||
                 (effectiveMode === "system" && Boolean(mediaQuery?.matches));
-            document.documentElement.classList.toggle("dark", isDark);
-            document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+            const activePalette = isDarkSlot ? effectiveDarkTheme : effectiveLightTheme;
+            applyThemeToDocument(activePalette);
         };
 
         applyTheme();
@@ -67,7 +82,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 return () => mediaQuery.removeEventListener("change", handleMediaChange);
             }
         }
-    }, [appPreferences.theme_mode]);
+    }, [appPreferences.theme_mode, appPreferences.light_theme, appPreferences.dark_theme]);
 
     // Sync visible viewport height on mobile browsers (Chrome for Android address bar & keyboard)
     useEffect(() => {
