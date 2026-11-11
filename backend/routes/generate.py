@@ -1,15 +1,15 @@
 import json
-import logging
 import time
-import threading
 import ollama
+import logging
+import threading
 
-from flask import Blueprint
 from flask import request
 from flask import Response
-from flask import stream_with_context
+from flask import Blueprint
 from flask import current_app
 from flask import has_app_context
+from flask import stream_with_context
 
 from models import db
 from models import Chat
@@ -302,7 +302,6 @@ def consume_upstream_to_completion(
                 )
         except Exception as e:
             print(f"[Ollama Background Worker] Error completing response: {e}")
-
 
 
 def resolve_model_preference(model: str, instance_id: str = None):

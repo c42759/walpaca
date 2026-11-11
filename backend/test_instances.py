@@ -118,9 +118,8 @@ class InstanceTestCase(unittest.TestCase):
         self.assertNotIn("active_instance_id", saved_data)
         self.assertEqual(saved_data.get("processing_poll_interval"), 5)
 
-
     def test_instance_model_and_model_preferences_with_assistant_fallback(self):
-        from models import Chat, Message, InstanceModel, ModelPreferences
+        from models import InstanceModel
 
         # 1. Create an enabled instance
         self.client.post(
@@ -264,4 +263,3 @@ class InstanceTestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

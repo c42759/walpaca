@@ -39,7 +39,6 @@ class TTSEndpointTestCase(unittest.TestCase):
                 tts_key_pref.set_value("")
             db.session.commit()
 
-
     def test_tts_missing_text_returns_400(self):
         response = self.client.post("/api/tts", json={})
         self.assertEqual(response.status_code, 400)
@@ -143,4 +142,3 @@ class TTSEndpointTestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

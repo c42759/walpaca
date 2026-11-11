@@ -1,7 +1,8 @@
+import re
 import json
 import uuid
-import datetime
 import time
+import datetime
 
 from flask_sqlalchemy import SQLAlchemy
 
@@ -189,9 +190,6 @@ class OnlineInstanceModelList(db.Model):
     def to_dict(self):
         return {"id": self.id,
                 "list": self.get_list()}
-
-
-import re
 
 
 def is_internal_id(val: str) -> bool:
@@ -478,4 +476,3 @@ class McpToolConfig(db.Model):
             "is_enabled": bool(self.is_enabled),
             "requires_approval": bool(self.requires_approval),
         }
-

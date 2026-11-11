@@ -72,7 +72,6 @@ class LiveInstanceModelsTestCase(unittest.TestCase):
         self.assertIn("reasoning", data[1]["capabilities"])
         mock_client.list.assert_called_once()
 
-
     @patch("routes.api.urllib.request.urlopen")
     def test_get_models_queries_openai_compatible_instance(self, mock_urlopen):
         with self.app.app_context():

@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 from main import create_app
-from models import db, McpServer, McpToolConfig
+from models import db
 
 
 class TestMcpApi(unittest.TestCase):

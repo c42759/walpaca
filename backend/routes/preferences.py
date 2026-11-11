@@ -26,17 +26,15 @@ DEFAULT_PREFERENCES = {
 }
 
 
-
-
 def load_preferences() -> dict:
     prefs = DEFAULT_PREFERENCES.copy()
 
     rows = Preference.query.all()
-    
+
     for row in rows:
         if row.key != "active_instance_id":
             prefs[row.key] = row.get_value()
-    
+
     return prefs
 
 
@@ -45,13 +43,13 @@ def save_preferences(data: dict) -> dict:
         for k, v in data.items():
             if k == "active_instance_id":
                 continue
-            
+
             pref = Preference.query.get(k)
-            
+
             if not pref:
                 pref = Preference(key=k)
                 db.session.add(pref)
-            
+
             pref.set_value(v)
         db.session.commit()
     return load_preferences()
@@ -70,28 +68,28 @@ def handle_preferences():
 @preferences_bp.route("/preferences/<key>", methods=["GET", "PUT", "DELETE"])
 def handle_preference_key(key):
     pref = Preference.query.get(key)
-    
+
     if request.method == "GET":
         val = pref.get_value() if pref else DEFAULT_PREFERENCES.get(key)
-    
+
         return jsonify({"key": key, "value": val})
-    
+
     elif request.method == "PUT":
         data = request.json or {}
         val = data.get("value")
-    
+
         if not pref:
             pref = Preference(key=key)
             db.session.add(pref)
-    
+
         pref.set_value(val)
         db.session.commit()
-    
+
         return jsonify(pref.to_dict())
-    
+
     elif request.method == "DELETE":
         if pref:
             db.session.delete(pref)
             db.session.commit()
-    
+
         return jsonify({"success": True, "deleted": key})

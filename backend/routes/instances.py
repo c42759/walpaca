@@ -238,7 +238,6 @@ def fetch_live_instance_models(instance):
         except Exception:
             pass
 
-
     elif inst_type == "gemini" or "generativelanguage.googleapis.com" in host:
         # First try Google Gemini native models endpoint if API key exists
         if api_key:
@@ -644,6 +643,7 @@ def pull_instance_model(instance_id):
         host = host[:-1]
 
     pull_url = f"{host}/api/pull"
+
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "AlpacaWeb/1.0",
@@ -757,7 +757,6 @@ def delete_instance_model(instance_id, model_name=None):
                 ),
                 status_code,
             )
-
 
     # Remove from InstanceModel table if present
     try:

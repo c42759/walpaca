@@ -1,10 +1,9 @@
 import os
 import unittest
 import tempfile
-import time
 
 from main import create_app
-from models import db, Preference, PinSession
+from models import db
 from utils.security import reset_rate_limit, record_failed_attempt, check_rate_limit
 
 
