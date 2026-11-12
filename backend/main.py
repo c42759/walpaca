@@ -75,6 +75,12 @@ def create_app(test_config=None):
                 if "model_id" not in pref_cols and res_pref:
                     conn.execute(db.text("ALTER TABLE model_preferences ADD COLUMN model_id TEXT"))
                     conn.commit()
+
+                res_att = conn.execute(db.text("PRAGMA table_info(attachment)")).fetchall()
+                att_cols = [r[1] for r in res_att]
+                if "file_path" not in att_cols and res_att:
+                    conn.execute(db.text("ALTER TABLE attachment ADD COLUMN file_path TEXT"))
+                    conn.commit()
         except Exception as e:
             app.logger.warning(f"Database schema auto-check: {e}")
 

@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { resolveApiAssetUrl } from "@/lib/api";
+
 export const getCharacterName = (char?: any): string | undefined => {
     if (!char) return undefined;
     if (char.data && char.data.name && String(char.data.name).trim()) {
@@ -27,13 +29,18 @@ export const registerVideoBlobUrl = (url: string): void => {
 
 export const formatAvatarPicture = (picture?: string | null): string | undefined => {
     if (!picture) return undefined;
-    if (picture.startsWith("data:") || picture.startsWith("http://") || picture.startsWith("https://") || picture.startsWith("/") || picture.startsWith("blob:")) {
-        return picture;
+    const trimmed = picture.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.startsWith("/api/")) {
+        return resolveApiAssetUrl(trimmed);
     }
-    if (picture.startsWith("AAAA") && picture.slice(4, 16).includes("ZnR5c")) {
-        return `data:video/mp4;base64,${picture}`;
+    if (trimmed.startsWith("data:") || trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("/") || trimmed.startsWith("blob:")) {
+        return trimmed;
     }
-    return `data:image/png;base64,${picture}`;
+    if (trimmed.startsWith("AAAA") && trimmed.slice(4, 16).includes("ZnR5c")) {
+        return `data:video/mp4;base64,${trimmed}`;
+    }
+    return `data:image/png;base64,${trimmed}`;
 };
 
 export const isVideoAvatar = (src?: string | null): boolean => {

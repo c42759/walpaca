@@ -8,6 +8,11 @@ from models import Message
 from models import Attachment
 from models import generate_uuid
 from models import current_alpaca_timestamp
+from utils.storage import (
+    delete_storage_file,
+    is_file_backed_attachment,
+    save_chat_attachment_file,
+)
 
 messages_bp = Blueprint("messages", __name__)
 
@@ -37,13 +42,30 @@ def create_message(chat_id):
     )
     db.session.add(message)
     for att_data in data.get("attachments", []):
-        att = Attachment(
-            id=att_data.get("id") or generate_uuid(),
-            message_id=message.id,
-            type=att_data.get("type", "thought"),
-            name=att_data.get("name", "Thought"),
-            content=att_data.get("content", ""),
-        )
+        att_id = att_data.get("id") or generate_uuid()
+        att_type = att_data.get("type", "thought")
+        att_name = att_data.get("name", "Thought")
+        att_content = att_data.get("content", "")
+        if is_file_backed_attachment(att_type, att_content):
+            rel_path, _ = save_chat_attachment_file(
+                chat_id, att_id, att_type, att_name, att_content
+            )
+            att = Attachment(
+                id=att_id,
+                message_id=message.id,
+                type=att_type,
+                name=att_name,
+                content="",
+                file_path=rel_path,
+            )
+        else:
+            att = Attachment(
+                id=att_id,
+                message_id=message.id,
+                type=att_type,
+                name=att_name,
+                content=att_content,
+            )
         db.session.add(att)
     db.session.commit()
     return jsonify(message.to_dict(include_attachments=True)), 201
@@ -66,6 +88,9 @@ def update_message(message_id):
 @messages_bp.route("/messages/<message_id>", methods=["DELETE"])
 def delete_message(message_id):
     msg = Message.query.get_or_404(message_id)
+    for att in msg.attachments:
+        if att.file_path:
+            delete_storage_file(att.file_path)
     db.session.delete(msg)
     db.session.commit()
     return jsonify({"success": True, "deleted": message_id})

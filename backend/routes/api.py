@@ -1,6 +1,7 @@
 from flask import Blueprint
 
 from routes.auth import auth_bp
+from routes.avatars import avatars_bp
 from routes.attachments import attachments_bp
 from routes.chats import chats_bp
 from routes.folders import folders_bp
@@ -20,6 +21,7 @@ from routes.mcp import mcp_bp
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 api_bp.register_blueprint(auth_bp, url_prefix="/auth")
+api_bp.register_blueprint(avatars_bp)
 api_bp.register_blueprint(folders_bp)
 api_bp.register_blueprint(chats_bp)
 api_bp.register_blueprint(messages_bp)

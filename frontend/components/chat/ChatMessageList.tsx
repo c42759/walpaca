@@ -4,13 +4,26 @@
 import React, { useState } from "react";
 import { BrainIcon, MetadataIcon, DownloadIcon, AudioIcon, ToolIcon } from "../icons/Icons";
 import { isCharEnabled, getCharacterName, formatAvatarPicture, DEFAULT_MODEL_AVATAR } from "@/lib/characterUtils";
+import {
+    isImageAttachment,
+    isAudioAttachment,
+    getImageSrc,
+    getAttachmentUrl,
+    isFileBackedAttachment,
+    fetchAttachmentText,
+} from "@/lib/attachmentUtils";
 import { AvatarMedia } from "../ui/AvatarMedia";
+
+export { isImageAttachment, getImageSrc, isAudioAttachment };
 
 export interface MessageAttachment {
     id?: string;
     type: string;
     name?: string;
     content: string;
+    url?: string;
+    is_file?: boolean;
+    size?: number;
 }
 
 export interface Message {
@@ -35,53 +48,6 @@ export interface TTSState {
     lineIndex?: number;
 }
 
-export const isImageAttachment = (att: MessageAttachment | any): boolean => {
-    if (!att) return false;
-    const typeStr = (att.type || "").toLowerCase();
-    if (typeStr.includes("image") || typeStr.includes("photo") || typeStr.includes("png") || typeStr.includes("jpg") || typeStr.includes("jpeg")) {
-        return true;
-    }
-    const contentStr = typeof att.content === "string" ? att.content.trim() : "";
-    if (
-        contentStr.startsWith("data:image/") ||
-        contentStr.startsWith("iVBOR") ||
-        contentStr.startsWith("/9j/") ||
-        contentStr.startsWith("R0lGOD") ||
-        contentStr.startsWith("UklGR")
-    ) {
-        return true;
-    }
-    return false;
-};
-
-export const getImageSrc = (att: MessageAttachment | any): string => {
-    const contentStr = typeof att.content === "string" ? att.content.trim() : "";
-    if (contentStr.startsWith("data:") || contentStr.startsWith("http://") || contentStr.startsWith("https://") || contentStr.startsWith("/")) {
-        return contentStr;
-    }
-    return `data:image/png;base64,${contentStr}`;
-};
-
-export const isAudioAttachment = (att: MessageAttachment | any): boolean => {
-    if (!att) return false;
-    const typeStr = (att.type || "").toLowerCase();
-    if (typeStr.includes("audio") || typeStr.includes("mp3") || typeStr.includes("wav")) return true;
-    const name = (att.name || "").toLowerCase();
-    if (
-        name.endsWith(".mp3") ||
-        name.endsWith(".wav") ||
-        name.endsWith(".ogg") ||
-        name.endsWith(".m4a") ||
-        name.endsWith(".flac") ||
-        name.endsWith(".aac")
-    ) {
-        return true;
-    }
-    const contentStr = typeof att.content === "string" ? att.content.trim() : "";
-    if (contentStr.startsWith("data:audio/")) return true;
-    return false;
-};
-
 export interface AudioAttachmentCardProps {
     attachment: MessageAttachment | any;
     isSelf?: boolean;
@@ -90,7 +56,10 @@ export interface AudioAttachmentCardProps {
 export const AudioAttachmentCard: React.FC<AudioAttachmentCardProps> = ({ attachment, isSelf }) => {
     const name = attachment.name || "audio.mp3";
     const ext = (name.split(".").pop() || "audio").toLowerCase();
-    const src = attachment.content || "";
+    const src = getAttachmentUrl(attachment) || "";
+    const downloadUrl = src.includes("/api/attachments/")
+        ? `${src}${src.includes("?") ? "&" : "?"}download=1`
+        : src;
 
     return (
         <div
@@ -120,9 +89,9 @@ export const AudioAttachmentCard: React.FC<AudioAttachmentCardProps> = ({ attach
                     </div>
                 </div>
 
-                {src && (
+                {downloadUrl && (
                     <a
-                        href={src}
+                        href={downloadUrl}
                         download={name}
                         className={`p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
                             isSelf
@@ -247,19 +216,75 @@ export interface DocumentAttachmentCardProps {
 }
 
 export const DocumentAttachmentCard: React.FC<DocumentAttachmentCardProps> = ({ attachment, extension, isSelf, highlightCodeTokens }) => {
+    const fileBacked = isFileBackedAttachment(attachment);
     const [expanded, setExpanded] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [loadedContent, setLoadedContent] = useState<string | null>(fileBacked ? null : (attachment.content || ""));
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
-    const handleCopy = (e: React.MouseEvent) => {
+    const rawUrl = getAttachmentUrl(attachment);
+    const downloadUrl = rawUrl
+        ? rawUrl.includes("/api/attachments/")
+            ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}download=1`
+            : rawUrl
+        : undefined;
+
+    const ensureContent = async (): Promise<string> => {
+        if (!fileBacked) {
+            return attachment.content || "";
+        }
+        if (loadedContent !== null) {
+            return loadedContent;
+        }
+        setIsLoading(true);
+        setLoadError(null);
+        try {
+            const text = await fetchAttachmentText(attachment);
+            setLoadedContent(text);
+            return text;
+        } catch (err: any) {
+            setLoadError(err?.message || "Failed to load attachment");
+            throw err;
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCopy = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(attachment.content || "");
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        try {
+            const text = await ensureContent();
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // error already captured in loadError if fetch failed
+        }
+    };
+
+    const handleToggleExpand = async () => {
+        const nextExpanded = !expanded;
+        setExpanded(nextExpanded);
+        if (nextExpanded && fileBacked && loadedContent === null) {
+            try {
+                await ensureContent();
+            } catch {
+                // error already captured in loadError
+            }
+        }
     };
 
     const name = attachment.name || `file.${extension}`;
-    const lines = attachment.content ? attachment.content.split("\n").length : 0;
-    const sizeKb = attachment.content ? (new Blob([attachment.content]).size / 1024).toFixed(1) : "0";
+    const displayContent = fileBacked ? loadedContent : (attachment.content || "");
+    const lines = displayContent !== null ? displayContent.split("\n").length : 0;
+    const sizeKb = displayContent !== null ? (new Blob([displayContent]).size / 1024).toFixed(1) : "0";
+    const metaLabel =
+        displayContent !== null
+            ? `${sizeKb} KB • ${lines} line${lines !== 1 ? "s" : ""}`
+            : typeof attachment.size === "number"
+              ? `${(attachment.size / 1024).toFixed(1)} KB`
+              : "Click to view";
 
     return (
         <div
@@ -281,12 +306,26 @@ export const DocumentAttachmentCard: React.FC<DocumentAttachmentCardProps> = ({ 
                             {name}
                         </span>
                         <span className={`text-[11px] ${isSelf ? "text-white/75" : "text-[#8e90a6]"}`}>
-                            {sizeKb} KB • {lines} line{lines !== 1 ? "s" : ""}
+                            {metaLabel}
                         </span>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
+                    {downloadUrl && (
+                        <a
+                            href={downloadUrl}
+                            download={name}
+                            onClick={(e) => e.stopPropagation()}
+                            className={`p-1.5 rounded-lg text-xs transition-all cursor-pointer ${
+                                isSelf ? "bg-white/20 hover:bg-white/30 text-white" : "bg-[#f4f6fc] hover:bg-[#eef0f6] text-[#5d6075] border border-[#e2e5f1]"
+                            }`}
+                            title="Download file"
+                        >
+                            <DownloadIcon className="w-3.5 h-3.5" />
+                        </a>
+                    )}
+
                     <button
                         type="button"
                         onClick={handleCopy}
@@ -315,7 +354,7 @@ export const DocumentAttachmentCard: React.FC<DocumentAttachmentCardProps> = ({ 
 
                     <button
                         type="button"
-                        onClick={() => setExpanded(!expanded)}
+                        onClick={handleToggleExpand}
                         className={`p-1.5 rounded-lg text-xs transition-all cursor-pointer ${
                             isSelf ? "bg-white/20 hover:bg-white/30 text-white" : "bg-[#f4f6fc] hover:bg-[#eef0f6] text-[#5d6075] border border-[#e2e5f1]"
                         }`}
@@ -337,13 +376,23 @@ export const DocumentAttachmentCard: React.FC<DocumentAttachmentCardProps> = ({ 
             </div>
 
             {expanded && (
-                <pre
-                    className={`p-3 border-t text-xs font-mono overflow-x-auto max-h-60 leading-relaxed whitespace-pre-wrap select-text ${
-                        isSelf ? "bg-black/30 border-white/15 text-white/90" : "bg-[#1e1e24] border-[#e2e5f1] text-[#f8f8f2]"
-                    }`}
-                >
-                    <code className="font-mono">{highlightCodeTokens ? highlightCodeTokens(attachment.content || "", extension) : attachment.content || ""}</code>
-                </pre>
+                isLoading ? (
+                    <div className={`p-3 border-t text-xs font-mono ${isSelf ? "bg-black/30 border-white/15 text-white/80" : "bg-[#1e1e24] border-[#e2e5f1] text-[#f8f8f2]/80"}`}>
+                        Loading attachment...
+                    </div>
+                ) : loadError ? (
+                    <div className={`p-3 border-t text-xs font-mono ${isSelf ? "bg-black/30 border-white/15 text-rose-200" : "bg-[#1e1e24] border-[#e2e5f1] text-rose-400"}`}>
+                        {loadError}
+                    </div>
+                ) : (
+                    <pre
+                        className={`p-3 border-t text-xs font-mono overflow-x-auto max-h-60 leading-relaxed whitespace-pre-wrap select-text ${
+                            isSelf ? "bg-black/30 border-white/15 text-white/90" : "bg-[#1e1e24] border-[#e2e5f1] text-[#f8f8f2]"
+                        }`}
+                    >
+                        <code className="font-mono">{highlightCodeTokens ? highlightCodeTokens(displayContent || "", extension) : displayContent || ""}</code>
+                    </pre>
+                )
             )}
         </div>
     );
@@ -721,13 +770,6 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                                       isSearchActive ? "ring-4 ring-[#7678ed] ring-offset-2 scale-[1.005]" : ""
                                   }`}
                               >
-                                  <AvatarMedia
-                                      src={avatarSrc}
-                                      alt={displayName}
-                                      onClick={() => onAvatarClick?.(msg, pref)}
-                                      className="w-8 h-8 sm:w-10 sm:h-10 rounded-2xl object-cover shrink-0 mt-1 shadow-sm cursor-pointer hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all"
-                                      title={`View ${displayName} persona details`}
-                                  />
                                   <div className="flex flex-col items-start flex-1 w-full min-w-0">
                                       <div className="bg-[#f0f2f9] rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 text-base sm:text-lg text-[#202022] shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full">
                                           <div className="flex items-center justify-between gap-3 mb-1.5">

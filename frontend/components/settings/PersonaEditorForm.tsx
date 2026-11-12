@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Textarea } from "@/components/ui/Input";
 import { AvatarMedia } from "@/components/ui/AvatarMedia";
-import { registerVideoBlobUrl } from "@/lib/characterUtils";
+import { registerVideoBlobUrl, formatAvatarPicture } from "@/lib/characterUtils";
 import { TTS_VOICE_GROUPS } from "@/lib/voiceConstants";
 import { ChevronIcon, TrashIcon, PlusIcon } from "@/components/icons/Icons";
 
@@ -241,7 +241,7 @@ export function PersonaEditorForm({
                 const data = await res.json();
                 if (data.picture) {
                     setPicture(data.picture);
-                    setAvatarPreview(data.picture);
+                    setAvatarPreview(formatAvatarPicture(data.picture) || data.picture);
                 }
             } else {
                 const reader = new FileReader();
@@ -447,7 +447,7 @@ export function PersonaEditorForm({
                             <div className="flex items-center gap-4 bg-[#f9fafc] p-4 rounded-xl border border-[#e8ebf3]">
                                 <div className="w-42 h-42 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/30 overflow-hidden flex items-center justify-center shrink-0 shadow-sm relative group">
                                     {avatarPreview || picture ? (
-                                        <AvatarMedia src={avatarPreview || picture || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
+                                        <AvatarMedia src={formatAvatarPicture(avatarPreview || picture) || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-2xl">🎭</span>
                                     )}

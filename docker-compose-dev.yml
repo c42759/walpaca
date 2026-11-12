@@ -15,7 +15,7 @@ services:
       - backend
     environment:
       CORS_DOMAINS: "${CORS_DOMAINS}"
-      PRODUCTION: "${PRODUCTION:-0}"
+      PRODUCTION: 0
     logging:
       driver: "json-file"
       options:
@@ -40,6 +40,7 @@ services:
       - ./lorebook:/app/lorebook
       - ./prompts:/app/prompts
       - ./config:/app/config
+      - ./storage:/app/storage
     environment:
       ALPACA_DB_PATH: "/app/alpaca.db"
       TTS_SERVER_URL: "http://kokoro:8880"

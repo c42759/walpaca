@@ -9,8 +9,38 @@ from models import Attachment
 from models import generate_uuid
 from models import current_alpaca_timestamp
 from routes.folders import _delete_chat_internal
+from utils.storage import (
+    copy_chat_attachment_file,
+    is_file_backed_attachment,
+    save_chat_attachment_file,
+)
 
 chats_bp = Blueprint("chats", __name__)
+
+
+def _clone_attachment(att, target_chat_id: str, new_msg_id: str) -> Attachment:
+    """Clone an Attachment ORM record, copying its disk file if file-backed."""
+    new_att_id = generate_uuid()
+    if att.file_path:
+        new_rel_path = copy_chat_attachment_file(
+            att.file_path, target_chat_id, new_att_id, att.name
+        )
+        return Attachment(
+            id=new_att_id,
+            message_id=new_msg_id,
+            type=att.type,
+            name=att.name,
+            content="" if new_rel_path else (att.content or ""),
+            file_path=new_rel_path,
+        )
+    return Attachment(
+        id=new_att_id,
+        message_id=new_msg_id,
+        type=att.type,
+        name=att.name,
+        content=att.content,
+        file_path=None,
+    )
 
 
 @chats_bp.route("/chats", methods=["GET"])
@@ -22,7 +52,7 @@ def get_chats():
     if folder_id is not None:
         if folder_id.lower() in ("none", "null", ""):
             query = query.filter(
-                (Chat.folder is None) | (Chat.folder == "none") | (Chat.folder == "")
+                (Chat.folder.is_(None)) | (Chat.folder == "none") | (Chat.folder == "")
             )
         else:
             query = query.filter_by(folder=folder_id)
@@ -100,14 +130,7 @@ def duplicate_chat(chat_id):
         )
         db.session.add(new_msg)
         for att in msg.attachments:
-            new_att = Attachment(
-                id=generate_uuid(),
-                message_id=new_msg.id,
-                type=att.type,
-                name=att.name,
-                content=att.content,
-            )
-            db.session.add(new_att)
+            db.session.add(_clone_attachment(att, new_chat.id, new_msg.id))
     db.session.commit()
     return jsonify(new_chat.to_dict(include_messages=True)), 201
 
@@ -145,14 +168,7 @@ def fork_chat(chat_id):
         )
         db.session.add(new_msg)
         for att in msg.attachments:
-            new_att = Attachment(
-                id=generate_uuid(),
-                message_id=new_msg.id,
-                type=att.type,
-                name=att.name,
-                content=att.content,
-            )
-            db.session.add(new_att)
+            db.session.add(_clone_attachment(att, new_chat.id, new_msg.id))
 
         if msg.id == message_id:
             break
@@ -212,13 +228,30 @@ def import_chats():
             for att_data in msg_data.get("attachments", []):
                 if not isinstance(att_data, dict):
                     continue
-                att = Attachment(
-                    id=att_data.get("id") or generate_uuid(),
-                    message_id=msg_id,
-                    type=att_data.get("type", "thought"),
-                    name=att_data.get("name"),
-                    content=att_data.get("content"),
-                )
+                att_id = att_data.get("id") or generate_uuid()
+                att_type = att_data.get("type", "thought")
+                att_name = att_data.get("name") or "attachment"
+                att_content = att_data.get("content") or ""
+                if is_file_backed_attachment(att_type, att_content):
+                    rel_path, _ = save_chat_attachment_file(
+                        chat.id, att_id, att_type, att_name, att_content
+                    )
+                    att = Attachment(
+                        id=att_id,
+                        message_id=msg_id,
+                        type=att_type,
+                        name=att_name,
+                        content="",
+                        file_path=rel_path,
+                    )
+                else:
+                    att = Attachment(
+                        id=att_id,
+                        message_id=msg_id,
+                        type=att_type,
+                        name=att_name,
+                        content=att_content,
+                    )
                 db.session.add(att)
 
         imported_chats.append(chat)

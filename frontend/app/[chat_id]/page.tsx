@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAppStore, registerGoToRootHandler, registerDropChatToFolderHandler } from "@/store/useAppStore";
-import { getApiUrl } from "@/lib/api";
+import { getApiUrl, resolveApiAssetUrl } from "@/lib/api";
 import { applyAudioOutputDevice } from "@/lib/audioUtils";
 import {
     updateMediaSessionMetadata,
@@ -23,7 +23,8 @@ import { CustomPromptsModal } from "@/components/chat/CustomPromptsModal";
 import { BrainIcon, MetadataIcon, ServerIcon, CloseIcon, CollapseRightIcon } from "@/components/icons/Icons";
 import { WidgetSimple, WidgetToggle, WidgetWithCustomHeader } from "@/components/ui/Widget";
 import { AvatarMedia } from "@/components/ui/AvatarMedia";
-import { isVideoAvatar, registerVideoBlobUrl } from "@/lib/characterUtils";
+import { isVideoAvatar, registerVideoBlobUrl, formatAvatarPicture, DEFAULT_MODEL_AVATAR, getModelAvatarPicture } from "@/lib/characterUtils";
+import { isImageAttachment, isAudioAttachment, getImageSrc, isFileBackedAttachment, fetchAttachmentText, fetchAttachmentDataUrl, getAttachmentUrl } from "@/lib/attachmentUtils";
 
 // --- Types ---
 interface ChatFolder {
@@ -38,6 +39,9 @@ interface MessageAttachment {
     type: string;
     name?: string;
     content: string;
+    url?: string;
+    is_file?: boolean;
+    size?: number;
 }
 
 interface SelectedAttachment {
@@ -237,17 +241,6 @@ const isCharEnabled = (char?: any) => {
     return Boolean(getCharacterName(char));
 };
 
-const formatAvatarPicture = (picture?: string | null): string | undefined => {
-    if (!picture) return undefined;
-    if (picture.startsWith("data:") || picture.startsWith("http://") || picture.startsWith("https://") || picture.startsWith("/")) {
-        return picture;
-    }
-    if (picture.startsWith("AAAA") && picture.slice(4, 16).includes("ZnR5c")) {
-        return `data:video/mp4;base64,${picture}`;
-    }
-    return `data:image/png;base64,${picture}`;
-};
-
 const getAvatarColor = (name: string): string => {
     if (!name) return "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)";
     let hash = 0;
@@ -300,40 +293,6 @@ const playNotificationSound = async () => {
     } catch (err) {
         console.warn("Notification sound playback error:", err);
     }
-};
-
-const DEFAULT_MODEL_AVATAR = "/icon-app.svg";
-
-const getModelAvatarPicture = (pref?: ModelPreference | null, mod?: any): string => {
-    const rawPic = pref?.picture || pref?.character?.data?.avatar || pref?.character?.avatar || mod?.picture || mod?.avatar || mod?.senderAvatar;
-    return formatAvatarPicture(rawPic) || DEFAULT_MODEL_AVATAR;
-};
-
-const isImageAttachment = (att: MessageAttachment | any): boolean => {
-    if (!att) return false;
-    const typeStr = (att.type || "").toLowerCase();
-    if (typeStr.includes("image") || typeStr.includes("photo") || typeStr.includes("png") || typeStr.includes("jpg") || typeStr.includes("jpeg")) {
-        return true;
-    }
-    const contentStr = typeof att.content === "string" ? att.content.trim() : "";
-    if (
-        contentStr.startsWith("data:image/") ||
-        contentStr.startsWith("iVBOR") ||
-        contentStr.startsWith("/9j/") ||
-        contentStr.startsWith("R0lGOD") ||
-        contentStr.startsWith("UklGR")
-    ) {
-        return true;
-    }
-    return false;
-};
-
-const getImageSrc = (att: MessageAttachment | any): string => {
-    const contentStr = typeof att.content === "string" ? att.content.trim() : "";
-    if (contentStr.startsWith("data:") || contentStr.startsWith("http://") || contentStr.startsWith("https://") || contentStr.startsWith("/")) {
-        return contentStr;
-    }
-    return `data:image/png;base64,${contentStr}`;
 };
 
 const mapBackendMsgToMessage = (m: BackendMessage, prefMap?: Record<string, ModelPreference>): Message => {
@@ -2815,6 +2774,7 @@ export default function ChatPage() {
 
     const getConversationParticipants = () => {
         const map = new Map<string, { id: string; name: string; avatar: string; role: string }>();
+        const allPrefs = Object.values(modelPreferences);
 
         map.set("user", {
             id: "user",
@@ -2825,20 +2785,55 @@ export default function ChatPage() {
 
         messages.forEach((msg) => {
             if (!msg.isSelf) {
-                const key = (msg.senderName || "").toLowerCase();
-                if (!map.has(key)) {
-                    const pref = modelPreferences[key] || modelPreferences[msg.senderName || ""];
-                    const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || DEFAULT_MODEL_AVATAR;
-                    const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
-                    const displayName = charName || getCharacterName(pref?.character) || msg.senderName;
-                    const roleLabel = isCharEnabled(pref?.character) ? "Character" : "AI Model";
+                const senderRaw = (msg.senderName || "").trim();
+                const senderKey = senderRaw.toLowerCase();
+                const modelRaw = (msg.model || "").trim();
+                const modelKey = modelRaw.toLowerCase();
 
-                    map.set(key, {
-                        id: key,
+                const pref =
+                    (modelRaw ? modelPreferences[modelRaw] || modelPreferences[modelKey] : undefined) ||
+                    (senderRaw ? modelPreferences[senderRaw] || modelPreferences[senderKey] : undefined) ||
+                    allPrefs.find((p) => {
+                        const pId = (p.id || "").toLowerCase();
+                        const pModelId = (p.model_id || "").toLowerCase();
+                        const pModelName = (p.model_name || "").toLowerCase();
+                        const cName = (getCharacterName(p.character) || "").toLowerCase();
+                        return (
+                            (modelKey && (pId === modelKey || pModelId === modelKey || pModelName === modelKey)) ||
+                            (senderKey && (pId === senderKey || cName === senderKey))
+                        );
+                    });
+
+                const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
+                const displayName = charName || getCharacterName(pref?.character) || senderRaw || modelRaw || "Assistant";
+                const roleLabel = isCharEnabled(pref?.character) ? "Character" : "AI Model";
+                const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || DEFAULT_MODEL_AVATAR;
+                const targetId = pref?.id || modelRaw || senderRaw || displayName;
+                const canonicalKey = pref?.id ? `pref:${pref.id.toLowerCase()}` : `name:${displayName.toLowerCase()}`;
+
+                const existingEntry =
+                    map.get(canonicalKey) ||
+                    Array.from(map.entries()).find(
+                        ([k, p]) => k !== "user" && p.name.trim().toLowerCase() === displayName.trim().toLowerCase()
+                    )?.[1];
+
+                if (!existingEntry) {
+                    map.set(canonicalKey, {
+                        id: targetId,
                         name: displayName,
                         avatar: avatarSrc,
                         role: roleLabel,
                     });
+                } else {
+                    if (roleLabel === "Character" && existingEntry.role !== "Character") {
+                        existingEntry.role = "Character";
+                    }
+                    if (existingEntry.avatar === DEFAULT_MODEL_AVATAR && avatarSrc !== DEFAULT_MODEL_AVATAR) {
+                        existingEntry.avatar = avatarSrc;
+                    }
+                    if (pref?.id) {
+                        existingEntry.id = pref.id;
+                    }
                 }
             }
         });
@@ -2911,7 +2906,43 @@ export default function ChatPage() {
         setIsExportModalOpen(true);
     };
 
-    const handleExportChat = () => {
+    const resolveExportMessageData = async (m: Message) => {
+        let resolvedImage = m.image;
+        if (
+            resolvedImage &&
+            (resolvedImage.startsWith("/api/attachments/") ||
+                (resolvedImage.startsWith("http") && resolvedImage.includes("/api/attachments/")))
+        ) {
+            try {
+                resolvedImage = await fetchAttachmentDataUrl({ url: resolvedImage, is_file: true });
+            } catch {
+                // fallback to original image URL if fetch fails
+            }
+        }
+
+        const resolvedAttachments = m.attachments
+            ? await Promise.all(
+                  m.attachments.map(async (att) => {
+                      if (!isFileBackedAttachment(att)) {
+                          return att;
+                      }
+                      try {
+                          const content =
+                              isImageAttachment(att) || isAudioAttachment(att)
+                                  ? await fetchAttachmentDataUrl(att)
+                                  : await fetchAttachmentText(att);
+                          return { ...att, content };
+                      } catch {
+                          return att;
+                      }
+                  }),
+              )
+            : m.attachments;
+
+        return { resolvedImage, resolvedAttachments };
+    };
+
+    const handleExportChat = async () => {
         if (!messages || messages.length === 0) {
             alert("No messages to export.");
             return;
@@ -2927,19 +2958,25 @@ export default function ChatPage() {
         if (exportFormat === "json") {
             mimeType = "application/json";
             fileExt = "json";
+            const exportedMessages = await Promise.all(
+                messages.map(async (m) => {
+                    const { resolvedImage, resolvedAttachments } = await resolveExportMessageData(m);
+                    return {
+                        id: m.id,
+                        senderName: m.senderName,
+                        role: m.isSelf ? "user" : m.senderRole || "assistant",
+                        model: m.model,
+                        content: m.content,
+                        time: m.time,
+                        image: resolvedImage,
+                        attachments: resolvedAttachments,
+                    };
+                }),
+            );
             const exportData = {
                 title: chatTitle,
                 exported_at: new Date().toISOString(),
-                messages: messages.map((m) => ({
-                    id: m.id,
-                    senderName: m.senderName,
-                    role: m.isSelf ? "user" : m.senderRole || "assistant",
-                    model: m.model,
-                    content: m.content,
-                    time: m.time,
-                    image: m.image,
-                    attachments: m.attachments,
-                })),
+                messages: exportedMessages,
             };
             fileContent = JSON.stringify(exportData, null, 2);
         } else if (exportFormat === "txt") {
@@ -2968,22 +3005,26 @@ export default function ChatPage() {
             const isObsidian = exportFormat === "obsidian";
             const mdLines: string[] = [`# ${chatTitle}\n`];
 
-            messages.forEach((m) => {
+            for (const m of messages) {
                 const sender = m.isSelf ? "User" : m.senderName || "Assistant";
                 const timeStr = m.time || "";
                 mdLines.push(`### **${sender}** | ${timeStr}`);
                 mdLines.push(m.content);
 
-                if (m.image) {
-                    mdLines.push(`![🖼️ Image](${m.image})`);
+                const { resolvedImage, resolvedAttachments } = await resolveExportMessageData(m);
+
+                if (resolvedImage) {
+                    mdLines.push(`![🖼️ Image](${resolvedImage})`);
                 }
 
-                if (m.attachments && m.attachments.length > 0) {
-                    m.attachments.forEach((att) => {
+                if (resolvedAttachments && resolvedAttachments.length > 0) {
+                    resolvedAttachments.forEach((att) => {
                         if (att.type === "thought" || att.type === "metadata") return;
                         const attName = att.name || "Attachment";
                         const attContent = att.content || "";
-                        if (isObsidian) {
+                        if (isImageAttachment(att) && (attContent.startsWith("data:image/") || attContent.startsWith("http"))) {
+                            mdLines.push(`![🖼️ ${attName}](${attContent})`);
+                        } else if (isObsidian) {
                             let block = `> [!quote]- ${attName}\n`;
                             attContent.split("\n").forEach((l) => {
                                 block += `> ${l}\n`;
@@ -2995,7 +3036,7 @@ export default function ChatPage() {
                     });
                 }
                 mdLines.push("----");
-            });
+            }
             mdLines.push("Generated from [Walpaca](https://github.com/c42759/walpaca)");
             fileContent = mdLines.join("\n\n");
         }
@@ -3487,7 +3528,7 @@ export default function ChatPage() {
         // Save user message to backend
         if (activeChatId) {
             try {
-                await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
+                const res = await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -3498,6 +3539,28 @@ export default function ChatPage() {
                         attachments: attachmentsPayload,
                     }),
                 });
+                if (res.ok) {
+                    const savedMsg = await res.json();
+                    if (savedMsg?.id) {
+                        setMessages((prev) =>
+                            prev.map((m) => {
+                                if (m.id !== userMsg.id) return m;
+                                const nextAtts: MessageAttachment[] | undefined = Array.isArray(savedMsg.attachments)
+                                    ? savedMsg.attachments.map((att: MessageAttachment) => ({
+                                          ...att,
+                                          url: att.url ? resolveApiAssetUrl(att.url) : att.url,
+                                      }))
+                                    : m.attachments;
+                                return {
+                                    ...m,
+                                    id: savedMsg.id,
+                                    image: nextAtts?.some(isImageAttachment) ? undefined : m.image,
+                                    attachments: nextAtts,
+                                };
+                            }),
+                        );
+                    }
+                }
             } catch (err) {
                 console.warn("Could not post user message to backend API:", err);
             }
@@ -4795,13 +4858,43 @@ export default function ChatPage() {
                                                                 {atts.otherFiles.map((item, idx) => (
                                                                     <button
                                                                         key={idx}
-                                                                        onClick={() =>
+                                                                        onClick={async () => {
+                                                                            if (isFileBackedAttachment(item)) {
+                                                                                if (isAudioAttachment(item)) {
+                                                                                    const audioUrl = getAttachmentUrl(item);
+                                                                                    if (audioUrl) {
+                                                                                        window.open(audioUrl, "_blank", "noopener,noreferrer");
+                                                                                    } else {
+                                                                                        setActiveAttachmentModal({
+                                                                                            title: item.name || "Audio Attachment",
+                                                                                            type: item.type || "audio",
+                                                                                            content: "Audio attachment URL unavailable.",
+                                                                                        });
+                                                                                    }
+                                                                                    return;
+                                                                                }
+                                                                                try {
+                                                                                    const text = await fetchAttachmentText(item);
+                                                                                    setActiveAttachmentModal({
+                                                                                        title: item.name || "Attachment",
+                                                                                        type: item.type || "file",
+                                                                                        content: text,
+                                                                                    });
+                                                                                } catch (err: any) {
+                                                                                    setActiveAttachmentModal({
+                                                                                        title: item.name || "Attachment",
+                                                                                        type: item.type || "file",
+                                                                                        content: `Failed to load attachment: ${err?.message || "Unknown error"}`,
+                                                                                    });
+                                                                                }
+                                                                                return;
+                                                                            }
                                                                             setActiveAttachmentModal({
                                                                                 title: item.name || "Attachment",
                                                                                 type: item.type || "file",
                                                                                 content: item.content,
-                                                                            })
-                                                                        }
+                                                                            });
+                                                                        }}
                                                                         className="w-full text-left px-3 py-2 rounded-xl bg-[#f8f9fe] hover:bg-[#7678ed] hover:text-white text-[#202022] transition-colors text-sm font-medium flex items-center justify-between border border-[#e8ebf3] group cursor-pointer"
                                                                     >
                                                                         <span className="truncate">{item.name || `File ${idx + 1}`}</span>

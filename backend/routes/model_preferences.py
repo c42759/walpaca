@@ -9,6 +9,7 @@ from models import InstanceModel
 from models import generate_uuid
 from models import ModelPreferences
 from models import is_internal_id
+from utils.storage import persist_avatar_if_inline
 
 model_preferences_bp = Blueprint("model_preferences", __name__)
 
@@ -111,7 +112,7 @@ def list_model_preferences():
         pref.model_id = model_uuid
 
         if "picture" in data:
-            pref.picture = data["picture"]
+            pref.picture = persist_avatar_if_inline(data["picture"])
         if "voice" in data:
             pref.voice = data["voice"]
         if "num_ctx" in data:
@@ -207,7 +208,7 @@ def model_preferences(model_id):
             if "instance_id" in data:
                 pref.instance_id = data["instance_id"]
         if "picture" in data:
-            pref.picture = data["picture"]
+            pref.picture = persist_avatar_if_inline(data["picture"])
         if "voice" in data:
             pref.voice = data["voice"]
         if "num_ctx" in data:

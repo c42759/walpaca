@@ -5,17 +5,38 @@ from flask import Blueprint
 from models import db
 from models import ChatFolder
 from models import generate_uuid
+from utils.storage import delete_chat_storage_dir
 
 folders_bp = Blueprint("folders", __name__)
 
 
+def _collect_folder_chat_ids(folder) -> list[str]:
+    """Recursively gather chat IDs under folder and all nested subfolders."""
+    chat_ids = []
+    visited = set()
+    stack = [folder]
+    while stack:
+        current = stack.pop()
+        if not current or current.id in visited:
+            continue
+        visited.add(current.id)
+        for chat in current.chats:
+            chat_ids.append(chat.id)
+        for sub in current.subfolders:
+            stack.append(sub)
+    return chat_ids
+
+
 def _delete_chat_internal(chat):
-    """Delete a chat and all its messages and attachments via cascade."""
+    """Delete a chat, its storage directory, and all its messages/attachments via cascade."""
+    delete_chat_storage_dir(chat.id)
     db.session.delete(chat)
 
 
 def _delete_folder_internal(folder):
-    """Delete a folder, its subfolders, and all contained chats and messages via cascade."""
+    """Delete a folder, its subfolders, contained chat storage dirs, and DB records."""
+    for chat_id in _collect_folder_chat_ids(folder):
+        delete_chat_storage_dir(chat_id)
     db.session.delete(folder)
 
 

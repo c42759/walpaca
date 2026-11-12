@@ -6,7 +6,7 @@ import { Badge } from "../ui/Badge";
 import { Input, Textarea } from "../ui/Input";
 import { PlusIcon, EditIcon, TrashIcon, CheckIcon, SearchIcon, ChevronIcon } from "../icons/Icons";
 import { TTS_VOICE_GROUPS, getVoiceDisplayName } from "@/lib/voiceConstants";
-import { registerVideoBlobUrl } from "@/lib/characterUtils";
+import { registerVideoBlobUrl, formatAvatarPicture } from "@/lib/characterUtils";
 import { AvatarMedia } from "../ui/AvatarMedia";
 import { CardStacked } from "../ui/Card";
 
@@ -155,7 +155,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
                 const data = await res.json();
                 if (data.picture) {
                     setPersonaFormPicture(data.picture);
-                    setPersonaAvatarPreview(data.picture);
+                    setPersonaAvatarPreview(formatAvatarPicture(data.picture) || data.picture);
                 }
             } else {
                 const errData = await res.json();
@@ -341,7 +341,7 @@ export const ManagePersonasPanel: React.FC<ManagePersonasPanelProps> = ({
                             <div className="flex items-center gap-4 bg-[#f9fafc] p-4 rounded-xl border border-[#e8ebf3]">
                                 <div className="w-16 h-16 rounded-2xl bg-[#eaecf9] border border-[#7678ed]/30 overflow-hidden flex items-center justify-center shrink-0 shadow-sm relative group">
                                     {personaAvatarPreview || personaFormPicture ? (
-                                        <AvatarMedia src={personaAvatarPreview || personaFormPicture || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
+                                        <AvatarMedia src={formatAvatarPicture(personaAvatarPreview || personaFormPicture) || ""} alt="Avatar Preview" className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-2xl">🎭</span>
                                     )}

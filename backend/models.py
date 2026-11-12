@@ -1,3 +1,4 @@
+import os
 import re
 import json
 import uuid
@@ -113,8 +114,25 @@ class Attachment(db.Model):
     type = db.Column(db.String, nullable=False)
     name = db.Column(db.String, nullable=False)
     content = db.Column(db.Text, nullable=False)
+    file_path = db.Column(db.String, nullable=True)
 
     def to_dict(self):
+        if self.file_path:
+            from utils.storage import resolve_storage_file
+
+            abs_path = resolve_storage_file(self.file_path)
+            size_bytes = os.path.getsize(abs_path) if abs_path else None
+            url = f"/api/attachments/{self.id}"
+            return {
+                "id": self.id,
+                "message_id": self.message_id,
+                "type": self.type,
+                "name": self.name,
+                "content": url,
+                "url": url,
+                "is_file": True,
+                "size": size_bytes,
+            }
         return {
             "id": self.id,
             "message_id": self.message_id,
@@ -266,8 +284,10 @@ class ModelPreferences(db.Model):
         return res
 
     def set_character(self, char_dict: dict):
+        from utils.storage import normalize_character_avatars
+
         current_ctx = self.num_ctx
-        new_dict = dict(char_dict) if isinstance(char_dict, dict) else {}
+        new_dict = normalize_character_avatars(char_dict) if isinstance(char_dict, dict) else {}
         try:
             from routes.lorebook import normalize_character_book_links
 

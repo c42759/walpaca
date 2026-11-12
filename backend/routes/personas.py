@@ -1,7 +1,6 @@
 import os
 import re
 import json
-import base64
 
 from flask import Blueprint
 from flask import request
@@ -9,6 +8,12 @@ from flask import jsonify
 from routes.lorebook import (
     normalize_character_book_links,
     resolve_character_book_entries,
+)
+from utils.storage import (
+    detect_avatar_mime_and_ext,
+    normalize_character_avatars,
+    persist_avatar_if_inline,
+    save_avatar_bytes,
 )
 
 personas_bp = Blueprint("personas", __name__)
@@ -122,6 +127,10 @@ def create_persona_template():
         payload["description"] = ""
     if "system_prompt" not in payload:
         payload["system_prompt"] = payload.get("personality", "")
+    if "picture" in payload:
+        payload["picture"] = persist_avatar_if_inline(payload.get("picture"))
+    if isinstance(payload.get("character"), dict):
+        payload["character"] = normalize_character_avatars(payload["character"])
     if isinstance(payload.get("character_book"), dict):
         payload["character_book"] = normalize_character_book_links(
             payload["character_book"]
@@ -155,6 +164,10 @@ def update_persona_template(filename):
 
     payload = dict(data)
     payload["name"] = name
+    if "picture" in payload:
+        payload["picture"] = persist_avatar_if_inline(payload.get("picture"))
+    if isinstance(payload.get("character"), dict):
+        payload["character"] = normalize_character_avatars(payload["character"])
     if isinstance(payload.get("character_book"), dict):
         payload["character_book"] = normalize_character_book_links(
             payload["character_book"]
@@ -191,18 +204,16 @@ def upload_persona_avatar():
     if not file or not file.filename:
         return jsonify({"error": "No image file provided"}), 400
 
-    filename_lower = file.filename.lower()
-    content_type = file.content_type or "image/png"
-    if content_type == "video/mp4" or filename_lower.endswith(".mp4"):
-        content_type = "video/mp4"
-    elif not content_type.startswith("image/"):
-        content_type = "image/png"
-
     raw_bytes = file.read()
     if not raw_bytes:
         return jsonify({"error": "Uploaded file is empty"}), 400
 
-    b64_str = base64.b64encode(raw_bytes).decode("utf-8")
-    data_uri = f"data:{content_type};base64,{b64_str}"
+    detected = detect_avatar_mime_and_ext(
+        raw_bytes, filename=file.filename, content_type=file.content_type
+    )
+    if not detected:
+        return jsonify({"error": "Unsupported avatar file type"}), 400
 
-    return jsonify({"picture": data_uri}), 200
+    _mime, ext = detected
+    avatar_url = save_avatar_bytes(raw_bytes, ext)
+    return jsonify({"picture": avatar_url}), 200

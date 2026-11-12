@@ -23,6 +23,7 @@ from models import Preference
 from models import generate_uuid
 from models import current_alpaca_timestamp
 from utils.mcp_manager import McpManager
+from utils.storage import INLINE_DB_ATTACHMENT_TYPES, read_attachment_for_llm
 
 logger = logging.getLogger("walpaca.generate")
 
@@ -596,22 +597,19 @@ def _format_message_attachments(content: str, attachments: list) -> tuple:
 
     for a in attachments:
         a_type = a.get("type") if isinstance(a, dict) else getattr(a, "type", "")
-        a_content = a.get("content") if isinstance(a, dict) else getattr(a, "content", "")
         a_name = a.get("name", "document") if isinstance(a, dict) else getattr(a, "name", "document")
+        norm_type = (a_type or "").strip().lower()
 
-        if (
-            a_type in ("image", "png", "jpg", "jpeg", "webp")
-            or (isinstance(a_content, str) and a_content.startswith("data:image"))
-        ):
-            clean_b64 = clean_base64_image(a_content)
+        if norm_type in INLINE_DB_ATTACHMENT_TYPES:
+            continue
+
+        resolved = read_attachment_for_llm(a)
+        if resolved.get("is_image"):
+            clean_b64 = clean_base64_image(resolved.get("base64") or "")
             if clean_b64:
                 images.append(clean_b64)
-        elif (
-            a_type not in ("thought", "metadata", "tool")
-            and not (isinstance(a_content, str) and a_content.startswith("data:image"))
-        ):
-            if a_content:
-                doc_blocks.append(f"```{a_name} ({a_type})\n{a_content}\n```")
+        elif not resolved.get("is_audio") and resolved.get("text"):
+            doc_blocks.append(f"```{a_name} ({a_type})\n{resolved['text']}\n```")
 
     final_content = content or ""
     if doc_blocks:

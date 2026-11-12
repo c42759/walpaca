@@ -11,6 +11,18 @@ export const getApiUrl = (): string => {
     return "http://localhost:5100/api";
 };
 
+export const getBackendOrigin = (): string => getApiUrl().replace(/\/api\/?$/, "");
+
+export const resolveApiAssetUrl = (src?: string | null): string | undefined => {
+    if (!src) return undefined;
+    const trimmed = src.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.startsWith("/api/")) {
+        return `${getBackendOrigin()}${trimmed}`;
+    }
+    return trimmed;
+};
+
 const TOKEN_STORAGE_KEY = "walpaca_session_token";
 let currentSessionToken: string | null = null;
 let onAuthRequiredCallback: (() => void) | null = null;
