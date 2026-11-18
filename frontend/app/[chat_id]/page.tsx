@@ -20,7 +20,7 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { OneOnOnePanel, OneOnOneAgentStatus } from "@/components/chat/OneOnOnePanel";
 import { PersonaDetailsModal, PersonaDetailsData } from "@/components/chat/PersonaDetailsModal";
 import { CustomPromptsModal } from "@/components/chat/CustomPromptsModal";
-import { BrainIcon, MetadataIcon, ServerIcon, CloseIcon, CollapseRightIcon } from "@/components/icons/Icons";
+import { BrainIcon, MetadataIcon, ServerIcon, CloseIcon, PlusIcon, CollapseRightIcon } from "@/components/icons/Icons";
 import { WidgetSimple, WidgetToggle, WidgetWithCustomHeader } from "@/components/ui/Widget";
 import { AvatarMedia } from "@/components/ui/AvatarMedia";
 import { isVideoAvatar, registerVideoBlobUrl, formatAvatarPicture, DEFAULT_MODEL_AVATAR, getModelAvatarPicture } from "@/lib/characterUtils";
@@ -130,6 +130,7 @@ interface ChatItem {
     isPinned?: boolean;
     isDelivered?: boolean;
     folder?: string;
+    agents?: string[];
 }
 
 interface BackendMessage {
@@ -186,6 +187,7 @@ interface BackendChat {
     is_template?: boolean;
     latest_message_time?: string | null;
     messages?: BackendMessage[];
+    agents?: string[];
 }
 
 const initialMockChatList: ChatItem[] = [];
@@ -218,6 +220,7 @@ const mapBackendChatToChatItem = (c: BackendChat): ChatItem => {
         lastMessage: c.latest_message_time ? `Last msg ${timeStr}` : "No messages yet",
         time: timeStr,
         folder: c.folder || undefined,
+        agents: Array.isArray(c.agents) ? c.agents : undefined,
     };
 };
 
@@ -324,7 +327,7 @@ const mapBackendMsgToMessage = (m: BackendMessage, prefMap?: Record<string, Mode
 
 const parseFormatting = (str: string): React.ReactNode[] => {
     const parts: React.ReactNode[] = [];
-    const regex = /(\*\*(.*?)\*\*|__(.*?)__|~~(.*?)~~|\*(.*?)\*|_(.*?)_|`(.*?)`|\[(.*?)\]\((.*?)\))/g;
+    const regex = /(\*\*(.*?)\*\*|__(.*?)__|~~(.*?)~~|\*(.*?)\*|_(.*?)_|`(.*?)`|\[(.*?)\]\((.*?)\)|@([A-Za-z0-9_.-]+))/g;
     let lastIdx = 0;
     let m: RegExpExecArray | null;
 
@@ -373,6 +376,16 @@ const parseFormatting = (str: string): React.ReactNode[] => {
                 <a key={m.index} href={m[9]} target="_blank" rel="noreferrer" className="underline font-medium text-[#7678ed] hover:opacity-80 transition-opacity">
                     {m[8]}
                 </a>,
+            );
+        } else if (m[10] !== undefined) {
+            const mentionName = m[10];
+            parts.push(
+                <span
+                    key={m.index}
+                    className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold bg-[#7678ed]/15 text-[#7678ed] border border-[#7678ed]/30 mx-0.5 [div.text-white_&]:bg-white/20 [div.text-white_&]:text-white [div.text-white_&]:border-white/30"
+                >
+                    @{mentionName}
+                </span>,
             );
         }
         lastIdx = regex.lastIndex;
@@ -935,6 +948,11 @@ export default function ChatPage() {
     const [renameInputVal, setRenameInputVal] = useState<string>("");
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
     const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState<boolean>(false);
+    const [chatAgents, setChatAgents] = useState<string[]>([]);
+    const [isAddAgentModalOpen, setIsAddAgentModalOpen] = useState<boolean>(false);
+    const [agentModalSearch, setAgentModalSearch] = useState<string>("");
+    const [isRoutingCoordinator, setIsRoutingCoordinator] = useState<boolean>(false);
+    const [isGeneratingState, setIsGeneratingState] = useState<boolean>(false);
     const [isForkModalOpen, setIsForkModalOpen] = useState<boolean>(false);
     const [forkTargetMsg, setForkTargetMsg] = useState<Message | null>(null);
     const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
@@ -2772,9 +2790,51 @@ export default function ChatPage() {
         }
     };
 
+    const handleAddAgentToChat = async (agentId: string) => {
+        if (!agentId || !activeChatId) return;
+        const trimmed = agentId.trim();
+        if (!trimmed) return;
+        if (chatAgents.some((a) => a.toLowerCase() === trimmed.toLowerCase())) return;
+
+        const updated = [...chatAgents, trimmed];
+        setChatAgents(updated);
+        setActiveChat((prev) => (prev ? { ...prev, agents: updated } : null));
+        setChatItems((prev) => prev.map((c) => (c.id === activeChatId ? { ...c, agents: updated } : c)));
+
+        try {
+            await fetch(`${API_URL}/chats/${activeChatId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ agents: updated }),
+            });
+        } catch (err) {
+            console.warn("Could not add agent to chat on backend API:", err);
+        }
+    };
+
+    const handleRemoveAgentFromChat = async (agentId: string) => {
+        if (!agentId || !activeChatId) return;
+        const lower = agentId.toLowerCase();
+        const updated = chatAgents.filter((a) => a.toLowerCase() !== lower);
+        setChatAgents(updated);
+        setActiveChat((prev) => (prev ? { ...prev, agents: updated } : null));
+        setChatItems((prev) => prev.map((c) => (c.id === activeChatId ? { ...c, agents: updated } : c)));
+
+        try {
+            await fetch(`${API_URL}/chats/${activeChatId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ agents: updated }),
+            });
+        } catch (err) {
+            console.warn("Could not remove agent from chat on backend API:", err);
+        }
+    };
+
     const getConversationParticipants = () => {
-        const map = new Map<string, { id: string; name: string; avatar: string; role: string }>();
+        const map = new Map<string, { id: string; name: string; avatar: string; role: string; isGlobal?: boolean }>();
         const allPrefs = Object.values(modelPreferences);
+        const globalAgentId = (appPreferences?.global_agent_id || "").trim().toLowerCase();
 
         map.set("user", {
             id: "user",
@@ -2783,6 +2843,39 @@ export default function ChatPage() {
             role: "User",
         });
 
+        // 1. Process agents explicitly in chatAgents
+        chatAgents.forEach((agentId) => {
+            if (!agentId || agentId.toLowerCase() === "user") return;
+            const aKey = agentId.toLowerCase();
+
+            const pref =
+                modelPreferences[agentId] ||
+                modelPreferences[aKey] ||
+                allPrefs.find((p) => {
+                    const pId = (p.id || "").toLowerCase();
+                    const pModelId = (p.model_id || "").toLowerCase();
+                    const pModelName = (p.model_name || "").toLowerCase();
+                    const cName = (getCharacterName(p.character) || "").toLowerCase();
+                    return pId === aKey || pModelId === aKey || pModelName === aKey || cName === aKey;
+                });
+
+            const instMod = instanceModelsList.find((m) => m.id.toLowerCase() === aKey);
+            const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
+            const displayName = charName || getCharacterName(pref?.character) || pref?.name || instMod?.name || agentId;
+            const roleLabel = isCharEnabled(pref?.character) ? "Character" : "AI Model";
+            const avatarSrc = formatAvatarPicture(pref?.picture) || DEFAULT_MODEL_AVATAR;
+            const targetId = pref?.id || agentId;
+            const canonicalKey = pref?.id ? `pref:${pref.id.toLowerCase()}` : `id:${targetId.toLowerCase()}`;
+
+            map.set(canonicalKey, {
+                id: targetId,
+                name: displayName,
+                avatar: avatarSrc,
+                role: roleLabel,
+            });
+        });
+
+        // 2. Process non-self messages
         messages.forEach((msg) => {
             if (!msg.isSelf) {
                 const senderRaw = (msg.senderName || "").trim();
@@ -2804,8 +2897,9 @@ export default function ChatPage() {
                         );
                     });
 
+                const instMod = modelRaw ? instanceModelsList.find((m) => m.id.toLowerCase() === modelKey) : undefined;
                 const charName = isCharEnabled(pref?.character) ? getCharacterName(pref?.character) : undefined;
-                const displayName = charName || getCharacterName(pref?.character) || senderRaw || modelRaw || "Assistant";
+                const displayName = charName || getCharacterName(pref?.character) || pref?.name || instMod?.name || senderRaw || modelRaw || "Assistant";
                 const roleLabel = isCharEnabled(pref?.character) ? "Character" : "AI Model";
                 const avatarSrc = msg.senderAvatar || formatAvatarPicture(pref?.picture) || DEFAULT_MODEL_AVATAR;
                 const targetId = pref?.id || modelRaw || senderRaw || displayName;
@@ -2814,7 +2908,7 @@ export default function ChatPage() {
                 const existingEntry =
                     map.get(canonicalKey) ||
                     Array.from(map.entries()).find(
-                        ([k, p]) => k !== "user" && p.name.trim().toLowerCase() === displayName.trim().toLowerCase()
+                        ([k, p]) => k !== "user" && (p.name.trim().toLowerCase() === displayName.trim().toLowerCase() || p.id.toLowerCase() === targetId.toLowerCase())
                     )?.[1];
 
                 if (!existingEntry) {
@@ -2838,8 +2932,39 @@ export default function ChatPage() {
             }
         });
 
+        // 3. Global Agent coordinator badging
+        const nonUserParticipants = Array.from(map.values()).filter((p) => p.id !== "user");
+        const hasMultipleAgents = nonUserParticipants.length > 1;
+
+        if (globalAgentId) {
+            const globalMatchedEntry = nonUserParticipants.find(
+                (p) => p.id.toLowerCase() === globalAgentId
+            );
+
+            if (globalMatchedEntry) {
+                if (hasMultipleAgents || chatAgents.some((a) => a.toLowerCase() === globalAgentId)) {
+                    globalMatchedEntry.isGlobal = true;
+                    globalMatchedEntry.role = "Global Agent";
+                }
+            } else if (hasMultipleAgents || chatAgents.some((a) => a.toLowerCase() === globalAgentId)) {
+                const pref = modelPreferences[globalAgentId] || allPrefs.find((p) => (p.id || "").toLowerCase() === globalAgentId);
+                if (pref) {
+                    const charName = getCharacterName(pref.character);
+                    const displayName = charName || pref.name || pref.model_name || pref.id;
+                    map.set(`pref:${pref.id.toLowerCase()}`, {
+                        id: pref.id,
+                        name: displayName,
+                        avatar: formatAvatarPicture(pref.picture) || DEFAULT_MODEL_AVATAR,
+                        role: "Global Agent",
+                        isGlobal: true,
+                    });
+                }
+            }
+        }
+
         return Array.from(map.values());
     };
+
     const [activeChatId, setActiveChatId] = useState<string>(routeChatId || "");
     const [activeChat, setActiveChat] = useState<ChatItem | null>(null);
     const [searchQuery, setSearchQuery] = useState<string>("");
@@ -3086,6 +3211,21 @@ export default function ChatPage() {
     const [chatItems, setChatItems] = useState<ChatItem[]>(initialMockChatList);
     const [messages, setMessages] = useState<Message[]>([]);
 
+    const isMultiAgentChat = useMemo(
+        () => chatAgents.length > 1 || getConversationParticipants().filter((p) => p.id !== "user").length > 1,
+        [chatAgents, messages, modelPreferences, appPreferences?.global_agent_id]
+    );
+
+    const globalAgentDisplayName = useMemo(() => {
+        const gId = appPreferences?.global_agent_id;
+        if (!gId) return "Global Coordinator";
+        const pref =
+            modelPreferences[gId] ||
+            modelPreferences[gId.toLowerCase()] ||
+            Object.values(modelPreferences).find((p) => p.id?.toLowerCase() === gId.toLowerCase());
+        return getCharacterName(pref?.character) || pref?.name || pref?.model_name || gId;
+    }, [appPreferences?.global_agent_id, modelPreferences]);
+
     // --- In-Chat Search State & Match Navigation ---
     const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
     const [chatSearchQuery, setChatSearchQuery] = useState<string>("");
@@ -3176,26 +3316,43 @@ export default function ChatPage() {
                 const data: BackendChat = await res.json();
                 const mapped = mapBackendChatToChatItem(data);
                 setActiveChat(mapped);
+                setChatAgents(Array.isArray(data.agents) ? data.agents : []);
                 const rawMsgs = Array.isArray(data.messages) ? data.messages : [];
                 setMessages(rawMsgs.map((m) => mapBackendMsgToMessage(m, modelPreferences)));
 
                 // Direct chat load: seed model & instance from last assistant response
-                const lastAssistant = [...rawMsgs].reverse().find((m) => m.role === "assistant" || (m.model && m.role !== "user"));
-                if (lastAssistant) {
-                    if (lastAssistant.model) {
-                        setSelectedChatModelId(lastAssistant.model);
+                const incomingAgents = Array.isArray(data.agents) ? data.agents : [];
+                const globalAgentPrefId = appPreferences?.global_agent_id;
+                const hasMultiAgents = incomingAgents.length > 1;
+
+                if (hasMultiAgents && globalAgentPrefId) {
+                    setSelectedChatModelId(globalAgentPrefId);
+                    const gPref = modelPreferences[globalAgentPrefId] || Object.values(modelPreferences).find((p) => p.id?.toLowerCase() === globalAgentPrefId.toLowerCase());
+                    if (gPref?.instance_id) {
+                        setSelectedChatInstanceId(gPref.instance_id);
+                        fetchModelsForInstance(gPref.instance_id);
+                        fetchInstanceModels(gPref.instance_id);
                     }
-                    if (lastAssistant.instance_id) {
-                        setSelectedChatInstanceId(lastAssistant.instance_id);
-                        fetchModelsForInstance(lastAssistant.instance_id);
-                        fetchInstanceModels(lastAssistant.instance_id);
+                } else {
+                    const lastAssistant = [...rawMsgs].reverse().find((m) => m.role === "assistant" || (m.model && m.role !== "user"));
+                    if (lastAssistant) {
+                        if (lastAssistant.model) {
+                            setSelectedChatModelId(lastAssistant.model);
+                        }
+                        if (lastAssistant.instance_id) {
+                            setSelectedChatInstanceId(lastAssistant.instance_id);
+                            fetchModelsForInstance(lastAssistant.instance_id);
+                            fetchInstanceModels(lastAssistant.instance_id);
+                        }
                     }
                 }
             } else {
+                setChatAgents([]);
                 setMessages([]);
             }
         } catch (err) {
             console.warn("Could not fetch chat messages from backend API:", err);
+            setChatAgents([]);
             setMessages([]);
         }
     };
@@ -3351,6 +3508,18 @@ export default function ChatPage() {
     useEffect(() => {
         if (!messages || messages.length === 0) return;
 
+        if (isMultiAgentChat && appPreferences?.global_agent_id) {
+            const gId = appPreferences.global_agent_id;
+            setSelectedChatModelId(gId);
+            const gPref = modelPreferences[gId] || Object.values(modelPreferences).find((p) => p.id?.toLowerCase() === gId.toLowerCase());
+            if (gPref?.instance_id) {
+                setSelectedChatInstanceId(gPref.instance_id);
+                fetchModelsForInstance(gPref.instance_id);
+                fetchInstanceModels(gPref.instance_id);
+            }
+            return;
+        }
+
         const lastAssistantMsg = [...messages].reverse().find((m) => !m.isSelf && (m.senderRole === "assistant" || m.senderName !== "You" || m.model));
 
         if (lastAssistantMsg) {
@@ -3488,92 +3657,147 @@ export default function ChatPage() {
         }
     };
 
-    const handleSendMessage = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!inputText.trim() && selectedAttachments.length === 0) return;
+    const availableAgentsCatalog = React.useMemo(() => {
+        const catalog: Array<{
+            id: string;
+            name: string;
+            handle: string;
+            instanceId?: string;
+            avatar?: string;
+            role?: string;
+            isInChat?: boolean;
+            isGlobal?: boolean;
+        }> = [];
 
-        const content = inputText.trim();
-        const currentAttachments = [...selectedAttachments];
-        setInputText("");
-        setSelectedAttachments([]);
+        const seenIds = new Set<string>();
+        const globalAgentId = (appPreferences?.global_agent_id || "").trim().toLowerCase();
 
-        if (promptTextareaRef.current) {
-            promptTextareaRef.current.style.height = "auto";
-            promptTextareaRef.current.style.overflowY = "hidden";
+        // 1. Model preferences (Personas / Characters)
+        const allPrefs = Object.values(modelPreferences);
+        for (const pref of allPrefs) {
+            if (!pref || !pref.id) continue;
+            const normId = pref.id.toLowerCase();
+            if (seenIds.has(normId)) continue;
+            seenIds.add(normId);
+
+            const char = pref.character;
+            const charName = getCharacterName(char) || pref.name || pref.model_name || pref.id;
+            const handle = charName.replace(/\s+/g, "_");
+            const isGlobal = normId === globalAgentId;
+            const isInChat = chatAgents.some((a) => a.toLowerCase() === normId);
+            const role = isCharEnabled(char) ? "Character" : "AI Persona";
+            const avatar = formatAvatarPicture(pref.picture) || DEFAULT_MODEL_AVATAR;
+
+            catalog.push({
+                id: pref.id,
+                name: charName,
+                handle,
+                instanceId: (pref as any).instance_id || selectedChatInstanceId,
+                avatar,
+                role,
+                isInChat,
+                isGlobal,
+            });
         }
 
-        const attachmentsPayload: MessageAttachment[] = currentAttachments.map((att, idx) => ({
-            id: att.id || `att-${Date.now()}-${idx}`,
-            type: att.type,
-            name: att.name,
-            content: att.content,
-        }));
+        // 2. Instance Models
+        for (const m of instanceModelsList) {
+            if (!m || !m.id) continue;
+            const normId = m.id.toLowerCase();
+            if (seenIds.has(normId)) continue;
+            seenIds.add(normId);
 
-        const firstImage = currentAttachments.find((a) => a.type === "image")?.content;
+            const name = m.name || m.id;
+            const handle = name.replace(/\s+/g, "_");
+            const isInChat = chatAgents.some((a) => a.toLowerCase() === normId);
+            const isGlobal = normId === globalAgentId;
 
-        const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-        const userMsg: Message = {
-            id: `msg-${Date.now()}`,
-            senderName: "You",
-            senderAvatar: "",
-            isSelf: true,
-            content,
-            time: nowStr,
-            image: firstImage,
-            attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
-        };
+            catalog.push({
+                id: m.id,
+                name,
+                handle,
+                instanceId: selectedChatInstanceId,
+                avatar: DEFAULT_MODEL_AVATAR,
+                role: "Model",
+                isInChat,
+                isGlobal,
+            });
+        }
 
-        setMessages((prev) => [...prev, userMsg]);
+        // 3. Additional chatAgents
+        for (const aId of chatAgents) {
+            if (!aId || seenIds.has(aId.toLowerCase())) continue;
+            seenIds.add(aId.toLowerCase());
+            catalog.push({
+                id: aId,
+                name: aId,
+                handle: aId.replace(/\s+/g, "_"),
+                instanceId: selectedChatInstanceId,
+                avatar: DEFAULT_MODEL_AVATAR,
+                role: "Agent",
+                isInChat: true,
+                isGlobal: aId.toLowerCase() === globalAgentId,
+            });
+        }
 
-        // Save user message to backend
-        if (activeChatId) {
-            try {
-                const res = await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        role: "user",
-                        content,
-                        model: selectedChatModelId,
-                        instance_id: selectedChatInstanceId,
-                        attachments: attachmentsPayload,
-                    }),
-                });
-                if (res.ok) {
-                    const savedMsg = await res.json();
-                    if (savedMsg?.id) {
-                        setMessages((prev) =>
-                            prev.map((m) => {
-                                if (m.id !== userMsg.id) return m;
-                                const nextAtts: MessageAttachment[] | undefined = Array.isArray(savedMsg.attachments)
-                                    ? savedMsg.attachments.map((att: MessageAttachment) => ({
-                                          ...att,
-                                          url: att.url ? resolveApiAssetUrl(att.url) : att.url,
-                                      }))
-                                    : m.attachments;
-                                return {
-                                    ...m,
-                                    id: savedMsg.id,
-                                    image: nextAtts?.some(isImageAttachment) ? undefined : m.image,
-                                    attachments: nextAtts,
-                                };
-                            }),
-                        );
-                    }
-                }
-            } catch (err) {
-                console.warn("Could not post user message to backend API:", err);
+        return catalog;
+    }, [modelPreferences, instanceModelsList, chatAgents, appPreferences?.global_agent_id, selectedChatInstanceId]);
+
+    const extractMentionedAgents = useCallback((text: string) => {
+        if (!text) return [];
+        const mentionRegex = /@([A-Za-z0-9_.-]+)/g;
+        const matches: string[] = [];
+        let m: RegExpExecArray | null;
+        while ((m = mentionRegex.exec(text)) !== null) {
+            if (m[1]) {
+                matches.push(m[1].toLowerCase());
             }
         }
 
-        await handleCallForAnswer();
-    };
+        const matchedAgents: typeof availableAgentsCatalog = [];
+        const addedIds = new Set<string>();
 
-    const handleCallForAnswer = async () => {
+        for (const token of matches) {
+            const agent = availableAgentsCatalog.find((a) => {
+                const normId = a.id.toLowerCase();
+                const normHandle = a.handle.toLowerCase();
+                const normName = a.name.toLowerCase();
+                const normNameUnder = a.name.toLowerCase().replace(/\s+/g, "_");
+                return (
+                    normHandle === token ||
+                    normName === token ||
+                    normNameUnder === token ||
+                    normId === token
+                );
+            });
+
+            if (agent && !addedIds.has(agent.id.toLowerCase())) {
+                addedIds.add(agent.id.toLowerCase());
+                matchedAgents.push(agent);
+            }
+        }
+
+        return matchedAgents;
+    }, [availableAgentsCatalog]);
+
+    const handleCallForAnswer = async (overrideModelId?: string, overrideInstanceId?: string) => {
         // Determine Assistant Metadata & System Prompt
-        const selectedPrefKey = (selectedChatModelId || "").toLowerCase();
+        const targetModelId = typeof overrideModelId === "string" && overrideModelId ? overrideModelId : selectedChatModelId;
+        const selectedPrefKey = (targetModelId || "").toLowerCase();
         const selectedPref =
-            modelPreferences[selectedChatModelId] || modelPreferences[selectedPrefKey] || Object.values(modelPreferences).find((p) => p.id.toLowerCase() === selectedPrefKey);
+            modelPreferences[targetModelId] ||
+            modelPreferences[selectedPrefKey] ||
+            Object.values(modelPreferences).find((p) => {
+                const pId = (p.id || "").toLowerCase();
+                const pModelId = (p.model_id || "").toLowerCase();
+                const pModelName = (p.model_name || "").toLowerCase();
+                return pId === selectedPrefKey || pModelId === selectedPrefKey || pModelName === selectedPrefKey;
+            });
+
+        const targetInstanceId =
+            (typeof overrideInstanceId === "string" && overrideInstanceId) ||
+            (selectedPref as any)?.instance_id ||
+            selectedChatInstanceId;
 
         let assistantName = "Assistant";
         let assistantAvatar = DEFAULT_MODEL_AVATAR;
@@ -3587,23 +3811,23 @@ export default function ChatPage() {
                 assistantAvatar = formatAvatarPicture(selectedPref.picture) || assistantAvatar;
             }
             systemPrompt = charData.system_prompt || charData.personality || charData.description || selectedPref.description || "";
-        } else if (selectedChatModelId) {
-            const instMod = instanceModelsList.find((m) => m.id === selectedChatModelId);
+        } else if (targetModelId) {
+            const instMod = instanceModelsList.find((m) => m.id === targetModelId || m.id.toLowerCase() === targetModelId.toLowerCase());
             if (instMod) {
                 assistantName = instMod.name || instMod.id;
             } else {
-                assistantName = selectedChatModelId;
+                assistantName = targetModelId;
             }
         }
 
-        const assistantMsgId = `msg-${Date.now()}`;
+        const assistantMsgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const assistantMsg: Message = {
             id: assistantMsgId,
             senderName: assistantName,
             senderAvatar: assistantAvatar,
             senderRole: "assistant",
-            model: selectedChatModelId,
-            instanceId: selectedChatInstanceId,
+            model: targetModelId,
+            instanceId: targetInstanceId,
             isSelf: false,
             content: "",
             time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
@@ -3741,13 +3965,14 @@ export default function ChatPage() {
         }
 
         isGeneratingRef.current = true;
+        setIsGeneratingState(true);
         try {
             const genRes = await fetch(genUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    model: selectedChatModelId,
-                    instance_id: selectedChatInstanceId,
+                    model: targetModelId,
+                    instance_id: targetInstanceId,
                     think: isThinkingEnabled,
                 }),
             });
@@ -3873,15 +4098,9 @@ export default function ChatPage() {
                     if (isWindowUnfocused) {
                         const fireDesktopNotification = () => {
                             try {
-                                const prefKey = (selectedChatModelId || "").toLowerCase();
-                                const modelPref =
-                                    modelPreferences[selectedChatModelId || ""] ||
-                                    modelPreferences[prefKey] ||
-                                    Object.values(modelPreferences).find((p) => p.id?.toLowerCase() === prefKey);
-                                const assistantTitle = modelPref?.name || selectedChatModelId || "Walpaca Assistant";
+                                const assistantTitle = assistantName || targetModelId || "Walpaca Assistant";
                                 const snippet = fullResponseText.trim().replace(/\s+/g, " ").slice(0, 140);
-                                const rawAvatarIcon = getModelAvatarPicture(modelPref);
-                                const avatarIcon = isVideoAvatar(rawAvatarIcon) ? DEFAULT_MODEL_AVATAR : rawAvatarIcon;
+                                const avatarIcon = isVideoAvatar(assistantAvatar) ? DEFAULT_MODEL_AVATAR : assistantAvatar;
                                 const n = new Notification(assistantTitle, {
                                     body: snippet || "Finished delivering response.",
                                     icon: avatarIcon,
@@ -3925,10 +4144,7 @@ export default function ChatPage() {
                         setOneOnOneStatusDetail("");
                     }
                 } else if (currentPrefs?.auto_play_voice && fullResponseText.trim()) {
-                    const prefKey = (selectedChatModelId || "").toLowerCase();
-                    const modelPref =
-                        modelPreferences[selectedChatModelId || ""] || modelPreferences[prefKey] || Object.values(modelPreferences).find((p) => p.id?.toLowerCase() === prefKey);
-                    const voiceToUse = modelPref?.voice || "af_heart";
+                    const voiceToUse = selectedPref?.voice || "af_heart";
                     handlePlayTTS(currentAssistantMsgId, fullResponseText, voiceToUse);
                 }
             } else if (isStreamingOneOnOne) {
@@ -3945,7 +4161,222 @@ export default function ChatPage() {
             }
         } finally {
             isGeneratingRef.current = false;
+            setIsGeneratingState(false);
         }
+    };
+
+    const handleSendMessage = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!inputText.trim() && selectedAttachments.length === 0) return;
+
+        const content = inputText.trim();
+        const currentAttachments = [...selectedAttachments];
+        setInputText("");
+        setSelectedAttachments([]);
+
+        if (promptTextareaRef.current) {
+            promptTextareaRef.current.style.height = "auto";
+            promptTextareaRef.current.style.overflowY = "hidden";
+        }
+
+        const attachmentsPayload: MessageAttachment[] = currentAttachments.map((att, idx) => ({
+            id: att.id || `att-${Date.now()}-${idx}`,
+            type: att.type,
+            name: att.name,
+            content: att.content,
+        }));
+
+        const firstImage = currentAttachments.find((a) => a.type === "image")?.content;
+
+        const nowStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+        const userMsg: Message = {
+            id: `msg-${Date.now()}`,
+            senderName: "You",
+            senderAvatar: "",
+            senderRole: "user",
+            model: selectedChatModelId,
+            instanceId: selectedChatInstanceId,
+            isSelf: true,
+            content,
+            time: nowStr,
+            image: firstImage,
+            attachments: attachmentsPayload.length > 0 ? attachmentsPayload : undefined,
+        };
+
+        setMessages((prev) => [...prev, userMsg]);
+
+        // Save user message to backend
+        if (activeChatId) {
+            try {
+                const res = await fetch(`${API_URL}/chats/${activeChatId}/messages`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        role: "user",
+                        content,
+                        model: selectedChatModelId,
+                        instance_id: selectedChatInstanceId,
+                        attachments: attachmentsPayload,
+                    }),
+                });
+                if (res.ok) {
+                    const savedMsg = await res.json();
+                    if (savedMsg?.id) {
+                        setMessages((prev) =>
+                            prev.map((m) => {
+                                if (m.id !== userMsg.id) return m;
+                                const nextAtts: MessageAttachment[] | undefined = Array.isArray(savedMsg.attachments)
+                                    ? savedMsg.attachments.map((att: MessageAttachment) => ({
+                                          ...att,
+                                          url: att.url ? resolveApiAssetUrl(att.url) : att.url,
+                                      }))
+                                    : m.attachments;
+                                return {
+                                    ...m,
+                                    id: savedMsg.id,
+                                    image: nextAtts?.some(isImageAttachment) ? undefined : m.image,
+                                    attachments: nextAtts,
+                                };
+                            }),
+                        );
+                    }
+                }
+            } catch (err) {
+                console.warn("Could not post user message to backend API:", err);
+            }
+        }
+
+        const mentionedAgents = extractMentionedAgents(content);
+
+        // Case 1: User mentioned 1 or more agents (@agent)
+        if (mentionedAgents.length > 0) {
+            const newAgentIds = mentionedAgents
+                .map((a) => a.id)
+                .filter((id) => !chatAgents.some((ca) => ca.toLowerCase() === id.toLowerCase()));
+
+            if (newAgentIds.length > 0) {
+                const updatedAgents = [...chatAgents, ...newAgentIds];
+                setChatAgents(updatedAgents);
+                setActiveChat((prev) => (prev ? { ...prev, agents: updatedAgents } : null));
+                setChatItems((prev) => prev.map((c) => (c.id === activeChatId ? { ...c, agents: updatedAgents } : c)));
+                if (activeChatId) {
+                    try {
+                        await fetch(`${API_URL}/chats/${activeChatId}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ agents: updatedAgents }),
+                        });
+                    } catch (err) {
+                        console.warn("Could not update chat agents on backend:", err);
+                    }
+                }
+            }
+
+            const lastMentioned = mentionedAgents[mentionedAgents.length - 1];
+            setSelectedChatModelId(lastMentioned.id);
+            if (lastMentioned.instanceId) {
+                setSelectedChatInstanceId(lastMentioned.instanceId);
+            }
+
+            for (const agent of mentionedAgents) {
+                await handleCallForAnswer(agent.id, agent.instanceId);
+            }
+            return;
+        }
+
+        // Case 2: User did NOT mention any @agent
+        const activeChatAgentIds = getConversationParticipants()
+            .filter((p) => p.id !== "user")
+            .map((p) => p.id);
+
+        if (activeChatAgentIds.length > 1 && activeChatId) {
+            // Multi-Agent Chat: Global Coordinator steps in to route
+            setIsRoutingCoordinator(true);
+            try {
+                const routeRes = await fetch(`${API_URL}/chats/${activeChatId}/route`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        prompt: content,
+                        global_agent_id: appPreferences?.global_agent_id || selectedChatModelId,
+                        agents: activeChatAgentIds,
+                        instance_id: selectedChatInstanceId,
+                    }),
+                });
+
+                if (routeRes.ok) {
+                    const routeData = await routeRes.json();
+                    if (routeData.coordinator_message_obj) {
+                        const coordMsg = mapBackendMsgToMessage(routeData.coordinator_message_obj, modelPreferences);
+                        setMessages((prev) => [...prev, coordMsg]);
+                    }
+
+                    const orderedTargets: string[] = Array.isArray(routeData.agents) ? routeData.agents : [];
+                    if (orderedTargets.length > 0) {
+                        for (const targetId of orderedTargets) {
+                            await handleCallForAnswer(targetId);
+                        }
+                    } else if (!routeData.coordinator_message_obj) {
+                        await handleCallForAnswer();
+                    }
+                    return;
+                }
+            } catch (err) {
+                console.warn("Coordinator routing failed, falling back to default answer:", err);
+            } finally {
+                setIsRoutingCoordinator(false);
+            }
+        }
+
+        // Single-Agent Chat or route fallback
+        await handleCallForAnswer();
+    };
+
+    const handleRequestAnswerForLastUserMessage = async () => {
+        if (isMultiAgentChat && activeChatId) {
+            const lastUserMsg = [...messages].reverse().find((m) => m.isSelf);
+            const content = lastUserMsg?.content || "";
+            const activeChatAgentIds = getConversationParticipants()
+                .filter((p) => p.id !== "user")
+                .map((p) => p.id);
+
+            setIsRoutingCoordinator(true);
+            try {
+                const routeRes = await fetch(`${API_URL}/chats/${activeChatId}/route`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        prompt: content,
+                        global_agent_id: appPreferences?.global_agent_id || selectedChatModelId,
+                        agents: activeChatAgentIds,
+                        instance_id: selectedChatInstanceId,
+                    }),
+                });
+
+                if (routeRes.ok) {
+                    const routeData = await routeRes.json();
+                    if (routeData.coordinator_message_obj) {
+                        const coordMsg = mapBackendMsgToMessage(routeData.coordinator_message_obj, modelPreferences);
+                        setMessages((prev) => [...prev, coordMsg]);
+                    }
+
+                    const orderedTargets: string[] = Array.isArray(routeData.agents) ? routeData.agents : [];
+                    if (orderedTargets.length > 0) {
+                        for (const targetId of orderedTargets) {
+                            await handleCallForAnswer(targetId);
+                        }
+                    } else if (!routeData.coordinator_message_obj) {
+                        await handleCallForAnswer();
+                    }
+                    return;
+                }
+            } catch (err) {
+                console.warn("Coordinator routing failed, falling back to default answer:", err);
+            } finally {
+                setIsRoutingCoordinator(false);
+            }
+        }
+        await handleCallForAnswer();
     };
 
     const cleanupOneOnOneAudio = useCallback((stopStream = true) => {
@@ -4542,7 +4973,11 @@ export default function ChatPage() {
                                     activeInst?.type ||
                                     "Instance";
 
-                                const headerSubtitle = `${modelDisplayName} @ ${instanceDisplayName}`;
+                                const chatParticipants = getConversationParticipants();
+                                const agentCount = chatParticipants.filter((p) => p.id !== "user").length;
+                                const headerSubtitle = isMultiAgentChat
+                                    ? `${globalAgentDisplayName} (Coordinator) • ${agentCount} Agent${agentCount === 1 ? "" : "s"}`
+                                    : `${modelDisplayName} @ ${instanceDisplayName}`;
 
                                 return (
                                     <>
@@ -4620,8 +5055,11 @@ export default function ChatPage() {
                                     handleStopTTS={handleStopTTS}
                                     renderMarkdownText={renderMarkdownText}
                                     highlightCodeTokens={highlightCodeTokens}
-                                    handleCallForAnswer={handleCallForAnswer}
+                                    handleCallForAnswer={handleRequestAnswerForLastUserMessage}
                                     messagesEndRef={messagesEndRef}
+                                    isGeneratingOrRouting={isGeneratingState || isRoutingCoordinator}
+                                    isRoutingCoordinator={isRoutingCoordinator}
+                                    routingAgentName={globalAgentDisplayName}
                                 />
 
                                 {/* Input Composer */}
@@ -4645,6 +5083,9 @@ export default function ChatPage() {
                                     getCharacterName={getCharacterName}
                                     promptTextareaRef={promptTextareaRef}
                                     autoResizeTextarea={autoResizeTextarea}
+                                    availableAgents={availableAgentsCatalog}
+                                    isMultiAgentChat={isMultiAgentChat}
+                                    globalAgentName={globalAgentDisplayName}
                                 />
                             </div>
                         </section>
@@ -4751,48 +5192,97 @@ export default function ChatPage() {
                         {(() => {
                             const participants = getConversationParticipants();
 
-                            {
-                                /* Members List */
-                            }
                             return (
                                 <>
-                                    <WidgetSimple
-                                        title={`${participants.length} members`}
+                                    <WidgetWithCustomHeader
+                                        header={
+                                            <div className="flex items-center justify-between w-full">
+                                                <h3 className="font-bold text-xl text-[#202022]">{participants.length} members</h3>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsAddAgentModalOpen(true)}
+                                                    className="px-2.5 py-1 text-xs font-bold text-[#7678ed] bg-[#7678ed]/10 hover:bg-[#7678ed]/20 rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                                                    title="Add Agent to Chat"
+                                                >
+                                                    <PlusIcon className="w-3.5 h-3.5" />
+                                                    <span>Add Agent</span>
+                                                </button>
+                                            </div>
+                                        }
                                         content={
                                             <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
-                                                {participants.map((p) => (
-                                                    <div key={p.id} className="flex items-center gap-3">
-                                                        {p.id === "user" ? (
-                                                            <div className="w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
-                                                                <svg
-                                                                    width="20"
-                                                                    height="20"
-                                                                    viewBox="0 0 24 24"
-                                                                    fill="none"
-                                                                    stroke="currentColor"
-                                                                    strokeWidth="2.2"
-                                                                    strokeLinecap="round"
-                                                                    strokeLinejoin="round"
-                                                                >
-                                                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                                                                    <circle cx="12" cy="7" r="4" />
-                                                                </svg>
+                                                {participants.map((p) => {
+                                                    const isUser = p.id === "user";
+                                                    const isGlobal = !isUser && (p.isGlobal || p.id.toLowerCase() === (appPreferences?.global_agent_id || "").toLowerCase());
+                                                    const isInChatList = !isUser && chatAgents.some((a) => a.toLowerCase() === p.id.toLowerCase());
+
+                                                    return (
+                                                        <div key={p.id} className="flex items-center gap-3 group">
+                                                            {isUser ? (
+                                                                <div className="w-10 h-10 rounded-2xl bg-[#7678ed] text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
+                                                                    <svg
+                                                                        width="20"
+                                                                        height="20"
+                                                                        viewBox="0 0 24 24"
+                                                                        fill="none"
+                                                                        stroke="currentColor"
+                                                                        strokeWidth="2.2"
+                                                                        strokeLinecap="round"
+                                                                        strokeLinejoin="round"
+                                                                    >
+                                                                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                                                        <circle cx="12" cy="7" r="4" />
+                                                                    </svg>
+                                                                </div>
+                                                            ) : (
+                                                                <AvatarMedia
+                                                                    src={p.avatar}
+                                                                    alt={p.name}
+                                                                    onClick={() => handleOpenPersonaDetails(p.id)}
+                                                                    className="w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0 cursor-pointer hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all"
+                                                                    title={`View ${p.name} persona details`}
+                                                                />
+                                                            )}
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <h5 className="font-semibold text-base text-[#202022] truncate">{p.name}</h5>
+                                                                    {isGlobal && (
+                                                                        <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                                                            Global
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-sm font-medium text-[#7678ed]">{p.role}</span>
                                                             </div>
-                                                        ) : (
-                                                            <AvatarMedia
-                                                                src={p.avatar}
-                                                                alt={p.name}
-                                                                onClick={() => handleOpenPersonaDetails(p.id)}
-                                                                className="w-10 h-10 rounded-2xl object-cover shadow-xs shrink-0 cursor-pointer hover:ring-2 hover:ring-[#7678ed]/50 hover:opacity-90 active:scale-95 transition-all"
-                                                                title={`View ${p.name} persona details`}
-                                                            />
-                                                        )}
-                                                        <div className="flex-1 min-w-0">
-                                                            <h5 className="font-semibold text-base text-[#202022] truncate">{p.name}</h5>
-                                                            <span className="text-sm font-medium text-[#7678ed]">{p.role}</span>
+                                                            {!isUser && (
+                                                                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const mentionHandle = p.name.includes(" ") ? p.name.replace(/\s+/g, "_") : p.name;
+                                                                            setInputText((prev) => (prev ? `${prev.trimEnd()} @${mentionHandle} ` : `@${mentionHandle} `));
+                                                                            promptTextareaRef?.current?.focus();
+                                                                        }}
+                                                                        className="px-1.5 py-0.5 rounded-lg text-xs font-bold text-[#7678ed] bg-[#7678ed]/10 hover:bg-[#7678ed]/20 transition-colors"
+                                                                        title={`Mention @${p.name}`}
+                                                                    >
+                                                                        @
+                                                                    </button>
+                                                                    {isInChatList && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleRemoveAgentFromChat(p.id)}
+                                                                            className="p-1 rounded-lg text-[#8e90a6] hover:text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
+                                                                            title={`Remove ${p.name} from chat`}
+                                                                        >
+                                                                            <CloseIcon className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         }
                                     />
@@ -6003,6 +6493,112 @@ export default function ChatPage() {
                 onSelectPrompt={handleSelectPrompt}
                 getApiUrl={getApiUrl}
             />
+
+            {/* Add Agent to Chat Modal */}
+            {isAddAgentModalOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 select-none">
+                    <div className="bg-white text-[#202022] rounded-2xl sm:rounded-3xl p-4 sm:p-6 w-[calc(100vw-24px)] sm:w-full max-w-xl max-h-[88dvh] flex flex-col shadow-2xl border border-[#e8ebf3] animate-in fade-in zoom-in duration-200">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between pb-4 border-b border-[#eef0f6] shrink-0 mb-4">
+                            <div>
+                                <h3 className="text-xl font-bold text-[#202022] tracking-tight">Add Agents to Chat</h3>
+                                <p className="text-xs text-[#8e90a6] mt-0.5">Manage the personas & models participating in this conversation</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsAddAgentModalOpen(false)}
+                                className="p-2 text-[#8e90a6] hover:text-[#202022] hover:bg-[#f0f2f9] rounded-xl transition-all cursor-pointer"
+                                title="Close"
+                            >
+                                <CloseIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Search Filter */}
+                        <div className="mb-4 shrink-0">
+                            <input
+                                type="text"
+                                value={agentModalSearch}
+                                onChange={(e) => setAgentModalSearch(e.target.value)}
+                                placeholder="Search characters, personas, or models..."
+                                className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#202022] outline-none focus:border-[#7678ed] focus:bg-white transition-all"
+                            />
+                        </div>
+
+                        {/* Agent List */}
+                        <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[220px]">
+                            {availableAgentsCatalog
+                                .filter((agent) => {
+                                    if (!agentModalSearch.trim()) return true;
+                                    const q = agentModalSearch.trim().toLowerCase();
+                                    return (
+                                        agent.name.toLowerCase().includes(q) ||
+                                        agent.handle.toLowerCase().includes(q) ||
+                                        agent.id.toLowerCase().includes(q)
+                                    );
+                                })
+                                .map((agent) => {
+                                    const isInChat = chatAgents.some((a) => a.toLowerCase() === agent.id.toLowerCase());
+                                    const isGlobal = agent.id.toLowerCase() === (appPreferences?.global_agent_id || "").toLowerCase();
+
+                                    return (
+                                        <div
+                                            key={agent.id}
+                                            className="flex items-center justify-between p-3 rounded-2xl border border-[#e8ebf3] hover:border-[#7678ed]/40 hover:bg-[#f9fafc] transition-all"
+                                        >
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <AvatarMedia
+                                                    src={agent.avatar || DEFAULT_MODEL_AVATAR}
+                                                    alt={agent.name}
+                                                    className="w-10 h-10 rounded-2xl object-cover shrink-0 shadow-2xs"
+                                                />
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <h5 className="font-bold text-sm text-[#202022] truncate">{agent.name}</h5>
+                                                        {isGlobal && (
+                                                            <span className="px-1.5 py-0.2 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                Global
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-[#8e90a6] truncate">{agent.role || "Model"}</p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (isInChat) {
+                                                        handleRemoveAgentFromChat(agent.id);
+                                                    } else {
+                                                        handleAddAgentToChat(agent.id);
+                                                    }
+                                                }}
+                                                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                                    isInChat
+                                                        ? "bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200"
+                                                        : "bg-[#7678ed] text-white hover:bg-[#6869d9] shadow-xs"
+                                                }`}
+                                            >
+                                                {isInChat ? "Remove" : "+ Add to Chat"}
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="pt-4 mt-2 border-t border-[#eef0f6] flex justify-end shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsAddAgentModalOpen(false)}
+                                className="px-5 py-2.5 bg-[#f0f2f9] hover:bg-[#eaecf9] text-[#202022] font-bold text-sm rounded-xl transition-all cursor-pointer"
+                            >
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

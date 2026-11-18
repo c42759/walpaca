@@ -427,9 +427,12 @@ export interface ChatMessageListProps {
     // Helpers / Renderers
     renderMarkdownText: (text: string, activeLineIndex?: number, onLineContextMenu?: (e: React.MouseEvent, lineText: string, lineIndex: number) => void) => React.ReactNode;
     highlightCodeTokens?: (code: string, lang?: string) => React.ReactNode;
-    handleCallForAnswer?: () => void;
+    handleCallForAnswer?: (overrideModelId?: any, overrideInstanceId?: any) => void | Promise<void>;
     messagesEndRef?: React.RefObject<HTMLDivElement | null>;
     onAvatarClick?: (msg: Message, pref?: any) => void;
+    isGeneratingOrRouting?: boolean;
+    isRoutingCoordinator?: boolean;
+    routingAgentName?: string;
 }
 
 export const ChatMessageList: React.FC<ChatMessageListProps> = ({
@@ -460,6 +463,9 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
     highlightCodeTokens,
     handleCallForAnswer,
     messagesEndRef,
+    isGeneratingOrRouting = false,
+    isRoutingCoordinator = false,
+    routingAgentName,
 }) => {
     const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
@@ -1063,11 +1069,19 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
                           );
                       }
                   })}
-            {messages.length > 0 && messages[messages.length - 1].isSelf && (
+            {isRoutingCoordinator && (
+                <div className="flex justify-center my-3 animate-in fade-in duration-200 select-none">
+                    <div className="px-4 py-2 bg-[#f0f2f9] border border-[#e2e5f1] text-[#7678ed] text-xs sm:text-sm font-semibold rounded-2xl flex items-center gap-2.5 shadow-2xs">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#7678ed] animate-ping shrink-0" />
+                        <span>{routingAgentName || "Global Coordinator"} is deciding who responds...</span>
+                    </div>
+                </div>
+            )}
+            {messages.length > 0 && messages[messages.length - 1].isSelf && !isGeneratingOrRouting && (
                 <div className="flex justify-center my-3 animate-in fade-in duration-200 select-none">
                     <button
                         type="button"
-                        onClick={handleCallForAnswer}
+                        onClick={() => handleCallForAnswer?.()}
                         className="px-5 py-2.5 bg-[#7678ed] hover:bg-[#6869d9] text-white text-sm font-semibold rounded-2xl transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer flex items-center gap-2"
                     >
                         <span>🤖</span>

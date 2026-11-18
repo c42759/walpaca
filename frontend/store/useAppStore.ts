@@ -34,6 +34,7 @@ export interface AppPreferences {
     stt_server_url?: string;
     stt_api_key?: string;
     attach_all_files?: boolean;
+    global_agent_id?: string;
 }
 
 
@@ -269,6 +270,7 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         stt_server_url: "",
         stt_api_key: "",
         attach_all_files: false,
+        global_agent_id: "",
     },
 
     appPreferencesLoaded: false,

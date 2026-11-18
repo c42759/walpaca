@@ -5,6 +5,7 @@ from flask import Blueprint
 from models import db
 from models import ChatFolder
 from models import generate_uuid
+from models import delete_chat_agents
 from utils.storage import delete_chat_storage_dir
 
 folders_bp = Blueprint("folders", __name__)
@@ -29,6 +30,7 @@ def _collect_folder_chat_ids(folder) -> list[str]:
 
 def _delete_chat_internal(chat):
     """Delete a chat, its storage directory, and all its messages/attachments via cascade."""
+    delete_chat_agents(chat.id)
     delete_chat_storage_dir(chat.id)
     db.session.delete(chat)
 
@@ -36,6 +38,7 @@ def _delete_chat_internal(chat):
 def _delete_folder_internal(folder):
     """Delete a folder, its subfolders, contained chat storage dirs, and DB records."""
     for chat_id in _collect_folder_chat_ids(folder):
+        delete_chat_agents(chat_id)
         delete_chat_storage_dir(chat_id)
     db.session.delete(folder)
 

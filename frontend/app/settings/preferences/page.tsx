@@ -25,6 +25,7 @@ interface PreferencesData {
     stt_server_url?: string;
     stt_api_key?: string;
     attach_all_files?: boolean;
+    global_agent_id?: string;
 }
 
 
@@ -39,6 +40,8 @@ export default function PreferencesSettingsPage() {
         appPreferences,
         fetchAppPreferences,
         setAppPreferences,
+        modelPreferencesList,
+        fetchModelPreferences,
         pinSecurityEnabled,
         setupPin,
         disablePin,
@@ -68,6 +71,7 @@ export default function PreferencesSettingsPage() {
     // Load preferences from API & store
     useEffect(() => {
         let isMounted = true;
+        fetchModelPreferences();
         (async () => {
             setIsLoading(true);
             try {
@@ -748,6 +752,38 @@ export default function PreferencesSettingsPage() {
                                     </div>
                                 </form>
                             )}
+                        </div>
+
+                        {/* MULTI-AGENT CHAT & GLOBAL COORDINATOR */}
+                        <div className="space-y-4 bg-white border border-[#e8ebf3] rounded-2xl p-6 shadow-xs">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#e8ebf3]">
+                                <div>
+                                    <h4 className="text-base font-bold text-[#202022]">Global Coordinator Agent</h4>
+                                    <p className="text-xs text-[#8e90a6] mt-0.5">
+                                        Select the default Model Preference / Persona that steps in to coordinate and decide which agent(s) respond (and in what order) when a multi-agent chat message has no @agent mention.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="pt-1 space-y-2">
+                                <select
+                                    disabled={isLoading}
+                                    value={preferences.global_agent_id || ""}
+                                    onChange={(e) => handleUpdatePreference("global_agent_id", e.target.value)}
+                                    className="w-full bg-[#f9fafc] border border-[#e8ebf3] rounded-2xl px-4 py-3 text-sm text-[#202022] font-semibold outline-none focus:border-[#7678ed] transition-all cursor-pointer disabled:opacity-50"
+                                >
+                                    <option value="">Automatic (Active Chat Model)</option>
+                                    {modelPreferencesList.map((pref) => {
+                                        const charName = pref.character?.data?.name || pref.character?.name || pref.name || pref.model_name || pref.id;
+                                        const modelSub = pref.model_name ? ` (${pref.model_name})` : "";
+                                        return (
+                                            <option key={pref.id} value={pref.id}>
+                                                {charName}{modelSub}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </div>
                         </div>
 
                         {/* GENERAL AUDIO & PLAYBACK PREFERENCES */}

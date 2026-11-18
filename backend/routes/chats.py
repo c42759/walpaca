@@ -8,6 +8,8 @@ from models import Message
 from models import Attachment
 from models import generate_uuid
 from models import current_alpaca_timestamp
+from models import get_chat_agents
+from models import set_chat_agents
 from routes.folders import _delete_chat_internal
 from utils.storage import (
     copy_chat_attachment_file,
@@ -83,6 +85,8 @@ def create_chat():
         is_template=1 if data.get("is_template") else 0,
     )
     db.session.add(chat)
+    if "agents" in data and isinstance(data["agents"], list):
+        set_chat_agents(chat.id, data["agents"])
     db.session.commit()
     return jsonify(chat.to_dict(include_messages=True)), 201
 
@@ -97,6 +101,8 @@ def update_chat(chat_id):
         chat.folder = data["folder"]
     if "is_template" in data:
         chat.is_template = 1 if data["is_template"] else 0
+    if "agents" in data and isinstance(data["agents"], list):
+        set_chat_agents(chat.id, data["agents"])
     db.session.commit()
     return jsonify(chat.to_dict(include_messages=False))
 
@@ -119,6 +125,7 @@ def duplicate_chat(chat_id):
         is_template=original.is_template,
     )
     db.session.add(new_chat)
+    set_chat_agents(new_chat.id, get_chat_agents(original.id))
     for msg in original.messages:
         new_msg = Message(
             id=generate_uuid(),
@@ -150,6 +157,7 @@ def fork_chat(chat_id):
         is_template=original.is_template,
     )
     db.session.add(new_chat)
+    set_chat_agents(new_chat.id, get_chat_agents(original.id))
 
     messages = (
         Message.query.filter_by(chat_id=chat_id)
@@ -205,6 +213,8 @@ def import_chats():
             is_template=1 if c_data.get("is_template") else 0,
         )
         db.session.add(chat)
+        if isinstance(c_data.get("agents"), list):
+            set_chat_agents(chat.id, c_data["agents"])
 
         for msg_data in c_data.get("messages", []):
             if not isinstance(msg_data, dict):

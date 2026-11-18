@@ -1,3 +1,4 @@
+import re
 import json
 import time
 import ollama
@@ -6,6 +7,7 @@ import threading
 
 from flask import request
 from flask import Response
+from flask import jsonify
 from flask import Blueprint
 from flask import current_app
 from flask import has_app_context
@@ -22,6 +24,7 @@ from models import ModelPreferences
 from models import Preference
 from models import generate_uuid
 from models import current_alpaca_timestamp
+from models import get_chat_agents
 from utils.mcp_manager import McpManager
 from utils.storage import INLINE_DB_ATTACHMENT_TYPES, read_attachment_for_llm
 
@@ -130,6 +133,18 @@ def _add_tool_attachment(message_id, tool_name, tool_data):
         pass
 
 
+def _strip_agent_prefix(text: str) -> str:
+    """Strips leading [Agent: ...]: or [Speaker: ...]: prefixes emitted by the LLM."""
+    if not text:
+        return ""
+    return re.sub(
+        r"^\s*(?:\[(?:Agent|Speaker):\s*[^\]]+\]:?\s*)+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
 def _persist_message_update(
     message_id: str,
     content: str,
@@ -143,7 +158,8 @@ def _persist_message_update(
     try:
         msg = Message.query.get(message_id)
         if msg:
-            msg.content = (content + " **processing**") if is_processing else content
+            clean_content = _strip_agent_prefix(content)
+            msg.content = (clean_content + " **processing**") if is_processing else clean_content
             db.session.commit()
         if thinking:
             _upsert_thought_attachment(message_id, thinking)
@@ -356,6 +372,57 @@ def resolve_model_preference(model: str, instance_id: str = None):
     return None
 
 
+def _resolve_agent_info(model_identifier: str, instance_id: str = None) -> dict:
+    """
+    Resolves agent identity, display name, and persona description from ModelPreferences
+    or fallback model identifier.
+    """
+    if not model_identifier:
+        return {
+            "id": "",
+            "display_name": "Assistant",
+            "instance_id": instance_id,
+            "description": "",
+            "pref": None,
+        }
+
+    clean_id = str(model_identifier).strip()
+    pref = resolve_model_preference(clean_id, instance_id)
+    if pref:
+        char_dict = pref.get_character() or {}
+        char_data = (
+            char_dict.get("data")
+            if isinstance(char_dict.get("data"), dict)
+            else char_dict
+        )
+        display_name = (
+            char_data.get("name")
+            or pref.to_dict().get("name")
+            or clean_id
+        )
+        desc = (
+            char_data.get("description")
+            or char_data.get("personality")
+            or char_data.get("system_prompt")
+            or ""
+        )
+        return {
+            "id": pref.id,
+            "display_name": str(display_name).strip(),
+            "instance_id": pref.instance_id or instance_id,
+            "description": str(desc).strip(),
+            "pref": pref,
+        }
+
+    return {
+        "id": clean_id,
+        "display_name": clean_id,
+        "instance_id": instance_id,
+        "description": "",
+        "pref": None,
+    }
+
+
 def evaluate_lorebook_entries(
     model_id: str,
     messages: list = None,
@@ -527,9 +594,15 @@ def _resolve_chat_folder_uuid(chat_id: str = None, data: dict = None) -> str:
     return str(folder_id).strip() if folder_id and str(folder_id).strip() else "default"
 
 
-def _build_chat_context_prompt(chat_id: str = None, data: dict = None) -> str:
+def _build_chat_context_prompt(
+    chat_id: str = None,
+    data: dict = None,
+    active_model: str = None,
+    active_pref=None,
+) -> str:
     """
-    Builds a system prompt section containing the active Folder Name & ID and Chat Name & ID.
+    Builds a system prompt section containing active Folder Name & ID, Chat Name & ID,
+    Memory Protocol, and Multi-Agent Chat Context.
     """
     data = data or {}
     effective_chat_id = chat_id or data.get("chat_id")
@@ -558,25 +631,103 @@ def _build_chat_context_prompt(chat_id: str = None, data: dict = None) -> str:
         except Exception:
             pass
 
-    if not effective_chat_id and not folder_id and not chat_name and not folder_name:
-        return ""
-
     resolved_folder_name = folder_name or "Root"
     resolved_folder_id = folder_id or "default"
     resolved_chat_name = chat_name or "Untitled Chat"
     resolved_chat_id = effective_chat_id or "unknown"
 
-    return (
-        "Workspace Context:\n"
-        f"- Folder Name: {resolved_folder_name}\n"
-        f"- Folder ID: {resolved_folder_id}\n"
-        f"- Chat Name: {resolved_chat_name}\n"
-        f"- Chat ID: {resolved_chat_id}\n"
-        "- Memory Protocol:\n"
-        "  1. RECALL: Whenever the user asks about their personal details, devices/specs, preferences, or project facts not shown in the current chat messages, you MUST call `recall_facts` first before answering.\n"
-        "  2. STORE: Whenever the user shares new personal facts, work/project details, or preferences, you MUST call `store_fact` (multiple times if needed) to persist them. In folder chats, all facts are stored in that folder's workspace. NEVER claim you stored facts unless you called `store_fact` in this turn.\n"
-        "  3. CURATE: Use `delete_fact` to remove outdated, duplicate, or incorrect facts from memory. Note: Global facts inherited from root memory are read-only in folder chats and cannot be deleted or updated from a folder."
-    )
+    sections = []
+    if effective_chat_id or folder_id or chat_name or folder_name:
+        sections.append(
+            "Workspace Context:\n"
+            f"- Folder Name: {resolved_folder_name}\n"
+            f"- Folder ID: {resolved_folder_id}\n"
+            f"- Chat Name: {resolved_chat_name}\n"
+            f"- Chat ID: {resolved_chat_id}\n"
+            "- Memory Protocol:\n"
+            "  1. RECALL: Whenever the user asks about their personal details, devices/specs, preferences, or project facts not shown in the current chat messages, you MUST call `recall_facts` first before answering.\n"
+            "  2. STORE: Whenever the user shares new personal facts, work/project details, or preferences, you MUST call `store_fact` (multiple times if needed) to persist them. In folder chats, all facts are stored in that folder's workspace. NEVER claim you stored facts unless you called `store_fact` in this turn.\n"
+            "  3. CURATE: Use `delete_fact` to remove outdated, duplicate, or incorrect facts from memory. Note: Global facts inherited from root memory are read-only in folder chats and cannot be deleted or updated from a folder."
+        )
+
+    # Multi-Agent Chat Context
+    chat_agents = []
+    if effective_chat_id and has_app_context():
+        chat_agents = get_chat_agents(effective_chat_id)
+    if not chat_agents and isinstance(data.get("agents"), list):
+        chat_agents = data.get("agents")
+
+    if len(chat_agents) > 1:
+        current_agent_id = getattr(active_pref, "id", None) or active_model or data.get("model")
+        current_info = _resolve_agent_info(current_agent_id, data.get("instance_id"))
+        current_agent_name = current_info.get("display_name") or current_agent_id or "Assistant"
+
+        global_agent_id = ""
+        if has_app_context():
+            try:
+                g_pref = Preference.query.get("global_agent_id")
+                g_val = g_pref.get_value() if g_pref else ""
+                if g_val and isinstance(g_val, str) and g_val.strip():
+                    global_agent_id = g_val.strip()
+            except Exception:
+                pass
+
+        multi_lines = [
+            "- Multi-Agent Chat Context:",
+            f"  - You are responding as: {current_agent_name}",
+        ]
+        if global_agent_id:
+            coord_info = _resolve_agent_info(global_agent_id, data.get("instance_id"))
+            coord_name = coord_info.get("display_name") or global_agent_id
+            multi_lines.append(f"  - Global Coordinator Agent: @{coord_name}")
+
+        multi_lines.append("  - Participating Agents:")
+        for aid in chat_agents:
+            ainfo = _resolve_agent_info(aid, data.get("instance_id"))
+            aname = ainfo.get("display_name") or aid
+            adesc = ainfo.get("description")
+            if adesc:
+                clean_desc = " ".join(str(adesc).split())[:180]
+                multi_lines.append(f"    - @{aname} ({clean_desc})")
+            else:
+                multi_lines.append(f"    - @{aname}")
+
+        # Role Enforcement
+        is_coordinator = False
+        if global_agent_id:
+            coord_keys = {str(global_agent_id).strip().lower()}
+            coord_info = _resolve_agent_info(global_agent_id, data.get("instance_id"))
+            if coord_info.get("id"):
+                coord_keys.add(str(coord_info["id"]).strip().lower())
+            if coord_info.get("display_name"):
+                coord_keys.add(str(coord_info["display_name"]).strip().lower())
+
+            curr_keys = set()
+            if current_agent_id:
+                curr_keys.add(str(current_agent_id).strip().lower())
+            if current_info.get("id"):
+                curr_keys.add(str(current_info["id"]).strip().lower())
+            if current_info.get("display_name"):
+                curr_keys.add(str(current_info["display_name"]).strip().lower())
+
+            if not curr_keys.isdisjoint(coord_keys):
+                is_coordinator = True
+
+        if is_coordinator:
+            multi_lines.append(
+                f"  - Role Enforcement: You are the Global Coordinator / Narrator ({current_agent_name}). Stay strictly in third-person narrator/coordinator perspective. NEVER write dialogue or speak in the name of other participating agents."
+            )
+        else:
+            multi_lines.append(
+                f"  - Role Enforcement: You ARE {current_agent_name}. Respond ONLY in character as {current_agent_name} in your own voice. NEVER act as the Narrator, NEVER start your message with '[Agent: ...]:', and NEVER write dialogue or responses for other characters."
+            )
+
+        multi_lines.append(
+            f"  - Rule: Messages in history prefixed with '[Agent: <Name>]:' were spoken by other agents in this shared conversation. Respond ONLY as yourself ({current_agent_name}). Do NOT prefix your own message with '[Agent: ...]' and do NOT write responses on behalf of other agents."
+        )
+        sections.append("\n".join(multi_lines))
+
+    return "\n\n".join(sections)
 
 
 def clean_base64_image(content: str) -> str:
@@ -618,13 +769,40 @@ def _format_message_attachments(content: str, attachments: list) -> tuple:
     return final_content, images
 
 
-def _build_messages_payload(data: dict, chat_id: str = None) -> list:
-    """Constructs normalized message payload with multimodal images and document attachments.
+def _build_messages_payload(
+    data: dict,
+    chat_id: str = None,
+    active_model: str = None,
+    active_pref=None,
+) -> list:
+    """Constructs normalized message payload with multimodal images, document attachments,
+    and multi-agent speaker attribution prefixing.
     Respects attach_all_files preference: if True, attaches all files to corresponding messages;
     if False, only attaches files/images to the last message sent by the user.
     """
     prompt = data.get("prompt")
     messages = data.get("messages")
+
+    if not active_model:
+        active_model = data.get("model")
+
+    active_keys = set()
+    if active_model:
+        active_keys.add(str(active_model).strip().lower())
+    if active_pref:
+        if getattr(active_pref, "id", None):
+            active_keys.add(str(active_pref.id).strip().lower())
+        if getattr(active_pref, "model_id", None):
+            active_keys.add(str(active_pref.model_id).strip().lower())
+    if active_model or active_pref:
+        resolved_info = _resolve_agent_info(
+            getattr(active_pref, "id", None) or active_model,
+            getattr(active_pref, "instance_id", None) or data.get("instance_id"),
+        )
+        if resolved_info.get("id"):
+            active_keys.add(str(resolved_info["id"]).strip().lower())
+        if resolved_info.get("display_name"):
+            active_keys.add(str(resolved_info["display_name"]).strip().lower())
 
     attach_all_files = data.get("attach_all_files")
     if attach_all_files is None:
@@ -645,6 +823,14 @@ def _build_messages_payload(data: dict, chat_id: str = None) -> list:
                 .order_by(Message.date_time.asc())
                 .all()
             )
+            chat_agents = get_chat_agents(chat_id)
+            distinct_models = {
+                str(m.model).strip().lower()
+                for m in chat_msgs
+                if m.role == "assistant" and m.model and str(m.model).strip()
+            }
+            is_multi_agent = len(chat_agents) > 1 or len(distinct_models) > 1
+
             # Find the index of the last user message
             last_user_idx = None
             for i in range(len(chat_msgs) - 1, -1, -1):
@@ -659,6 +845,21 @@ def _build_messages_payload(data: dict, chat_id: str = None) -> list:
                 else:
                     c = m.content or ""
                     imgs = []
+
+                if is_multi_agent and m.role == "assistant" and m.model:
+                    speaker_info = _resolve_agent_info(m.model)
+                    speaker_name = speaker_info.get("display_name") or m.model
+                    speaker_keys = {str(m.model).strip().lower()}
+                    if speaker_info.get("id"):
+                        speaker_keys.add(str(speaker_info["id"]).strip().lower())
+                    if speaker_info.get("display_name"):
+                        speaker_keys.add(str(speaker_info["display_name"]).strip().lower())
+
+                    if active_keys and speaker_keys.isdisjoint(active_keys):
+                        agent_prefix = f"[Agent: {speaker_name}]:"
+                        if not c.startswith(agent_prefix) and not c.startswith("[Agent: "):
+                            c = f"{agent_prefix}\n{c}"
+
                 msg_obj = {"role": m.role, "content": c}
                 if imgs:
                     msg_obj["images"] = imgs
@@ -721,6 +922,15 @@ def _build_messages_payload(data: dict, chat_id: str = None) -> list:
         return [user_msg]
 
     if messages:
+        chat_agents = get_chat_agents(chat_id) if chat_id and has_app_context() else []
+        distinct_models = {
+            str(m.get("model")).strip().lower()
+            for m in messages
+            if m.get("role") == "assistant" and m.get("model") and str(m.get("model")).strip()
+        }
+        raw_agents = data.get("agents") if isinstance(data.get("agents"), list) else []
+        is_multi_agent = len(chat_agents) > 1 or len(distinct_models) > 1 or len(raw_agents) > 1
+
         # Find the index of the last user message
         last_user_idx = None
         for i in range(len(messages) - 1, -1, -1):
@@ -731,11 +941,10 @@ def _build_messages_payload(data: dict, chat_id: str = None) -> list:
         built = []
         for i, m in enumerate(messages):
             m_copy = dict(m)
+            c = m_copy.get("content", "")
             if attach_all_files or i == last_user_idx:
                 raw_atts = m_copy.get("attachments", [])
-                content, att_imgs = _format_message_attachments(m_copy.get("content", ""), raw_atts)
-                m_copy["content"] = content
-
+                c, att_imgs = _format_message_attachments(c, raw_atts)
                 existing_imgs = [clean_base64_image(img) for img in m_copy.get("images", []) if clean_base64_image(img)]
                 all_imgs = existing_imgs + [img for img in att_imgs if img not in existing_imgs]
                 if all_imgs:
@@ -743,10 +952,25 @@ def _build_messages_payload(data: dict, chat_id: str = None) -> list:
                 elif "images" in m_copy:
                     del m_copy["images"]
             else:
-                m_copy["content"] = m_copy.get("content", "")
                 if "images" in m_copy:
                     del m_copy["images"]
 
+            m_model = m_copy.get("model")
+            if is_multi_agent and m_copy.get("role") == "assistant" and m_model:
+                speaker_info = _resolve_agent_info(m_model)
+                speaker_name = speaker_info.get("display_name") or m_model
+                speaker_keys = {str(m_model).strip().lower()}
+                if speaker_info.get("id"):
+                    speaker_keys.add(str(speaker_info["id"]).strip().lower())
+                if speaker_info.get("display_name"):
+                    speaker_keys.add(str(speaker_info["display_name"]).strip().lower())
+
+                if active_keys and speaker_keys.isdisjoint(active_keys):
+                    agent_prefix = f"[Agent: {speaker_name}]:"
+                    if not c.startswith(agent_prefix) and not c.startswith("[Agent: "):
+                        c = f"{agent_prefix}\n{c}"
+
+            m_copy["content"] = c
             built.append(m_copy)
         return built
 
@@ -961,7 +1185,9 @@ def generate_response(chat_id=None):
 
     resolved_model_name, pref_match = _resolve_physical_model_name(model, instance_id)
     message_id = _create_processing_message(chat_id, model)
-    messages_payload = _build_messages_payload(data, chat_id)
+    messages_payload = _build_messages_payload(
+        data, chat_id, active_model=model, active_pref=pref_match
+    )
     active_folder_uuid = _resolve_chat_folder_uuid(chat_id, data)
 
     effective_system = evaluate_lorebook_entries(
@@ -971,7 +1197,9 @@ def generate_response(chat_id=None):
         instance_id=instance_id,
         pref=pref_match,
     )
-    chat_context_prompt = _build_chat_context_prompt(chat_id, data)
+    chat_context_prompt = _build_chat_context_prompt(
+        chat_id, data, active_model=model, active_pref=pref_match
+    )
     if chat_context_prompt:
         effective_system = (
             f"{effective_system}\n\n{chat_context_prompt}"
@@ -1008,6 +1236,8 @@ def generate_response(chat_id=None):
         stream_stats = {}
         max_tool_turns = 5
         tool_turns = 0
+        prefix_stripped = False
+        prefix_buffer = ""
 
         try:
             client_kwargs = {"host": host}
@@ -1118,8 +1348,37 @@ def generate_response(chat_id=None):
                                 stream_stats[k] = val
 
                         if content_delta:
-                            accumulated_content += content_delta
-                            chunk_count += 1
+                            if not prefix_stripped:
+                                prefix_buffer += content_delta
+                                stripped_buffer = prefix_buffer.lstrip()
+                                if stripped_buffer.startswith("["):
+                                    if "]" in stripped_buffer or "\n" in stripped_buffer or len(prefix_buffer) > 80:
+                                        cleaned = _strip_agent_prefix(prefix_buffer)
+                                        prefix_stripped = True
+                                        content_delta = cleaned
+                                        if cleaned:
+                                            accumulated_content += cleaned
+                                            chunk_count += 1
+                                    else:
+                                        content_delta = ""
+                                else:
+                                    prefix_stripped = True
+                                    content_delta = prefix_buffer
+                                    accumulated_content += prefix_buffer
+                                    chunk_count += 1
+                                    prefix_buffer = ""
+                            else:
+                                accumulated_content += content_delta
+                                chunk_count += 1
+
+                        if is_done and not prefix_stripped and prefix_buffer:
+                            content_delta = _strip_agent_prefix(prefix_buffer)
+                            if content_delta:
+                                accumulated_content += content_delta
+                                chunk_count += 1
+                            prefix_stripped = True
+                            prefix_buffer = ""
+
                         if thinking_delta:
                             accumulated_thinking += thinking_delta
 
@@ -1210,3 +1469,240 @@ def generate_response(chat_id=None):
     response.headers["X-Accel-Buffering"] = "no"
 
     return response
+
+
+@generate_bp.route("/route", methods=["POST"])
+@generate_bp.route("/chats/<chat_id>/route", methods=["POST"])
+def route_multi_agent_chat(chat_id=None):
+    """
+    Evaluates conversation context using instance-wide Global Coordinator Agent
+    (or fallback request model) and returns an ordered list of participating agent IDs
+    that should respond to the user's prompt, plus an optional coordinator message.
+    """
+    data = request.json or {}
+    effective_chat_id = chat_id or data.get("chat_id")
+
+    # 1. Resolve global coordinator agent identifier
+    global_agent_id = data.get("global_agent_id")
+    if not global_agent_id:
+        pref_row = Preference.query.get("global_agent_id")
+        pref_val = pref_row.get_value() if pref_row else ""
+        if pref_val and isinstance(pref_val, str) and pref_val.strip():
+            global_agent_id = pref_val.strip()
+    if not global_agent_id:
+        global_agent_id = _resolve_request_model(data, effective_chat_id)
+
+    # 2. Resolve candidate agents in this chat
+    raw_agents = data.get("agents")
+    if not raw_agents or not isinstance(raw_agents, list):
+        raw_agents = get_chat_agents(effective_chat_id) if effective_chat_id else []
+
+    roster_infos = []
+    for aid in raw_agents:
+        info = _resolve_agent_info(aid, data.get("instance_id"))
+        roster_infos.append(info)
+
+    if not raw_agents:
+        return jsonify({
+            "global_agent_id": global_agent_id,
+            "coordinator_message": "",
+            "coordinator_message_obj": None,
+            "agents": [global_agent_id],
+        })
+
+    # 3. Resolve Global Agent physical model and Ollama instance
+    resolved_global_model_name, global_pref = _resolve_physical_model_name(
+        global_agent_id, data.get("instance_id")
+    )
+    target_instance_id = (
+        global_pref.instance_id
+        if global_pref and global_pref.instance_id
+        else data.get("instance_id")
+    )
+    instance, props, host, headers = _resolve_ollama_instance(
+        {"instance_id": target_instance_id}
+    )
+
+    # 4. Construct routing system prompt and message history
+    global_info = _resolve_agent_info(global_agent_id, target_instance_id)
+    global_name = global_info.get("display_name") or global_agent_id
+    coord_keys = {str(global_agent_id).strip().lower()}
+    if global_info.get("id"):
+        coord_keys.add(str(global_info["id"]).strip().lower())
+    if global_info.get("display_name"):
+        coord_keys.add(str(global_info["display_name"]).strip().lower())
+
+    candidate_roster = [
+        r for r in roster_infos
+        if r["id"].lower() not in coord_keys and r["display_name"].lower() not in coord_keys
+    ]
+    effective_roster = candidate_roster if candidate_roster else roster_infos
+
+    roster_descriptions = []
+    for r in effective_roster:
+        aid = r["id"]
+        aname = r["display_name"]
+        raw_desc = (r["description"] or "Participating character agent").strip()
+        clean_desc = " ".join(raw_desc.split())[:240]
+        roster_descriptions.append(f'- id: "{aid}", name: "{aname}", description: "{clean_desc}"')
+
+    routing_system = (
+        f"You are the Global Coordinator ({global_name}) for this multi-agent conversation.\n"
+        "The user sent a message without an explicit @agent mention.\n"
+        "Your job is to decide which character agent(s) from the roster should respond next, and in what exact order.\n\n"
+        "CRITICAL RULES:\n"
+        '1. NEVER answer or write spoken dialogue on behalf of any character in "coordinator_message". The selected character agent(s) in "agents" will generate their own reply in their own voice immediately after your routing decision.\n'
+        '2. Leave "coordinator_message" as "" unless brief third-person scene-setting narration (without speaking for the addressed character) is strictly necessary.\n'
+        '3. If the user addresses or asks a question to a specific character by name (e.g. "Rute, estás bem?"), you MUST include that character in "agents" (e.g. ["Rute"]).\n\n'
+        '4. If a character asks a question or makes a request, you should decide if it is a question or request that should be answered or fulfilled by other agents.  If yes, include those agents in "agents" (e.g. ["Agent1", "Agent2"]).. If no, include only the character that asked the question or made the request in "agents" (e.g. ["Rute"]).\n\n'
+        '5. You can also choose to include yourself in "agents" to provide additional context or information, but you should not include yourself unless it is strictly necessary.  If you include yourself, you should include yourself only once.  You should not include yourself more than once.'
+        '6. Keep the same language as the user message to respond.'
+        "Available Agents in this chat:\n"
+        + "\n".join(roster_descriptions)
+        + "\n\n"
+        "Respond ONLY with valid JSON:\n"
+        '{"coordinator_message": "", "agents": ["<agent_name_or_id>"]}'
+    )
+
+    routing_messages = _build_messages_payload(
+        data,
+        effective_chat_id,
+        active_model=global_agent_id,
+        active_pref=global_pref,
+    )
+    routing_messages.insert(0, {"role": "system", "content": routing_system})
+
+    # 5. Call Ollama Client
+    coordinator_message = ""
+    selected_agents = []
+
+    try:
+        client_kwargs = {"host": host}
+        if headers:
+            client_kwargs["headers"] = headers
+        client = ollama.Client(**client_kwargs)
+
+        chat_res = client.chat(
+            model=resolved_global_model_name,
+            messages=routing_messages,
+            stream=False,
+            format="json",
+            think=False,
+            options={"think": False, "temperature": 0.2},
+        )
+        raw_response = ""
+        if hasattr(chat_res, "message"):
+            raw_response = getattr(chat_res.message, "content", "") or ""
+        elif isinstance(chat_res, dict):
+            raw_response = chat_res.get("message", {}).get("content", "")
+
+        parsed_data = {}
+        if raw_response:
+            try:
+                parsed_data = json.loads(raw_response.strip())
+            except Exception:
+                json_match = re.search(r"\{.*\}", raw_response, re.DOTALL)
+                if json_match:
+                    try:
+                        parsed_data = json.loads(json_match.group(0))
+                    except Exception:
+                        pass
+
+        coordinator_message = str(parsed_data.get("coordinator_message") or "").strip()
+        raw_selected = parsed_data.get("agents")
+        if isinstance(raw_selected, list):
+            selected_agents = raw_selected
+        elif isinstance(raw_selected, str) and raw_selected:
+            selected_agents = [raw_selected]
+    except Exception as e:
+        logger.warning("Global Coordinator routing failed: %s", e)
+
+    # 6. Map selected agents back to canonical agent IDs
+    matched_agent_ids = []
+    seen_matched = set()
+
+    for sel in selected_agents:
+        if not sel or not isinstance(sel, str):
+            continue
+        clean_sel = sel.strip().lstrip("@").lower()
+        clean_sel_norm = clean_sel.replace(" ", "_").replace("-", "_")
+        for r in roster_infos:
+            r_id = r["id"].lower()
+            r_name = r["display_name"].lower()
+            r_name_norm = r_name.replace(" ", "_").replace("-", "_")
+            if (
+                clean_sel == r_id
+                or clean_sel == r_name
+                or clean_sel_norm == r_name_norm
+            ) and r["id"].lower() not in seen_matched:
+                matched_agent_ids.append(r["id"])
+                seen_matched.add(r["id"].lower())
+                break
+
+    # 7. Fallback if no valid agents matched: inspect last user message for character names
+    if not matched_agent_ids:
+        non_global = [
+            r
+            for r in roster_infos
+            if r["id"].lower() not in coord_keys
+            and r["display_name"].lower() not in coord_keys
+        ]
+
+        last_user_content = ""
+        for m in reversed(routing_messages):
+            if m.get("role") == "user" and m.get("content"):
+                last_user_content = str(m.get("content"))
+                break
+
+        if last_user_content and non_global:
+            mentioned_agents = []
+            for r in non_global:
+                d_name = r["display_name"].strip()
+                if not d_name:
+                    continue
+                pattern = r"\b" + re.escape(d_name) + r"\b"
+                match = re.search(pattern, last_user_content, re.IGNORECASE)
+                if match:
+                    mentioned_agents.append((match.start(), r["id"]))
+                elif d_name.lower() in last_user_content.lower():
+                    idx = last_user_content.lower().find(d_name.lower())
+                    mentioned_agents.append((idx, r["id"]))
+
+            if mentioned_agents:
+                mentioned_agents.sort(key=lambda x: x[0])
+                for _, aid in mentioned_agents:
+                    if aid.lower() not in seen_matched:
+                        matched_agent_ids.append(aid)
+                        seen_matched.add(aid.lower())
+
+        if not matched_agent_ids and not coordinator_message:
+            if non_global:
+                matched_agent_ids = [non_global[0]["id"]]
+            elif raw_agents:
+                matched_agent_ids = [raw_agents[0]]
+            else:
+                matched_agent_ids = [global_agent_id]
+
+    # 8. Persist coordinator message if present
+    coord_msg = None
+    if coordinator_message and data.get("persist_message", True) and effective_chat_id:
+        try:
+            coord_msg = Message(
+                id=generate_uuid(),
+                chat_id=effective_chat_id,
+                role="assistant",
+                model=global_agent_id,
+                content=coordinator_message,
+                date_time=current_alpaca_timestamp(),
+            )
+            db.session.add(coord_msg)
+            db.session.commit()
+        except Exception as e:
+            logger.error("Failed persisting coordinator message: %s", e)
+
+    return jsonify({
+        "global_agent_id": global_agent_id,
+        "coordinator_message": coordinator_message,
+        "coordinator_message_obj": coord_msg.to_dict(include_attachments=True) if coord_msg else None,
+        "agents": matched_agent_ids,
+    })

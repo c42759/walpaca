@@ -13,6 +13,16 @@ export interface SelectedAttachment {
     extension?: string;
 }
 
+export interface AvailableAgentItem {
+    id: string;
+    name: string;
+    handle: string;
+    avatar?: string;
+    role?: string;
+    isInChat?: boolean;
+    isGlobal?: boolean;
+}
+
 export interface ChatInputProps {
     inputText: string;
     setInputText: (text: string) => void;
@@ -33,6 +43,9 @@ export interface ChatInputProps {
     getCharacterName?: (char?: unknown) => string | undefined;
     promptTextareaRef?: React.RefObject<HTMLTextAreaElement | null>;
     autoResizeTextarea?: (el: HTMLTextAreaElement | null) => void;
+    availableAgents?: AvailableAgentItem[];
+    isMultiAgentChat?: boolean;
+    globalAgentName?: string;
 }
 
 const defaultAutoResizeTextarea = (el: HTMLTextAreaElement | null) => {
@@ -80,12 +93,77 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     getCharacterName = defaultGetCharacterName,
     promptTextareaRef,
     autoResizeTextarea = defaultAutoResizeTextarea,
+    availableAgents = [],
+    isMultiAgentChat = false,
+    globalAgentName = "",
 }) => {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const audioFileInputRef = useRef<HTMLInputElement | null>(null);
     const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
     const [isDraggingOver, setIsDraggingOver] = React.useState(false);
     const dragCounterRef = useRef(0);
+
+    // Agent @Mention Autocomplete States
+    const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+    const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
+    const [mentionActiveIndex, setMentionActiveIndex] = useState<number>(0);
+    const [isMentionDismissed, setIsMentionDismissed] = useState<boolean>(false);
+
+    const checkMentionTrigger = (text: string, cursorPos: number) => {
+        const textBeforeCursor = text.slice(0, cursorPos);
+        const match = /(?:^|\s)@([^\s@]*)$/.exec(textBeforeCursor);
+        if (match) {
+            const query = match[1];
+            const startIdx = textBeforeCursor.lastIndexOf("@");
+            setMentionQuery(query);
+            setMentionStartIndex(startIdx);
+            setMentionActiveIndex(0);
+            setIsMentionDismissed(false);
+        } else {
+            setMentionQuery(null);
+            setMentionStartIndex(-1);
+            setIsMentionDismissed(false);
+        }
+    };
+
+    const matchingAgents = React.useMemo(() => {
+        if (mentionQuery === null || isMentionDismissed || !availableAgents || availableAgents.length === 0) {
+            return [];
+        }
+        const q = mentionQuery.toLowerCase();
+        return availableAgents.filter((agent) => {
+            if (!q) return true;
+            return (
+                agent.name.toLowerCase().includes(q) ||
+                agent.handle.toLowerCase().includes(q) ||
+                agent.id.toLowerCase().includes(q)
+            );
+        });
+    }, [mentionQuery, isMentionDismissed, availableAgents]);
+
+    const handleSelectMention = (agent: AvailableAgentItem) => {
+        const textarea = internalTextareaRef.current || promptTextareaRef?.current;
+        const cursor = textarea?.selectionStart ?? inputText.length;
+        const textBefore = inputText.slice(0, mentionStartIndex >= 0 ? mentionStartIndex : cursor);
+        const textAfter = inputText.slice(cursor);
+        const insertText = `@${agent.handle} `;
+        const newText = `${textBefore}${insertText}${textAfter}`;
+        setInputText(newText);
+        setMentionQuery(null);
+        setMentionStartIndex(-1);
+        setIsMentionDismissed(false);
+
+        setTimeout(() => {
+            if (textarea) {
+                const nextPos = textBefore.length + insertText.length;
+                textarea.focus();
+                textarea.setSelectionRange(nextPos, nextPos);
+                if (autoResizeTextarea) {
+                    autoResizeTextarea(textarea);
+                }
+            }
+        }, 10);
+    };
 
     // Voice Recording & Audio Transcription States
     const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
@@ -519,9 +597,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                     {/* Combined Model & Instance Selector Button */}
                     <button
                         type="button"
-                        onClick={() => setIsSelectModelModalOpen(true)}
-                        className="group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2 sm:p-2.5 hover:px-3 hover:bg-[#eaecf9] transition-all duration-300 ease-in-out shadow-xs cursor-pointer text-xs font-bold text-[#202022] max-w-[220px] sm:max-w-[280px] md:max-w-[42px] md:hover:max-w-[340px] overflow-hidden"
-                        title={`Model: ${selectedModelName} @ ${selectedInstName}`}
+                        onClick={() => {
+                            if (!isMultiAgentChat) {
+                                setIsSelectModelModalOpen(true);
+                            }
+                        }}
+                        className={`group relative shrink-0 flex items-center bg-[#f0f2f9] border border-[#e8ebf3] rounded-2xl p-2 sm:p-2.5 shadow-xs text-xs font-bold text-[#202022] max-w-[240px] sm:max-w-[300px] md:max-w-[42px] md:hover:max-w-[340px] overflow-hidden transition-all duration-300 ease-in-out ${
+                            isMultiAgentChat
+                                ? "cursor-default border-[#7678ed]/30 bg-[#7678ed]/5"
+                                : "cursor-pointer hover:px-3 hover:bg-[#eaecf9]"
+                        }`}
+                        title={
+                            isMultiAgentChat
+                                ? "Multi-agent chat: Global Coordinator decides which agent responds"
+                                : `Model: ${selectedModelName} @ ${selectedInstName}`
+                        }
                     >
                         <div className="flex items-center gap-1.5 sm:gap-2 pl-0.5 sm:pl-1 shrink-0 max-w-full">
                             <svg
@@ -540,22 +630,30 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                                 <line x1="12" y1="17" x2="12" y2="21" />
                             </svg>
                             <div className="flex items-center gap-1.5 opacity-100 max-w-[180px] sm:max-w-[235px] md:opacity-0 md:max-w-0 md:group-hover:opacity-100 md:group-hover:max-w-[280px] transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden">
-                                <span className="truncate">{selectedModelName}</span>
-                                <span className="text-[#8e90a6] font-semibold">@</span>
-                                <span className="text-[#7678ed] truncate">{selectedInstName}</span>
-                                <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="#8e90a6"
-                                    strokeWidth="2.2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="ml-0.5 shrink-0 group-hover:text-[#202022] transition-colors"
-                                >
-                                    <polyline points="6 9 12 15 18 9" />
-                                </svg>
+                                <span className="truncate">{isMultiAgentChat ? (globalAgentName || selectedModelName) : selectedModelName}</span>
+                                {isMultiAgentChat ? (
+                                    <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-[#7678ed]/15 text-[#7678ed] border border-[#7678ed]/30 shrink-0">
+                                        Coordinator
+                                    </span>
+                                ) : (
+                                    <>
+                                        <span className="text-[#8e90a6] font-semibold">@</span>
+                                        <span className="text-[#7678ed] truncate">{selectedInstName}</span>
+                                        <svg
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="#8e90a6"
+                                            strokeWidth="2.2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="ml-0.5 shrink-0 group-hover:text-[#202022] transition-colors"
+                                        >
+                                            <polyline points="6 9 12 15 18 9" />
+                                        </svg>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </button>
@@ -711,7 +809,65 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 </div>
 
                 {/* Line 2 on Mobile: Input Text and Submit Button */}
-                <div className="flex items-end sm:items-center gap-1.5 sm:gap-2.5 w-full flex-1">
+                <div className="flex items-end sm:items-center gap-1.5 sm:gap-2.5 w-full flex-1 relative">
+                    {/* Autocomplete Popover */}
+                    {matchingAgents.length > 0 && (
+                        <div className="absolute left-0 bottom-full mb-2 w-full sm:w-80 max-h-60 overflow-y-auto bg-white rounded-2xl shadow-xl border border-[#e8ebf3] py-1.5 z-40 select-none animate-in fade-in zoom-in-95 duration-150 divide-y divide-[#f4f6fc]">
+                            <div className="px-3 py-1.5 text-[11px] font-bold text-[#8e90a6] uppercase tracking-wider flex items-center justify-between">
+                                <span>Mention Agent</span>
+                                <span className="text-[10px] font-normal lowercase">Tab or Enter to select</span>
+                            </div>
+                            <div className="p-1 space-y-0.5">
+                                {matchingAgents.map((agent, idx) => {
+                                    const isSelected = idx === mentionActiveIndex;
+                                    return (
+                                        <button
+                                            key={agent.id}
+                                            type="button"
+                                            onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                handleSelectMention(agent);
+                                            }}
+                                            className={`w-full text-left px-3 py-2 rounded-xl flex items-center gap-2.5 cursor-pointer transition-colors ${
+                                                isSelected ? "bg-[#7678ed]/10 text-[#7678ed]" : "hover:bg-[#f4f6fc] text-[#202022]"
+                                            }`}
+                                        >
+                                            {agent.avatar ? (
+                                                <img
+                                                    src={agent.avatar}
+                                                    alt={agent.name}
+                                                    className="w-7 h-7 rounded-lg object-cover shrink-0 shadow-2xs"
+                                                />
+                                            ) : (
+                                                <div className="w-7 h-7 rounded-lg bg-[#7678ed]/20 text-[#7678ed] flex items-center justify-center font-bold text-xs shrink-0">
+                                                    {agent.name.slice(0, 1).toUpperCase()}
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="font-bold text-xs truncate">{agent.name}</span>
+                                                    {agent.isGlobal && (
+                                                        <span className="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                                            Global
+                                                        </span>
+                                                    )}
+                                                    {agent.isInChat && (
+                                                        <span className="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-[#7678ed]/10 text-[#7678ed] border border-[#7678ed]/20 shrink-0">
+                                                            In Chat
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className="text-[11px] text-[#8e90a6] font-medium block truncate">
+                                                    @{agent.handle}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {isRecording ? (
                         <div className="flex-1 bg-[#f0f2f9] text-[#202022] rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3.5 flex items-center justify-between gap-3 animate-in fade-in duration-200 min-h-[44px] sm:min-h-[52px]">
                             <div className="flex items-center gap-2.5 min-w-0">
@@ -760,10 +916,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                             placeholder={isTranscribing ? "Transcribing audio..." : "Write a message..."}
                             value={inputText}
                             onChange={(e) => {
-                                setInputText(e.target.value);
+                                const val = e.target.value;
+                                const cursor = e.target.selectionStart ?? val.length;
+                                setInputText(val);
+                                checkMentionTrigger(val, cursor);
                                 if (autoResizeTextarea) {
                                     autoResizeTextarea(e.currentTarget);
                                 }
+                            }}
+                            onKeyUp={(e) => {
+                                const cursor = e.currentTarget.selectionStart ?? e.currentTarget.value.length;
+                                checkMentionTrigger(e.currentTarget.value, cursor);
+                            }}
+                            onClick={(e) => {
+                                const cursor = e.currentTarget.selectionStart ?? e.currentTarget.value.length;
+                                checkMentionTrigger(e.currentTarget.value, cursor);
                             }}
                             onInput={(e) => {
                                 if (autoResizeTextarea) {
@@ -772,6 +939,32 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                             }}
                             onPaste={handlePaste}
                             onKeyDown={(e) => {
+                                if (matchingAgents.length > 0) {
+                                    if (e.key === "ArrowDown") {
+                                        e.preventDefault();
+                                        setMentionActiveIndex((prev) => (prev + 1) % matchingAgents.length);
+                                        return;
+                                    }
+                                    if (e.key === "ArrowUp") {
+                                        e.preventDefault();
+                                        setMentionActiveIndex((prev) => (prev - 1 + matchingAgents.length) % matchingAgents.length);
+                                        return;
+                                    }
+                                    if (e.key === "Enter" || e.key === "Tab") {
+                                        e.preventDefault();
+                                        const targetAgent = matchingAgents[mentionActiveIndex] || matchingAgents[0];
+                                        if (targetAgent) {
+                                            handleSelectMention(targetAgent);
+                                        }
+                                        return;
+                                    }
+                                    if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        setIsMentionDismissed(true);
+                                        return;
+                                    }
+                                }
+
                                 if (e.key === "Enter" && !e.shiftKey) {
                                     const isMobileOrTablet =
                                         typeof window !== "undefined" &&

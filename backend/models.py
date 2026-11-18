@@ -66,6 +66,7 @@ class Chat(db.Model):
             "folder": self.folder,
             "is_template": bool(self.is_template),
             "latest_message_time": None,
+            "agents": get_chat_agents(self.id),
         }
         if self.messages:
             data["latest_message_time"] = self.messages[-1].date_time
@@ -371,6 +372,93 @@ class Preference(db.Model):
     def to_dict(self):
         return {"key": self.key,
                 "value": self.get_value()}
+
+
+def get_chat_agents(chat_id: str) -> list:
+    """
+    Retrieve deduplicated list of agent IDs associated with a chat.
+    Combines explicitly configured agents stored in Preference("chat_agents:<chat_id>")
+    with any assistant message models recorded in the chat history.
+    Deduplicates case-insensitively while preserving original casing and order.
+    """
+    if not chat_id:
+        return []
+
+    agents = []
+    seen = set()
+
+    # 1. Configured agents from Preference
+    try:
+        pref = Preference.query.get(f"chat_agents:{chat_id}")
+        if pref:
+            pref_val = pref.get_value()
+            if isinstance(pref_val, list):
+                for a in pref_val:
+                    if a and isinstance(a, str):
+                        clean_a = a.strip()
+                        if clean_a and clean_a.lower() not in seen:
+                            seen.add(clean_a.lower())
+                            agents.append(clean_a)
+    except Exception:
+        pass
+
+    # 2. Assistant message models from chat history
+    try:
+        msgs = (
+            Message.query.filter_by(chat_id=chat_id, role="assistant")
+            .order_by(Message.date_time.asc())
+            .all()
+        )
+        for m in msgs:
+            if m.model and isinstance(m.model, str):
+                clean_m = m.model.strip()
+                if clean_m and clean_m.lower() not in seen:
+                    seen.add(clean_m.lower())
+                    agents.append(clean_m)
+    except Exception:
+        pass
+
+    return agents
+
+
+def set_chat_agents(chat_id: str, agents: list) -> list:
+    """
+    Normalizes, deduplicates case-insensitively (preserving order), and persists
+    the agent roster for a given chat in Preference("chat_agents:<chat_id>").
+    """
+    if not chat_id:
+        return []
+
+    cleaned = []
+    seen = set()
+    if isinstance(agents, list):
+        for a in agents:
+            if a and isinstance(a, str):
+                clean_a = a.strip()
+                if clean_a and clean_a.lower() not in seen:
+                    seen.add(clean_a.lower())
+                    cleaned.append(clean_a)
+
+    key = f"chat_agents:{chat_id}"
+    pref = Preference.query.get(key)
+    if not pref:
+        pref = Preference(key=key)
+        db.session.add(pref)
+
+    pref.set_value(cleaned)
+    return cleaned
+
+
+def delete_chat_agents(chat_id: str):
+    """Deletes Preference("chat_agents:<chat_id>") if it exists."""
+    if not chat_id:
+        return
+    try:
+        pref = Preference.query.get(f"chat_agents:{chat_id}")
+        if pref:
+            db.session.delete(pref)
+    except Exception:
+        pass
 
 
 class PinSession(db.Model):

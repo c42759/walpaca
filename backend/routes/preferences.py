@@ -23,6 +23,7 @@ DEFAULT_PREFERENCES = {
     "tts_api_key": "",
     "stt_api_key": "",
     "attach_all_files": False,
+    "global_agent_id": "",
 }
 
 
@@ -32,8 +33,9 @@ def load_preferences() -> dict:
     rows = Preference.query.all()
 
     for row in rows:
-        if row.key != "active_instance_id":
-            prefs[row.key] = row.get_value()
+        if row.key == "active_instance_id" or str(row.key).startswith("chat_agents:"):
+            continue
+        prefs[row.key] = row.get_value()
 
     return prefs
 
@@ -41,7 +43,7 @@ def load_preferences() -> dict:
 def save_preferences(data: dict) -> dict:
     if isinstance(data, dict):
         for k, v in data.items():
-            if k == "active_instance_id":
+            if k == "active_instance_id" or str(k).startswith("chat_agents:"):
                 continue
 
             pref = Preference.query.get(k)
