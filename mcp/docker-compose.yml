@@ -43,3 +43,10 @@ services:
             - "8086:8080"
         restart: always
 
+    location:
+        container_name: walpaca_mcp_location
+        build: ./location
+        ports:
+            - "8087:8080"
+        restart: always
+
