@@ -50,3 +50,26 @@ services:
             - "8087:8080"
         restart: always
 
+    linux-utils:
+        container_name: walpaca_mcp_linux_utils
+        build: ./linux-utils
+        ports:
+            - "8088:8080"
+        environment:
+            SEARCH_ROOTS: "/host/home"
+            SYSTEMD_IGNORE_CHROOT: "1"
+        volumes:
+            # search_files root (read-only)
+            - "${LINUX_UTILS_SEARCH_DIR:-${HOME}}:/host/home:ro"
+            # systemctl status / list-units via host systemd D-Bus
+            - /run/systemd:/run/systemd:ro
+            - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro
+            # journalctl host logs
+            - /var/log/journal:/var/log/journal:ro
+            - /etc/machine-id:/etc/machine-id:ro
+            # lsblk filesystem labels/UUIDs
+            - /run/udev:/run/udev:ro
+            # fastfetch reports host OS instead of container Debian
+            - /etc/os-release:/etc/os-release:ro
+        restart: always
+

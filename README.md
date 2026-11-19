@@ -32,7 +32,7 @@ Instead of creating a new database format, Walpaca mounts the exact same SQLite 
 - [x] Regenerate messages
 - [x] Pull and delete models directly from the UI with real-time progress
 - [x] Model Context Protocol (MCP) tool integration (SSE/HTTP transports with multi-turn tool calling)
-- [x] Bundled MCP servers for web page fetching (`fetch`), web search (`web-search`), YouTube transcripts (`youtube`), and website scraping (`website`)
+- [x] Bundled MCP servers for web page fetching (`fetch`), web search (`web-search`), YouTube transcripts (`youtube`), website scraping (`website`), memory (`memory`), weather (`weather`), geolocation (`location`), and host system diagnostics (`linux-utils`: hardware, sensors, storage, systemd services/logs, read-only file search)
 - [x] Image and audio recognition (multimodal models) with clipboard paste & drag-and-drop
 - [x] Document recognition (plain text & code files) with configurable context attachment scope
 - [x] Code syntax highlighting
@@ -118,7 +118,7 @@ Normal conversation | Image recognition | Markdown to HTML
    ```bash
    docker compose up -d
    ```
-   *(Optional: Use `docker compose -f docker-compose-local.yml up -d` for `127.0.0.1`-only binding without Whisper, or run `docker compose -f mcp/docker-compose.yml up -d` to start the bundled `fetch`, `web-search`, `youtube`, and `website` MCP servers on ports `8081`–`8084`.)*
+   *(Optional: Use `docker compose -f docker-compose-local.yml up -d` for `127.0.0.1`-only binding without Whisper, or run `docker compose -f mcp/docker-compose.yml up -d` to start the bundled `fetch`, `web-search`, `youtube`, `website`, `memory`, `weather`, `location`, and `linux-utils` MCP servers on ports `8081`–`8088`. Set `LINUX_UTILS_SEARCH_DIR` to limit the read-only directory exposed to `linux-utils` file search; defaults to `$HOME`.)*
 
 5. Access the web interface at `http://localhost:3100` (Backend API on `http://localhost:5100`, Whisper STT on `http://localhost:9000`).
 
